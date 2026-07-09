@@ -1,0 +1,24 @@
+const dotenv = require('dotenv');
+dotenv.config();
+
+const app = require('./app');
+const sequelize = require('./config/database');
+const logger = require('./utils/logger');
+
+const PORT = process.env.PORT || 5000;
+
+sequelize
+  .authenticate()
+  .then(() => {
+    logger.info('Database connected');
+    return sequelize.sync({ alter: true }); // careful in production
+  })
+  .then(() => {
+    app.listen(PORT, () => {
+      logger.info(`🚀 Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    logger.error('DB connection failed:', err);
+    process.exit(1);
+  });
