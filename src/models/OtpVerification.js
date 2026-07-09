@@ -1,8 +1,35 @@
-const User = require('./User');
-const Otp = require('./Otp');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
 
-// Associations
-User.hasOne(Otp, { foreignKey: 'user_id', as: 'otpRecord' });
-Otp.belongsTo(User, { foreignKey: 'user_id' });
+const OtpVerification = sequelize.define('OtpVerification', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  phone: {
+    type: DataTypes.STRING(10),
+    allowNull: false,
+  },
+  email: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  otp: {
+    type: DataTypes.STRING(6),
+    allowNull: false,
+  },
+  expires_at: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  used: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+}, {
+  tableName: 'otp_verifications',
+  timestamps:true
+});
 
-module.exports = { User, Otp };
+module.exports = OtpVerification;

@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Otp } = require('../models/User');
+const { User, Otp } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { generateOtp, sendOtpViaSms } = require('../utils/otpgenerator');
 const { Op } = require('sequelize');
@@ -38,6 +38,7 @@ exports.registerUser = async (userData) => {
   await Otp.destroy({ where: { user_id: user.id } });
 
   await Otp.create({
+    phone: user.phone,
     user_id: user.id,
     otp,
     expires_at: expiresAt,
