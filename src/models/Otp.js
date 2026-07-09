@@ -1,35 +1,32 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const OtpVerification = sequelize.define('OtpVerification', {
+const Otp = sequelize.define('Otp', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
   },
-  phone: {
-    type: DataTypes.STRING(10),
+  user_id: {
+    type: DataTypes.UUID,
     allowNull: false,
-  },
-  email: {
-    type: DataTypes.STRING(100),
-    allowNull: true,
   },
   otp: {
     type: DataTypes.STRING(6),
     allowNull: false,
   },
+  type: {
+    type: DataTypes.ENUM('register', 'reset_password'),
+    defaultValue: 'register',
+  },
   expires_at: {
     type: DataTypes.DATE,
     allowNull: false,
   },
-  used: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-  },
+  // Remove phone and email fields; they don't exist in the new schema
 }, {
-  tableName: 'otp_verifications',
-  timestamps:true
+  tableName: 'otp_verifications', // ← match existing table name
+  timestamps: true,
 });
 
-module.exports = OtpVerification;
+module.exports = Otp;

@@ -3,10 +3,20 @@ const { catchAsync } = require('../utils/errorHandler');
 
 exports.register = catchAsync(async (req, res) => {
   const result = await authService.registerUser(req.body);
+
+  const isDev = process.env.NODE_ENV === 'development';
+  const message = isDev
+    ? `✅ OTP sent (dev mode). Your OTP: ${result.otp}`
+    : 'OTP sent to your phone. Please verify.';
+
   res.status(201).json({
     status: 'success',
-    message: 'OTP sent to your phone. Please verify.',
-    data: { userId: result.userId, phone: result.phone },
+    message,
+    data: {
+      userId: result.userId,
+      phone: result.phone,
+      ...(isDev && { otp: result.otp }),
+    },
   });
 });
 

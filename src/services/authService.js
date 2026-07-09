@@ -13,10 +13,12 @@ exports.registerUser = async (userData) => {
 
   // Check if phone already registered
   const existingUser = await User.findOne({ where: { phone } });
-  if (existingUser) {
-    throw new AppError('Phone number already registered.', 400);
-  }
-
+ if (existingUser) {
+  return {
+    success: true,
+    message: 'Phone number already registered.'
+  };
+}
   // Hash password
   const saltRounds = 12;
   const passwordHash = await bcrypt.hash(password, saltRounds);
@@ -37,17 +39,26 @@ exports.registerUser = async (userData) => {
   // Delete any existing OTP for this user
   await Otp.destroy({ where: { user_id: user.id } });
 
+  // Store OTP (only user_id, otp, expires_at – phone is not needed)
   await Otp.create({
-    phone: user.phone,
     user_id: user.id,
+    phone: user.phone,
     otp,
     expires_at: expiresAt,
   });
 
-  // Send OTP via SMS (mock)
+  // Send OTP via SMS (mock – logs to console in dev)
   await sendOtpViaSms(phone, otp);
 
-  return { userId: user.id, phone };
+  // Prepare base response
+  const response = { userId: user.id, phone };
+
+  // ✅ In development, include the OTP so you can test without SMS
+  if (process.env.NODE_ENV === 'development') {
+    response.otp = otp;
+  }
+
+  return response;
 };
 
 /**
@@ -64,7 +75,7 @@ exports.verifyOtp = async (phone, otp) => {
   }
 
   if (user.is_verified) {
-    throw new AppError('User already verified.', 400);
+    throw new AppError('User already verified.', 200);
   }
 
   const otpRecord = user.otpRecord;
@@ -101,7 +112,7 @@ exports.resendOtp = async (phone) => {
   }
 
   if (user.is_verified) {
-    throw new AppError('User already verified.', 400);
+    throw new AppError('User already verified.', 200);
   }
 
   // Generate new OTP

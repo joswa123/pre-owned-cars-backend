@@ -1,5 +1,5 @@
 const User = require('./User');
-const Otp = require('./OtpVerification');
+const Otp = require('./Otp');
 
 // Associations
 User.hasOne(Otp, { foreignKey: 'user_id', as: 'otpRecord' });
