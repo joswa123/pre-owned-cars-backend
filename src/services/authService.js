@@ -13,12 +13,9 @@ exports.registerUser = async (userData) => {
 
   // Check if phone already registered
   const existingUser = await User.findOne({ where: { phone } });
- if (existingUser) {
-  return {
-    success: true,
-    message: 'Phone number already registered.'
-  };
-}
+   if (existingUser) {
+    throw new AppError('Phone number already registered. Please login.', 200);
+  }
   // Hash password
   const saltRounds = 12;
   const passwordHash = await bcrypt.hash(password, saltRounds);
@@ -169,4 +166,84 @@ exports.loginUser = async (phone, password) => {
   delete userData.password_hash;
 
   return { user: userData, token };
+};
+
+/**
+ * FORGOT PASSWORD – Send OTP to user's phone
+ * @param {string} phone - 10-digit phone number
+ * @returns {object} { userId, phone, otp (only in dev) }
+ */
+exports.forgotPassword = async (phone) => {
+  const user = await User.findOne({ where: { phone } });
+  if (!user) {
+    throw new AppError('User not found with this phone number.', 404);
+  }
+
+  const otp = generateOtp();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+  await Otp.destroy({
+    where: { user_id: user.id, type: 'reset_password' },
+  });
+
+  await Otp.create({
+    user_id: user.id,
+    otp,
+    type: 'reset_password',
+    expires_at: expiresAt,
+  });
+
+  await sendOtpViaSms(phone, otp);
+
+  const response = { userId: user.id, phone };
+  if (process.env.NODE_ENV === 'development') {
+    response.otp = otp;
+  }
+  return response;
+};
+
+
+/**
+ * RESET PASSWORD – Verify OTP and update password
+ * @param {string} phone - 10-digit phone number
+ * @param {string} otp - 6-digit OTP
+ * @param {string} newPassword - new password (min 6 chars)
+ * @returns {object} { userId }
+ */
+exports.resetPassword = async (phone, otp, newPassword) => {
+  // 1. Find user
+  const user = await User.findOne({ where: { phone } });
+  if (!user) {
+    throw new AppError('User not found.', 404);
+  }
+
+  // 2. Find the reset OTP record
+  const otpRecord = await Otp.findOne({
+    where: {
+      user_id: user.id,
+      otp,
+      type: 'reset_password',
+    },
+  });
+
+  if (!otpRecord) {
+    throw new AppError('Invalid or expired OTP.', 400);
+  }
+
+  // 3. Check expiry
+  if (new Date() > new Date(otpRecord.expires_at)) {
+    throw new AppError('OTP has expired. Please request a new one.', 400);
+  }
+
+  // 4. Hash the new password
+  const saltRounds = 12;
+  const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+
+  // 5. Update user password
+  await user.update({ password_hash: passwordHash, is_verified: true });
+
+  // 6. Delete the used OTP
+  await Otp.destroy({ where: { id: otpRecord.id } });
+
+  return { userId: user.id };
 };

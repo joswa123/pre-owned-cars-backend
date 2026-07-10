@@ -20,10 +20,21 @@ const loginSchema = Joi.object({
   phone: Joi.string().pattern(/^[0-9]{10}$/).required(),
   password: Joi.string().required(),
 });
+const forgotPasswordSchema = Joi.object({
+  phone: Joi.string().pattern(/^[0-9]{10}$/).required(),
+});
+
+const resetPasswordSchema = Joi.object({
+  phone: Joi.string().pattern(/^[0-9]{10}$/).required(),
+  otp: Joi.string().length(6).pattern(/^[0-9]{6}$/).required(),
+  newPassword: Joi.string().min(6).required(),
+});
 
 module.exports = {
   registerSchema,
   verifyOtpSchema,
   resendOtpSchema,
   loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema
 };
