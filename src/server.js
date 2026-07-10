@@ -4,7 +4,7 @@ dotenv.config();
 const app = require('./app');
 const sequelize = require('./config/database');
 const logger = require('./utils/logger');
-
+const seedAdmin = require('./utils/admin');
 const PORT = process.env.PORT || 5000;
 
 sequelize
@@ -14,6 +14,9 @@ sequelize
     return sequelize.sync({ alter: true }); // careful in production
   })
   .then(() => {
+    return seedAdmin();
+  })
+  .then(()  => {
     app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
     });
