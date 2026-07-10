@@ -6,6 +6,10 @@ const User = require('./User');
 // Represents the otp_verifications table in MySQL
 const Otp = require('./Otp');
 
+const Car = require('./Car');
+const CarImage = require('./CarImage');
+
+
 
 // =========================
 // MODEL RELATIONSHIPS
@@ -40,6 +44,17 @@ User.hasOne(Otp, {
 Otp.belongsTo(User, {
   foreignKey: 'user_id'
 });
+
+
+// User ↔ Car
+User.hasMany(Car, { foreignKey: 'dealer_id' });
+Car.belongsTo(User, { foreignKey: 'dealer_id' });
+
+// Car ↔ CarImage
+Car.hasMany(CarImage, { foreignKey: 'car_id', as: 'images' });
+CarImage.belongsTo(Car, { foreignKey: 'car_id' });
+
+
 
 
 // Export all models

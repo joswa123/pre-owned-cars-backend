@@ -11,7 +11,7 @@ sequelize
   .authenticate()
   .then(() => {
     logger.info('Database connected');
-    return sequelize.sync({ alter: true }); // careful in production
+    return sequelize.sync({ force:true}); // careful in production
   })
   .then(() => {
     return seedAdmin();

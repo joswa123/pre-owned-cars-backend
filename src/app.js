@@ -33,6 +33,7 @@ app.use(compression());
 
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
+app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
 // other routes later...
 
 // Health check
