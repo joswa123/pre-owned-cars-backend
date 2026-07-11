@@ -34,8 +34,9 @@ app.use(compression());
 
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
-app.use('/api/admin-state', require('./routes/v1/admin-stateRoutes'));
-app.use('/api/admin-city', require('./routes/v1/admin-cityRoutes'));
+app.use('/api/v1/users', require('./routes/v1/userRoutes'));
+app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
+app.use('/api/v1/location', require('./routes/v1/locationRoutes'));
 // other routes later...
 
 // Health check

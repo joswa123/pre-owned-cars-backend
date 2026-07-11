@@ -34,6 +34,58 @@ const User = sequelize.define('User', {
   last_login: {
     type: DataTypes.DATE,
   },
+
+  email: {
+  type: DataTypes.STRING(100),
+  allowNull: true,
+  validate: { isEmail: true },
+},
+address: {
+  type: DataTypes.TEXT,
+  allowNull: true,
+},
+city: {
+  type: DataTypes.STRING(100),
+  allowNull: true,
+},
+state: {
+  type: DataTypes.STRING(100),
+  allowNull: true,
+},
+pincode: {
+  type: DataTypes.STRING(6),
+  allowNull: true,
+  validate: { len: [6, 6] },
+},
+aadhaar: {
+  type: DataTypes.STRING(12),
+  allowNull: true,
+  validate: { len: [12, 12] },
+},
+company_name: {
+  type: DataTypes.STRING(100),
+  allowNull: true,
+},
+license_no: {
+  type: DataTypes.STRING(100),
+  allowNull: true,
+},
+gst_no: {
+  type: DataTypes.STRING(100),
+  allowNull: true,
+},
+contact_person: {
+  type: DataTypes.STRING(100),
+  allowNull: true,
+},
+status: {
+  type: DataTypes.ENUM('approved', 'pending', 'rejected'),
+  defaultValue: 'pending',
+},
+seller_type: {
+  type: DataTypes.ENUM('individual', 'company'),
+  allowNull: true,
+},
 }, {
   tableName: 'users',
   timestamps:true,

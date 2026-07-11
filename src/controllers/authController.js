@@ -1,6 +1,9 @@
 const authService = require('../services/authService');
 const { catchAsync } = require('../utils/errorHandler');
 
+/**
+ * Register – returns OTP (in dev) and proceeds to OTP step
+ */
 exports.register = catchAsync(async (req, res) => {
   const result = await authService.registerUser(req.body);
 
@@ -8,6 +11,45 @@ exports.register = catchAsync(async (req, res) => {
   const message = isDev
     ? `✅ OTP sent (dev mode). Your OTP: ${result.otp}`
     : 'OTP sent to your phone. Please verify.';
+
+  res.status(200).json({ // ✅ 201 Created
+    status: 'success',
+    message,
+    data: {
+      userId: result.userId,
+      phone: result.phone,
+      ...(isDev && { otp: result.otp }),
+    },
+  });
+});
+
+/**
+ * Verify OTP – marks user as verified and auto‑logs in
+ */
+exports.verifyOtp = catchAsync(async (req, res) => {
+  const { phone, otp } = req.body;
+
+  // ✅ All logic is in the service
+  const { user, token } = await authService.verifyOtp(phone, otp);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Phone verified successfully. You are now logged in.',
+    data: { user, token },
+  });
+});
+
+/**
+ * Resend OTP – for registration only
+ */
+exports.resendOtp = catchAsync(async (req, res) => {
+  const { phone } = req.body;
+  const result = await authService.resendOtp(phone);
+
+  const isDev = process.env.NODE_ENV === 'development';
+  const message = isDev
+    ? `✅ OTP resent (dev mode). Your OTP: ${result.otp}`
+    : 'OTP resent successfully.';
 
   res.status(200).json({
     status: 'success',
@@ -20,26 +62,9 @@ exports.register = catchAsync(async (req, res) => {
   });
 });
 
-exports.verifyOtp = catchAsync(async (req, res) => {
-  const { phone, otp } = req.body;
-  const result = await authService.verifyOtp(phone, otp);
-  res.status(200).json({
-    status: 'success',
-    message: 'Phone verified successfully. You can now login.',
-    data: { userId: result.userId },
-  });
-});
-
-exports.resendOtp = catchAsync(async (req, res) => {
-  const { phone } = req.body;
-  const result = await authService.resendOtp(phone);
-  res.status(200).json({
-    status: 'success',
-    message: 'OTP resent successfully.',
-    data: { userId: result.userId },
-  });
-});
-
+/**
+ * Login
+ */
 exports.login = catchAsync(async (req, res) => {
   const { phone, password } = req.body;
   const { user, token } = await authService.loginUser(phone, password);
@@ -49,7 +74,6 @@ exports.login = catchAsync(async (req, res) => {
     data: { user, token },
   });
 });
-
 
 /**
  * Forgot Password – Send OTP
