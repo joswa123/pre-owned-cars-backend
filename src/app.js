@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const { globalErrorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
 
+
 const app = express();
 
 // Security
@@ -33,6 +34,8 @@ app.use(compression());
 
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
+app.use('/api/admin-state', require('./routes/v1/admin-stateRoutes'));
+app.use('/api/admin-city', require('./routes/v1/admin-cityRoutes'));
 // other routes later...
 
 // Health check
