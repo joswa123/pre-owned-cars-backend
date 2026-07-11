@@ -2,21 +2,190 @@ const { State, City } = require('../models');
 const logger = require('./logger');
 
 const statesData = [
-  { name: 'Tamil Nadu', code: 'TN' },
-  { name: 'Kerala', code: 'KL' },
-  { name: 'Karnataka', code: 'KA' },
   { name: 'Andhra Pradesh', code: 'AP' },
-  { name: 'Telangana', code: 'TS' },
-  { name: 'Maharashtra', code: 'MH' },
+  { name: 'Arunachal Pradesh', code: 'AR' },
+  { name: 'Assam', code: 'AS' },
+  { name: 'Bihar', code: 'BR' },
+  { name: 'Chhattisgarh', code: 'CG' },
+  { name: 'Goa', code: 'GA' },
   { name: 'Gujarat', code: 'GJ' },
-  // ... add more as needed
+  { name: 'Haryana', code: 'HR' },
+  { name: 'Himachal Pradesh', code: 'HP' },
+  { name: 'Jharkhand', code: 'JH' },
+  { name: 'Karnataka', code: 'KA' },
+  { name: 'Kerala', code: 'KL' },
+  { name: 'Madhya Pradesh', code: 'MP' },
+  { name: 'Maharashtra', code: 'MH' },
+  { name: 'Manipur', code: 'MN' },
+  { name: 'Meghalaya', code: 'ML' },
+  { name: 'Mizoram', code: 'MZ' },
+  { name: 'Nagaland', code: 'NL' },
+  { name: 'Odisha', code: 'OD' },
+  { name: 'Punjab', code: 'PB' },
+  { name: 'Rajasthan', code: 'RJ' },
+  { name: 'Sikkim', code: 'SK' },
+  { name: 'Tamil Nadu', code: 'TN' },
+  { name: 'Telangana', code: 'TS' },
+  { name: 'Tripura', code: 'TR' },
+  { name: 'Uttar Pradesh', code: 'UP' },
+  { name: 'Uttarakhand', code: 'UK' },
+  { name: 'West Bengal', code: 'WB' },
+
+  { name: 'Andaman and Nicobar Islands', code: 'AN' },
+  { name: 'Chandigarh', code: 'CH' },
+  { name: 'Dadra and Nagar Haveli and Daman and Diu', code: 'DN' },
+  { name: 'Delhi', code: 'DL' },
+  { name: 'Jammu and Kashmir', code: 'JK' },
+  { name: 'Ladakh', code: 'LA' },
+  { name: 'Lakshadweep', code: 'LD' },
+  { name: 'Puducherry', code: 'PY' }
 ];
 
 const citiesData = {
-  'Tamil Nadu': ['Coimbatore', 'Chennai', 'Madurai', 'Salem', 'Trichy', 'Erode'],
-  'Kerala': ['Thiruvananthapuram', 'Kochi', 'Kozhikode', 'Thrissur'],
-  'Karnataka': ['Bengaluru', 'Mysuru', 'Hubli', 'Mangaluru'],
-  // ... add more
+  'Tamil Nadu': [
+    'Chennai',
+    'Coimbatore',
+    'Madurai',
+    'Salem',
+    'Erode',
+    'Tiruppur',
+    'Trichy',
+    'Vellore',
+    'Thoothukudi',
+    'Nagercoil'
+  ],
+
+  'Kerala': [
+    'Thiruvananthapuram',
+    'Kochi',
+    'Kozhikode',
+    'Thrissur',
+    'Kollam',
+    'Kannur',
+    'Alappuzha',
+    'Palakkad'
+  ],
+
+  'Karnataka': [
+    'Bengaluru',
+    'Mysuru',
+    'Hubli',
+    'Mangaluru',
+    'Belagavi',
+    'Shivamogga',
+    'Tumakuru'
+  ],
+
+  'Andhra Pradesh': [
+    'Visakhapatnam',
+    'Vijayawada',
+    'Guntur',
+    'Tirupati',
+    'Kurnool',
+    'Nellore'
+  ],
+
+  'Telangana': [
+    'Hyderabad',
+    'Warangal',
+    'Karimnagar',
+    'Nizamabad',
+    'Khammam'
+  ],
+
+  'Maharashtra': [
+    'Mumbai',
+    'Pune',
+    'Nagpur',
+    'Nashik',
+    'Aurangabad',
+    'Kolhapur',
+    'Solapur',
+    'Thane'
+  ],
+
+  'Gujarat': [
+    'Ahmedabad',
+    'Surat',
+    'Vadodara',
+    'Rajkot',
+    'Bhavnagar',
+    'Jamnagar'
+  ],
+
+  'Delhi': [
+    'New Delhi',
+    'North Delhi',
+    'South Delhi',
+    'East Delhi',
+    'West Delhi'
+  ],
+
+  'Rajasthan': [
+    'Jaipur',
+    'Jodhpur',
+    'Udaipur',
+    'Ajmer',
+    'Kota',
+    'Bikaner'
+  ],
+
+  'Punjab': [
+    'Ludhiana',
+    'Amritsar',
+    'Jalandhar',
+    'Patiala',
+    'Mohali'
+  ],
+
+  'Uttar Pradesh': [
+    'Lucknow',
+    'Kanpur',
+    'Agra',
+    'Varanasi',
+    'Prayagraj',
+    'Noida',
+    'Ghaziabad',
+    'Meerut'
+  ],
+
+  'West Bengal': [
+    'Kolkata',
+    'Howrah',
+    'Durgapur',
+    'Siliguri',
+    'Asansol'
+  ],
+
+  'Madhya Pradesh': [
+    'Bhopal',
+    'Indore',
+    'Jabalpur',
+    'Gwalior',
+    'Ujjain'
+  ],
+
+  'Bihar': [
+    'Patna',
+    'Gaya',
+    'Muzaffarpur',
+    'Bhagalpur'
+  ],
+
+  'Odisha': [
+    'Bhubaneswar',
+    'Cuttack',
+    'Rourkela',
+    'Sambalpur'
+  ],
+
+  'Haryana': [
+    'Gurugram',
+    'Faridabad',
+    'Panipat',
+    'Hisar',
+    'Ambala'
+  ]
 };
 
 const seedLocations = async () => {
