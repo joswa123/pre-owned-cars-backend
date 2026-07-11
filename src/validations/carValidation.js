@@ -30,6 +30,8 @@ const carSchema = Joi.object({
   ownership: Joi.string().valid('1st Owner', '2nd Owner', '3rd Owner', '4th+ Owner').required(),
   location: Joi.string().required(),
   description: Joi.string().max(1000).optional(),
+  // ✅ Allow images field (handled by multer)
+  images: Joi.any().optional(),
 });
 
 module.exports = { carSchema };

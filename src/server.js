@@ -6,15 +6,19 @@ const sequelize = require('./config/database');
 const logger = require('./utils/logger');
 const seedAdmin = require('./utils/admin');
 const PORT = process.env.PORT || 5000;
-
+const seedLocations = require('./utils/seedLocations')
 sequelize
   .authenticate()
   .then(() => {
     logger.info('Database connected');
-    return sequelize.sync({ force:true}); // careful in production
+    return sequelize.sync({ alter: true }); // careful in production
   })
   .then(() => {
     return seedAdmin();
+  })
+  .then(() => {
+    // Seed states and cities
+    return seedLocations();
   })
   .then(()  => {
     app.listen(PORT, () => {

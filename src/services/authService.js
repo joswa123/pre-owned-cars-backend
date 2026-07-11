@@ -61,42 +61,43 @@ exports.registerUser = async (userData) => {
 /**
  * Verify OTP and activate the user
  */
+/**
+ * Verify OTP for registration and auto‑login
+ */
 exports.verifyOtp = async (phone, otp) => {
+  // Find user with OTP relation
   const user = await User.findOne({
     where: { phone },
     include: [{ model: Otp, as: 'otpRecord' }],
   });
 
-  if (!user) {
-    throw new AppError('User not found.', 404);
-  }
-
-  if (user.is_verified) {
-    throw new AppError('User already verified.', 200);
-  }
+  if (!user) throw new AppError('User not found.', 404);
+  if (user.is_verified) throw new AppError('User already verified.', 400);
 
   const otpRecord = user.otpRecord;
-  if (!otpRecord) {
-    throw new AppError('No OTP requested. Please register again.', 400);
-  }
-
-  // Check OTP expiry
-  if (new Date() > new Date(otpRecord.expires_at)) {
+  if (!otpRecord) throw new AppError('No OTP requested. Please register again.', 400);
+  if (new Date() > new Date(otpRecord.expires_at))
     throw new AppError('OTP has expired. Please request a new one.', 400);
-  }
+  if (otpRecord.otp !== otp) throw new AppError('Invalid OTP.', 400);
 
-  // Check OTP match
-  if (otpRecord.otp !== otp) {
-    throw new AppError('Invalid OTP.', 400);
-  }
-
-  // Mark user as verified
+  // Mark as verified
   await user.update({ is_verified: true });
 
-  // Delete the OTP record
+  // Delete used OTP
   await Otp.destroy({ where: { id: otpRecord.id } });
 
-  return { userId: user.id, phone: user.phone };
+  // Generate JWT (auto‑login)
+  const token = jwt.sign(
+    { id: user.id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
+
+  // Remove sensitive data
+  const userData = user.toJSON();
+  delete userData.password_hash;
+
+  return { user: userData, token };
 };
 
 /**
@@ -104,29 +105,22 @@ exports.verifyOtp = async (phone, otp) => {
  */
 exports.resendOtp = async (phone) => {
   const user = await User.findOne({ where: { phone } });
-  if (!user) {
-    throw new AppError('User not found.', 404);
-  }
+  if (!user) throw new AppError('User not found.', 404);
+  if (user.is_verified) throw new AppError('User already verified.', 400);
 
-  if (user.is_verified) {
-    throw new AppError('User already verified.', 200);
-  }
-
-  // Generate new OTP
   const otp = generateOtp();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-  // Upsert OTP
-  await Otp.upsert({
-    user_id: user.id,
-    otp,
-    expires_at: expiresAt,
-    updated_at: new Date(),
-  });
+  await Otp.destroy({ where: { user_id: user.id, type: 'register' } });
+  await Otp.create({ user_id: user.id, otp, type: 'register', expires_at: expiresAt });
 
   await sendOtpViaSms(phone, otp);
 
-  return { userId: user.id, phone };
+  const response = { userId: user.id, phone };
+  if (process.env.NODE_ENV === 'development') {
+    response.otp = otp;
+  }
+  return response;
 };
 
 /**

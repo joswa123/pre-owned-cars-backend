@@ -78,6 +78,14 @@ contact_person: {
   type: DataTypes.STRING(100),
   allowNull: true,
 },
+status: {
+  type: DataTypes.ENUM('approved', 'pending', 'rejected'),
+  defaultValue: 'pending',
+},
+seller_type: {
+  type: DataTypes.ENUM('individual', 'company'),
+  allowNull: true,
+},
 }, {
   tableName: 'users',
   timestamps:true,

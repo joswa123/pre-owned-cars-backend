@@ -1,45 +1,18 @@
 const { Car, CarImage, User } = require('../models');
+const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 
 /**
- * Create a car listing and update user profile
+ * Create a car listing (does NOT update user profile)
  */
 exports.createCar = async (userId, carData, imageFiles = []) => {
   const transaction = await sequelize.transaction();
 
   try {
-    // 1. Update user profile with seller details (if provided)
+    // 1. Ensure user exists (but do NOT update profile)
     const user = await User.findByPk(userId, { transaction });
     if (!user) throw new AppError('User not found.', 404);
-
-    // Map profile fields from carData (only if they exist)
-    const profileFields = [
-      'name', 'email', 'phone', 'address', 'city', 'state', 'pincode',
-      'aadhaar', 'companyname', 'licenseno', 'gstno', 'contactperson',
-    ];
-    const updateData = {};
-    profileFields.forEach((field) => {
-      if (carData[field] !== undefined && carData[field] !== null && carData[field] !== '') {
-        // Map frontend field names to DB column names
-        const dbFieldMap = {
-          name: 'full_name',
-          companyname: 'company_name',
-          licenseno: 'license_no',
-          gstno: 'gst_no',
-          contactperson: 'contact_person',
-        };
-        const dbField = dbFieldMap[field] || field;
-        updateData[dbField] = carData[field];
-      }
-    });
-
-    // If the user role is not set, we could set it based on seller type
-    // We'll assume the user already has the correct role.
-
-    if (Object.keys(updateData).length > 0) {
-      await user.update(updateData, { transaction });
-    }
 
     // 2. Create car entry
     const carFields = {
@@ -59,7 +32,7 @@ exports.createCar = async (userId, carData, imageFiles = []) => {
       ownership: carData.ownership,
       location: carData.location,
       description: carData.description || null,
-      status: 'pending', // admin approval
+      status: 'pending', // admin approval needed
     };
 
     const car = await Car.create(carFields, { transaction });
@@ -76,7 +49,7 @@ exports.createCar = async (userId, carData, imageFiles = []) => {
 
     await transaction.commit();
 
-    // Fetch the created car with images
+    // 4. Return car with images
     const createdCar = await Car.findByPk(car.id, {
       include: [{ model: CarImage, as: 'images' }],
     });
@@ -88,6 +61,7 @@ exports.createCar = async (userId, carData, imageFiles = []) => {
   }
 };
 
+// ... other methods (getCars, getCarById, getUserCars, updateCar, deleteCar) remain unchanged
 /**
  * Get cars with filters, pagination, sorting
  */

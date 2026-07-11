@@ -1,15 +1,11 @@
 // Import User model
 // Represents the users table in MySQL
 const User = require('./User');
-
-// Import Otp model
-// Represents the otp_verifications table in MySQL
 const Otp = require('./Otp');
-
+const State = require('./State');
+const City = require('./City');
 const Car = require('./Car');
 const CarImage = require('./CarImage');
-
-
 
 // =========================
 // MODEL RELATIONSHIPS
@@ -46,16 +42,14 @@ Otp.belongsTo(User, {
 });
 
 
-// User ↔ Car
 User.hasMany(Car, { foreignKey: 'dealer_id' });
 Car.belongsTo(User, { foreignKey: 'dealer_id' });
 
-// Car ↔ CarImage
 Car.hasMany(CarImage, { foreignKey: 'car_id', as: 'images' });
 CarImage.belongsTo(Car, { foreignKey: 'car_id' });
 
-
-
+State.hasMany(City, { foreignKey: 'state_id' });
+City.belongsTo(State, { foreignKey: 'state_id' });
 
 // Export all models
 // So other files can import them like:
@@ -64,5 +58,9 @@ CarImage.belongsTo(Car, { foreignKey: 'car_id' });
 //
 module.exports = {
   User,
-  Otp
+  Otp,
+  Car,
+  CarImage,
+  State,
+  City,
 };
