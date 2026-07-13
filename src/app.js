@@ -33,9 +33,21 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Compression
 app.use(compression());
 const path = require('path');
-const uploadsPath = path.resolve(__dirname, 'uploads');
+// __dirname is 'src', so we go up one level to reach the project root 'uploads' folder
+const uploadsPath = path.join(__dirname, '..', 'uploads');
 app.use('/uploads', express.static(uploadsPath));
-console.log('Serving static from:', uploadsPath);
+
+// Debug endpoint to check upload directory contents
+app.get('/api/debug/uploads', (req, res) => {
+  const fs = require('fs');
+  const brandsDir = path.join(uploadsPath, 'brands');
+  try {
+    const files = fs.readdirSync(brandsDir);
+    res.json({ success: true, directory: brandsDir, files });
+  } catch (error) {
+    res.json({ success: false, directory: brandsDir, error: error.message });
+  }
+});
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));
@@ -43,8 +55,14 @@ app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
 app.use('/api/v1/location', require('./routes/v1/locationRoutes'));
 
 app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
+// Public brand routes (no auth)
+app.use('/api/v1/brands', require('./routes/v1/brandRoutes'))
 // other routes later...
+// Public fuel type routes (no auth)
+app.use('/api/v1/fuel-types', require('./routes/v1/fuelTypeRoutes'));
 
+// Admin fuel type routes (protected)
+app.use('/api/v1/admin/fuel-types', require('./routes/v1/admin/fuelTypeRoutes'));
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date() });
