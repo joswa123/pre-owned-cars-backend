@@ -63,6 +63,12 @@ app.use('/api/v1/fuel-types', require('./routes/v1/fuelTypeRoutes'));
 
 // Admin fuel type routes (protected)
 app.use('/api/v1/admin/fuel-types', require('./routes/v1/admin/fuelTypeRoutes'));
+
+// Public transmissions
+app.use('/api/v1/transmissions', require('./routes/v1/transmissionRoutes'));
+
+// Admin transmissions (protected)
+app.use('/api/v1/admin/transmissions', require('./routes/v1/admin/transmissionRoutes'));
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date() });
