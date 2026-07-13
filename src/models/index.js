@@ -6,7 +6,8 @@ const State = require('./State');
 const City = require('./City');
 const Car = require('./Car');
 const CarImage = require('./CarImage');
-
+const Brand = require('./Brand');
+const Model= require('./Model')
 // =========================
 // MODEL RELATIONSHIPS
 // =========================
@@ -56,6 +57,10 @@ City.belongsTo(State, { foreignKey: 'state_id' });
 //
 // const { User, Otp } = require('../models');
 //
+
+Brand.hasMany(Model, { foreignKey: 'brandId', onDelete: 'CASCADE' });
+Model.belongsTo(Brand, { foreignKey: 'brandId' });
+
 module.exports = {
   User,
   Otp,
@@ -63,4 +68,6 @@ module.exports = {
   CarImage,
   State,
   City,
+  Brand,
+  Model
 };

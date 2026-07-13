@@ -1,0 +1,31 @@
+const express = require('express');
+const router = express.Router();
+const { protect, adminOnly } = require('../../middlewares/auth');
+const upload = require('../../middlewares/uploadBrand');
+const brandController = require('../../controllers/brandController');
+// const modelController = require('../../controllers/modelController');
+
+// All routes require authentication and admin role
+router.use(protect, adminOnly);
+
+// Brand routes
+router.route('/brands')
+  .get(brandController.getAllBrands)
+  .post(upload.single('logo'), brandController.createBrand);
+
+router.route('/brands/:id')
+  .get(brandController.getBrand)
+  .put(upload.single('logo'), brandController.updateBrand)
+  .delete(brandController.deleteBrand);
+
+// Model routes
+// router.route('/models')
+//   .get(modelController.getAllModels)
+//   .post(modelController.createModel);
+
+// router.route('/models/:id')
+//   .get(modelController.getModel)
+//   .put(modelController.updateModel)
+//   .delete(modelController.deleteModel);
+
+module.exports = router;

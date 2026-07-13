@@ -17,6 +17,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
+app.set('trust proxy', 1);
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -30,12 +32,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Compression
 app.use(compression());
-
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));
 app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
 app.use('/api/v1/location', require('./routes/v1/locationRoutes'));
+
+app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
 // other routes later...
 
 // Health check
