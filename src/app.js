@@ -33,7 +33,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Compression
 app.use(compression());
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const uploadsPath = path.resolve(__dirname, 'uploads');
+app.use('/uploads', express.static(uploadsPath));
+console.log('Serving static from:', uploadsPath);
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));

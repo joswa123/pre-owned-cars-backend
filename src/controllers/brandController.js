@@ -22,7 +22,7 @@ exports.getBrand = async (req, res, next) => {
 exports.createBrand = async (req, res, next) => {
   try {
     // Validate request body
-    const { error, value } = brandSchema.validate(req.body);
+    const { error, value } = brandSchema.validate(req.body, { stripUnknown: true });
 
     if (error) {
       return res.status(400).json({
@@ -47,7 +47,7 @@ exports.createBrand = async (req, res, next) => {
 };
 exports.updateBrand = async (req, res, next) => {
   try {
-    const { error, value } = brandUpdateSchema.validate(req.body);
+    const { error, value } = brandUpdateSchema.validate(req.body, { stripUnknown: true });
     if (error) {
       return res.status(400).json({ success: false, message: error.details[0].message });
     }

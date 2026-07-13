@@ -1,5 +1,7 @@
 const { Brand } = require('../models');
 const { Op } = require('sequelize');
+const fs = require('fs');
+const path = require('path');
 
 exports.getAllBrands = async () => {
   return await Brand.findAll({ order: [['name', 'ASC']] });
@@ -14,11 +16,12 @@ exports.getBrandById = async (id) => {
 exports.createBrand = async (data, logoFile) => {
   const existing = await Brand.findOne({ where: { name: data.name } });
   if (existing) throw new Error('Brand name already exists');
-console.log('BODY:', req.body);
-  console.log('FILE:', req.file);
+
+  const logoPath = logoFile ? logoFile.filename : null;
+
   const brand = await Brand.create({
     name: data.name,
-    logo: logoFile ? logoFile.filename : null,
+    logo: logoPath,
   });
   return brand;
 };
@@ -34,7 +37,10 @@ exports.updateBrand = async (id, data, logoFile) => {
 
   const updateData = { name: data.name || brand.name };
   if (logoFile) {
-    // Optionally delete old logo file here
+    if (brand.logo) {
+      const oldPath = path.join(__dirname, '..', '..', 'uploads', 'brands', brand.logo);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
     updateData.logo = logoFile.filename;
   }
   await brand.update(updateData);
@@ -44,7 +50,12 @@ exports.updateBrand = async (id, data, logoFile) => {
 exports.deleteBrand = async (id) => {
   const brand = await Brand.findByPk(id);
   if (!brand) throw new Error('Brand not found');
-  // Optionally delete logo file from disk
+  
+  if (brand.logo) {
+    const oldPath = path.join(__dirname, '..', '..', 'uploads', 'brands', brand.logo);
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+  }
+  
   await brand.destroy();
   return { message: 'Brand deleted' };
 };
