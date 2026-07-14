@@ -69,6 +69,11 @@ app.use('/api/v1/transmissions', require('./routes/v1/transmissionRoutes'));
 
 // Admin transmissions (protected)
 app.use('/api/v1/admin/transmissions', require('./routes/v1/admin/transmissionRoutes'));
+// Public models – no token
+app.use('/api/v1/models', require('./routes/v1/modelRoutes'));
+
+// Admin models – protected
+app.use('/api/v1/admin/models', require('./routes/v1/admin/modelRoutes'));
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date() });

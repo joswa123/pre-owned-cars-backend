@@ -29,7 +29,7 @@ exports.createTransmission = async (req, res, next) => {
 
         const transmissionData = { user_id, transmission_name, status };
         const newTransmission = await transmissionService.createTransmission(transmissionData);
-        res.status(201).json({ success: true, data: newTransmission });
+        res.status(200).json({ success: true, data: newTransmission });
     } catch (error) {
         next(error);
     }

@@ -16,6 +16,14 @@ const Brand = sequelize.define('Brand', {
     type: DataTypes.STRING(255),
     allowNull: true, // store file path (e.g., 'uploads/brands/logo123.jpg')
   },
+  logoUrl: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      if (!this.getDataValue('logo')) return null;
+      const publicPath = process.env.BASE_URL || 'http://repose-anthill-durably.ngrok-free.dev';
+      return `${publicPath}/uploads/brands/${this.getDataValue('logo')}`;
+    },
+  },
 }, {
   tableName: 'brands',
   timestamps: true,

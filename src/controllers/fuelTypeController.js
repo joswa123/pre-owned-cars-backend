@@ -33,7 +33,7 @@ exports.createFuelType = async (req, res, next) => {
 
     const fuelTypeData = { user_id, fuel_type_name, status };
     const newFuelType = await fuelTypeService.createFuelType(fuelTypeData);
-    res.status(201).json({ success: true, data: newFuelType });
+    res.status(200).json({ success: true, data: newFuelType });
   } catch (error) {
     next(error);
   }

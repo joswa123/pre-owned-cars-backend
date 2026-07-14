@@ -37,7 +37,7 @@ exports.createBrand = async (req, res, next) => {
     // Create brand
     const brand = await brandService.createBrand(value, logoFile);
 
-    return res.status(201).json({
+    return res.status(200).json({
       success: true,
       data: brand,
     });
