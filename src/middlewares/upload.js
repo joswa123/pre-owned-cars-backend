@@ -2,10 +2,22 @@ const multer = require('multer');
 const path = require('path');
 const { AppError } = require('../utils/errorHandler');
 
+const fs = require('fs');
+const os = require('os');
+
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    try {
+      const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
+      const dest = isVercel ? path.join(os.tmpdir(), 'uploads') : 'uploads/';
+      if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
+      }
+      cb(null, dest);
+    } catch (err) {
+      cb(err);
+    }
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);

@@ -33,20 +33,38 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Compression
 app.use(compression());
 const path = require('path');
-// __dirname is 'src', so we go up one level to reach the project root 'uploads' folder
+const os = require('os');
+const fs = require('fs');
+
+// Serve from standard root uploads folder (local)
 const uploadsPath = path.join(__dirname, '..', 'uploads');
 app.use('/uploads', express.static(uploadsPath));
 
+// Fallback: serve from dynamic temp directory (Vercel)
+const tempUploadsPath = path.join(os.tmpdir(), 'uploads');
+app.use('/uploads', express.static(tempUploadsPath));
+
 // Debug endpoint to check upload directory contents
 app.get('/api/debug/uploads', (req, res) => {
-  const fs = require('fs');
   const brandsDir = path.join(uploadsPath, 'brands');
-  try {
-    const files = fs.readdirSync(brandsDir);
-    res.json({ success: true, directory: brandsDir, files });
-  } catch (error) {
-    res.json({ success: false, directory: brandsDir, error: error.message });
-  }
+  const tempBrandsDir = path.join(tempUploadsPath, 'brands');
+  
+  const getDirContents = (dir) => {
+    try {
+      if (fs.existsSync(dir)) {
+        return { exists: true, files: fs.readdirSync(dir) };
+      }
+      return { exists: false, reason: 'Directory does not exist' };
+    } catch (error) {
+      return { exists: true, error: error.message };
+    }
+  };
+
+  res.json({
+    success: true,
+    local: { directory: brandsDir, ...getDirContents(brandsDir) },
+    temp: { directory: tempBrandsDir, ...getDirContents(tempBrandsDir) }
+  });
 });
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));

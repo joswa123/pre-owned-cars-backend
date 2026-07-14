@@ -10,7 +10,9 @@ const path = require('path');
 const fs = require('fs');
 
 // Purpose: Define exactly HOW and WHERE the uploaded file should be saved on the server.
-const brandDir = 'uploads/brands/';
+const os = require('os');
+const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
+const brandDir = isVercel ? path.join(os.tmpdir(), 'uploads', 'brands') : 'uploads/brands/';
 
 const storage = multer.diskStorage({
   // Purpose: Set the destination folder for the uploaded files
