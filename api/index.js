@@ -6,19 +6,18 @@ try {
   console.log('✅ App loaded successfully');
 } catch (error) {
   console.error('❌ Failed to load app:', error);
-  // Export a function that returns the error as JSON
+  // Export a fallback handler that returns a JSON error
   module.exports = (req, res) => {
     res.status(500).json({
       success: false,
       error: 'App failed to load',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      message: error ? error.message : 'Unknown error',
     });
   };
   return;
 }
 
-// If app loaded successfully, export the handler
+// If app loaded successfully, export the request handler
 module.exports = (req, res) => {
   try {
     app(req, res);
