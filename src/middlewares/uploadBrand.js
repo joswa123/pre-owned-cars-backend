@@ -9,16 +9,22 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Purpose: Ensure the target directory exists before we try to save files there.
-// This prevents the server from crashing the very first time someone uploads an image.
-const brandDir = 'uploads/brands/';
-if (!fs.existsSync(brandDir)) fs.mkdirSync(brandDir, { recursive: true });
-
 // Purpose: Define exactly HOW and WHERE the uploaded file should be saved on the server.
+const brandDir = 'uploads/brands/';
+
 const storage = multer.diskStorage({
   // Purpose: Set the destination folder for the uploaded files
   destination: (req, file, cb) => {
-    cb(null, brandDir);
+    try {
+      // Ensure the target directory exists before we try to save files there.
+      // Doing this lazily here prevents serverless cold starts from crashing on read-only filesystems.
+      if (!fs.existsSync(brandDir)) {
+        fs.mkdirSync(brandDir, { recursive: true });
+      }
+      cb(null, brandDir);
+    } catch (err) {
+      cb(err);
+    }
   },
   
   // Purpose: Create a unique filename to prevent overwriting existing images 
