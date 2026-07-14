@@ -17,13 +17,16 @@ const Brand = sequelize.define('Brand', {
     allowNull: true, // store file path (e.g., 'uploads/brands/logo123.jpg')
   },
   logoUrl: {
-    type: DataTypes.VIRTUAL,
-    get() {
-      if (!this.getDataValue('logo')) return null;
-      const publicPath = process.env.BASE_URL || 'http://repose-anthill-durably.ngrok-free.dev';
-      return `${publicPath}/uploads/brands/${this.getDataValue('logo')}`;
-    },
+  type: DataTypes.VIRTUAL,
+  get() {
+    const logo = this.getDataValue('logo');
+    if (!logo) return null;
+    // Use VERCEL_URL if available, otherwise BASE_URL, else fallback to localhost
+    const base = process.env.BASE_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5000');
+    return `${base}/uploads/brands/${logo}`;
   },
+}
 }, {
   tableName: 'brands',
   timestamps: true,
