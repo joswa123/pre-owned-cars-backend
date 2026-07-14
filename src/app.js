@@ -37,17 +37,13 @@ const os = require('os');
 const fs = require('fs');
 
 // Serve from standard root uploads folder (local)
-const uploadsPath = path.join(__dirname, '..', 'uploads');
-app.use('/uploads', express.static(uploadsPath));
-
-// Fallback: serve from dynamic temp directory (Vercel)
-const tempUploadsPath = path.join(os.tmpdir(), 'uploads');
-app.use('/uploads', express.static(tempUploadsPath));
+const uploadDir = process.env.VERCEL ? path.join(os.tmpdir(), 'uploads') : path.join(__dirname, '..', 'uploads');
+app.use('/uploads', express.static(uploadDir));
 
 // Debug endpoint to check upload directory contents
 app.get('/api/debug/uploads', (req, res) => {
-  const brandsDir = path.join(uploadsPath, 'brands');
-  const tempBrandsDir = path.join(tempUploadsPath, 'brands');
+  const brandsDir = path.join(uploadDir, 'brands');
+  const tempBrandsDir = path.join(os.tmpdir(), 'uploads', 'brands'); // Keep for debugging Vercel specific temp dir
   
   const getDirContents = (dir) => {
     try {

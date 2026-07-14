@@ -9,6 +9,7 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST,
     port: process.env.DB_PORT || 3306,
     dialect: 'mysql',
+    dialectModule: require('mysql'), // 👈 fallback
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     pool: {
       max: parseInt(process.env.DB_POOL_MAX) || (process.env.NODE_ENV === 'production' ? 2 : 10),
