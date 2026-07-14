@@ -71,6 +71,11 @@ app.use('/api/v1/transmissions', require('./routes/v1/transmissionRoutes'));
 app.use('/api/v1/admin/transmissions', require('./routes/v1/admin/transmissionRoutes'));
 // Public models – no token
 app.use('/api/v1/models', require('./routes/v1/modelRoutes'));
+// Public car types
+app.use('/api/v1/car-types', require('./routes/v1/carTypeRoutes'));
+
+// Admin car types
+app.use('/api/v1/admin/car-types', require('./routes/v1/admin/carTypeRoutes'));
 
 // Admin models – protected
 app.use('/api/v1/admin/models', require('./routes/v1/admin/modelRoutes'));

@@ -10,6 +10,7 @@ const Brand = require('./Brand');
 const Model= require('./Model');
 const FuelType = require('./FuelType');
 const Transmission = require('./Transmission');
+const CarType = require('./CarType');
 // =========================
 // MODEL RELATIONSHIPS
 // =========================
@@ -68,6 +69,7 @@ User.hasMany(FuelType, { foreignKey: 'user_id' });
 Transmission.belongsTo(User, { foreignKey: 'user_id', as: 'creator' });
 User.hasMany(Transmission, { foreignKey: 'user_id' });
 
+
 module.exports = {
   User,
   Otp,
@@ -78,5 +80,6 @@ module.exports = {
   Brand,
   Model,
   FuelType,
-  Transmission
+  Transmission,
+  CarType
 };
