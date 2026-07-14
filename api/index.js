@@ -1,13 +1,6 @@
-// Load environment variables before anything else
-require('dotenv').config();
-
-// Optional: Log for debugging
-console.log('✅ Vercel serverless function starting...');
-
-// Import the Express app
+// api/index.js
 const app = require('../src/app');
 
-// Export the app as the handler – Vercel will call it with (req, res)
 module.exports = (req, res) => {
   try {
     app(req, res);
