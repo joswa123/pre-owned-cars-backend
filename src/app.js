@@ -97,7 +97,13 @@ app.use('/api/v1/admin/models', require('./routes/v1/admin/modelRoutes'));
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date() });
 });
-
+app.use((err, req, res, next) => {
+  console.error('🔥 Error:', err);
+  res.status(err.statusCode || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error',
+  });
+});
 // 404
 app.use((req, res) => {
   res.status(404).json({
