@@ -20,7 +20,7 @@ sequelize
     // Seed states and cities
     return seedLocations();
   })
-  .then(()  => {
+  .then(() => {
     app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
     });
