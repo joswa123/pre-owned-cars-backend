@@ -4,7 +4,11 @@ const User = require('./User');
 const Otp = require('./Otp');
 const Car = require('./Car');
 const CarImage = require('./CarImage');
-const City = require('./City');
+const Brand = require('./Brand');
+const Model= require('./Model');
+const FuelType = require('./FuelType');
+const Transmission = require('./Transmission');
+const CarType = require('./CarType');const City = require('./City');
 const State = require('./State');
 const Brand = require('./admin-brandModel');
 
@@ -112,6 +116,16 @@ User.belongsTo(City, {
 //
 // const { User, Otp } = require('../models');
 //
+
+Brand.hasMany(Model, { foreignKey: 'brandId', onDelete: 'CASCADE' });
+Model.belongsTo(Brand, { foreignKey: 'brandId' });
+FuelType.belongsTo(User, { foreignKey: 'user_id', as: 'creator' });
+User.hasMany(FuelType, { foreignKey: 'user_id' });
+
+Transmission.belongsTo(User, { foreignKey: 'user_id', as: 'creator' });
+User.hasMany(Transmission, { foreignKey: 'user_id' });
+
+
 module.exports = {
   User,
   Otp,
@@ -119,5 +133,10 @@ module.exports = {
   CarImage,
   State,
   City,
+  Brand,
+  Model,
+  FuelType,
+  Transmission,
+  CarType
   Brand
 };

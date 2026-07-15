@@ -11,7 +11,7 @@ sequelize
   .authenticate()
   .then(() => {
     logger.info('Database connected');
-    return sequelize.sync({ alter: true }); // careful in production
+    return sequelize.sync(); // careful in production
   })
   .then(() => {
     return seedAdmin();
@@ -20,7 +20,7 @@ sequelize
     // Seed states and cities
     return seedLocations();
   })
-  .then(()  => {
+  .then(() => {
     app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
     });

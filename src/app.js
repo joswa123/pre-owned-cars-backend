@@ -19,6 +19,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
+app.set('trust proxy', 1);
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -32,7 +34,36 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Compression
 app.use(compression());
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
 
+// Serve from standard root uploads folder (local)
+const uploadDir = process.env.VERCEL ? path.join(os.tmpdir(), 'uploads') : path.join(__dirname, '..', 'uploads');
+app.use('/uploads', express.static(uploadDir));
+
+// Debug endpoint to check upload directory contents
+app.get('/api/debug/uploads', (req, res) => {
+  const brandsDir = path.join(uploadDir, 'brands');
+  const tempBrandsDir = path.join(os.tmpdir(), 'uploads', 'brands'); // Keep for debugging Vercel specific temp dir
+  
+  const getDirContents = (dir) => {
+    try {
+      if (fs.existsSync(dir)) {
+        return { exists: true, files: fs.readdirSync(dir) };
+      }
+      return { exists: false, reason: 'Directory does not exist' };
+    } catch (error) {
+      return { exists: true, error: error.message };
+    }
+  };
+
+  res.json({
+    success: true,
+    local: { directory: brandsDir, ...getDirContents(brandsDir) },
+    temp: { directory: tempBrandsDir, ...getDirContents(tempBrandsDir) }
+  });
+});
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes
@@ -40,13 +71,43 @@ app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));
 app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
 app.use('/api/v1/location', require('./routes/v1/locationRoutes'));
-// other routes later...
 
+app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
+// Public brand routes (no auth)
+app.use('/api/v1/brands', require('./routes/v1/brandRoutes'))
+// other routes later...
+// Public fuel type routes (no auth)
+app.use('/api/v1/fuel-types', require('./routes/v1/fuelTypeRoutes'));
+
+// Admin fuel type routes (protected)
+app.use('/api/v1/admin/fuel-types', require('./routes/v1/admin/fuelTypeRoutes'));
+
+// Public transmissions
+app.use('/api/v1/transmissions', require('./routes/v1/transmissionRoutes'));
+
+// Admin transmissions (protected)
+app.use('/api/v1/admin/transmissions', require('./routes/v1/admin/transmissionRoutes'));
+// Public models – no token
+app.use('/api/v1/models', require('./routes/v1/modelRoutes'));
+// Public car types
+app.use('/api/v1/car-types', require('./routes/v1/carTypeRoutes'));
+
+// Admin car types
+app.use('/api/v1/admin/car-types', require('./routes/v1/admin/carTypeRoutes'));
+
+// Admin models – protected
+app.use('/api/v1/admin/models', require('./routes/v1/admin/modelRoutes'));
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date() });
 });
-
+app.use((err, req, res, next) => {
+  console.error('🔥 Error:', err);
+  res.status(err.statusCode || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error',
+  });
+});
 // 404
 app.use((req, res) => {
   res.status(404).json({
