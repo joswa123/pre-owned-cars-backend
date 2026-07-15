@@ -1,19 +1,6 @@
 const Joi = require('joi');
 
-const carSchema = Joi.object({
-  // Seller profile fields (will update user)
-  name: Joi.string().min(3).max(100).optional(),
-  email: Joi.string().email().optional(),
-  phone: Joi.string().pattern(/^[0-9]{10}$/).optional(),
-  address: Joi.string().max(255).optional(),
-  city: Joi.string().max(100).optional(),
-  state: Joi.string().max(100).optional(),
-  pincode: Joi.string().pattern(/^[0-9]{6}$/).optional(),
-  aadhaar: Joi.string().pattern(/^[0-9]{12}$/).optional(),
-  companyname: Joi.string().max(100).optional(),
-  licenseno: Joi.string().max(100).optional(),
-  gstno: Joi.string().max(100).optional(),
-  contactperson: Joi.string().max(100).optional(),
+const carSchema = Joi.object({  
   // Car fields
   brand: Joi.string().required(),
   model: Joi.string().required(),

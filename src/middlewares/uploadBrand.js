@@ -1,70 +1,82 @@
 /**
  * Multer Configuration for Brand Image Uploads
  * 
- * Purpose: This file configures how brand images are received, validated, 
- * and saved to the local server disk when a user or admin uploads them.
+ * Purpose: Configures how brand images are received, validated, and saved.
+ * - In development: saves to local `uploads/brands/` folder.
+ * - In production (Vercel): saves to `/tmp/uploads/brands/` (ephemeral).
  */
 
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-
-// Purpose: Define exactly HOW and WHERE the uploaded file should be saved on the server.
 const os = require('os');
-const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
-const brandDir = isVercel ? path.join(os.tmpdir(), 'uploads', 'brands') : 'uploads/brands/';
 
+// Determine the appropriate upload directory based on environment
+const getUploadDir = () => {
+  // Vercel sets `VERCEL` env var automatically; also check NODE_ENV
+  const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+  
+  if (isVercel) {
+    // On Vercel, only /tmp is writable
+    const dir = path.join(os.tmpdir(), 'uploads', 'brands');
+    console.log(`📁 Vercel environment detected – using temp directory: ${dir}`);
+    return dir;
+  } else {
+    // Local development – store in project's uploads folder
+    const dir = path.join(__dirname, '..', 'uploads', 'brands');
+    console.log(`📁 Development environment – using local directory: ${dir}`);
+    return dir;
+  }
+};
+
+const brandDir = getUploadDir();
+
+// Ensure the directory exists (lazy creation on first upload)
+const ensureDirExists = (dir) => {
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      console.log(`✅ Created upload directory: ${dir}`);
+    }
+  } catch (err) {
+    console.error(`❌ Failed to create upload directory: ${dir}`, err);
+    throw err;
+  }
+};
+
+// Storage configuration
 const storage = multer.diskStorage({
-  // Purpose: Set the destination folder for the uploaded files
   destination: (req, file, cb) => {
     try {
-      // Ensure the target directory exists before we try to save files there.
-      // Doing this lazily here prevents serverless cold starts from crashing on read-only filesystems.
-      if (!fs.existsSync(brandDir)) {
-        fs.mkdirSync(brandDir, { recursive: true });
-      }
+      ensureDirExists(brandDir);
       cb(null, brandDir);
     } catch (err) {
       cb(err);
     }
   },
-  
-  // Purpose: Create a unique filename to prevent overwriting existing images 
-  // (e.g., if two users upload a file named "logo.jpg" at the same time).
   filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1E9); // Generate unique ID
-    const ext = path.extname(file.originalname); // Get original extension (.png, .jpg)
-    cb(null, `brand-${unique}${ext}`); // Result: "brand-1690000000000-123456789.png"
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `brand-${unique}${ext}`);
   }
 });
 
-// Purpose: Security & Validation. Restrict uploads to ONLY valid image formats.
-// This prevents users from uploading malicious files (like .exe or .php scripts) disguised as images.
+// File filter – only allow images
 const fileFilter = (req, file, cb) => {
   const allowed = /jpeg|jpg|png|gif|webp/;
-  
-  // Check 1: Does the file extension match allowed types?
   const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-  // Check 2: Does the actual file MIME type match allowed types? (Double security check)
   const mime = allowed.test(file.mimetype);
-  
-  if (mime && ext) return cb(null, true); // Accept file
-  
-  // Reject file and send an error message back to the frontend
+  if (mime && ext) return cb(null, true);
   cb(new Error('Only image files are allowed'), false);
 };
 
-// Purpose: Initialize the Multer middleware with our specific rules.
+// Multer instance
 const upload = multer({
-  storage, // Use our custom disk storage logic above
-  limits: { 
-    // Purpose: Prevent Denial of Service (DoS) attacks by limiting file size.
-    // Defaults to 5MB if MAX_FILE_SIZE is not set in the .env file.
-    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 
+  storage,
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 // 5MB default
   },
-  fileFilter // Apply our image-only security filter above
+  fileFilter
 });
 
-// Purpose: Export the configured middleware so it can be used in our route files.
-// Usage example in routes: router.post('/', upload.single('image'), controller.createBrand)
 module.exports = upload;

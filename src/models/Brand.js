@@ -23,7 +23,7 @@ const Brand = sequelize.define('Brand', {
     if (!logo) return null;
     // Use VERCEL_URL if available, otherwise BASE_URL, else fallback to localhost
     const base = process.env.BASE_URL
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5000');
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://repose-anthill-durably.ngrok-free.dev');
     return `${base}/uploads/brands/${logo}`;
   },
 }
