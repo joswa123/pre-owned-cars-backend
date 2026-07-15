@@ -1,5 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
+const State = require('./State');
+const City = require('./City');
 
 const User = sequelize.define('User', {
   id: {
@@ -24,8 +26,55 @@ const User = sequelize.define('User', {
     allowNull: false,
   },
   role: {
-    type: DataTypes.ENUM('buyer', 'seller', 'company_seller','admin'),
+    type: DataTypes.ENUM('buyer', 'seller' ,'admin'),
     defaultValue: 'buyer',
+  },
+  seller_type: {
+    type: DataTypes.ENUM('individual', 'company'),
+    allowNull: true,
+  },
+  profile_picture: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
+  email: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    validate: { isEmail: true },
+  },
+  aadhaar: {
+    type: DataTypes.STRING(12),
+    allowNull: true,
+    validate: { len: [12, 12] },
+  },
+  address: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  city_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'cities', // name of the City model
+      key: 'id',
+    },
+  },
+  state_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'states', // name of the State model
+      key: 'id',
+    },
+  },
+  pincode: {
+    type: DataTypes.STRING(6),
+    allowNull: true,
+    validate: { len: [6, 6] },
+  },
+  status: {
+    type: DataTypes.ENUM('approved', 'pending', 'rejected'),
+    defaultValue: 'pending',
   },
   is_verified: {
     type: DataTypes.BOOLEAN,
@@ -34,61 +83,9 @@ const User = sequelize.define('User', {
   last_login: {
     type: DataTypes.DATE,
   },
-
-  email: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-  validate: { isEmail: true },
-},
-address: {
-  type: DataTypes.TEXT,
-  allowNull: true,
-},
-city: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-},
-state: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-},
-pincode: {
-  type: DataTypes.STRING(6),
-  allowNull: true,
-  validate: { len: [6, 6] },
-},
-aadhaar: {
-  type: DataTypes.STRING(12),
-  allowNull: true,
-  validate: { len: [12, 12] },
-},
-company_name: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-},
-license_no: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-},
-gst_no: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-},
-contact_person: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-},
-status: {
-  type: DataTypes.ENUM('approved', 'pending', 'rejected'),
-  defaultValue: 'pending',
-},
-seller_type: {
-  type: DataTypes.ENUM('individual', 'company'),
-  allowNull: true,
-},
-}, {
-  tableName: 'users',
-  timestamps:true,
+  }, {
+    tableName: 'users',
+    timestamps:true,
 });
 
 module.exports = User;

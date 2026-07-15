@@ -5,6 +5,7 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { globalErrorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
+const path = require('path');
 
 
 const app = express();
@@ -31,6 +32,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Compression
 app.use(compression());
+
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));

@@ -1,47 +1,147 @@
-const { User } = require('../models');
+const { User, State, City } = require('../models');
+const { Op } = require('sequelize');
+const fs = require('fs');
+const path = require('path');
 const { AppError } = require('../utils/errorHandler');
+const { updateProfileSchema } = require('../validations/userValidation');
 
-exports.updateProfile = async (userId, updateData) => {
-  const user = await User.findByPk(userId);
-  if (!user) throw new AppError('User not found.', 404);
+exports.updateProfile = async (id, body, file) => {
 
-  
-  // Map frontend field names to DB column names
-  const fieldMap = {
-    name: 'full_name',
-    company_name: 'company_name',
-    license_no: 'license_no',
-    gst_no: 'gst_no',
-    contact_person: 'contact_person',
-  };
+    // Validate Request
+    const { error } = updateProfileSchema.validate(body, { abortEarly: false });
 
-  // Build update object
-  const allowedFields = [
-    'seller_type', 'full_name', 'phone', 'email', 'address',
-    'city', 'state', 'pincode', 'company_name', 'license_no',
-    'gst_no', 'contact_person',
-  ];
-
-  const updateObj = {};
-  for (const [key, value] of Object.entries(updateData)) {
-    const dbKey = fieldMap[key] || key;
-    if (allowedFields.includes(dbKey) && value !== undefined && value !== null && value !== '') {
-      updateObj[dbKey] = value;
+    if (error) {
+        throw new AppError(error.details[0].message, 400);
     }
-  }
 
-  // If seller_type is provided, update it
-  if (updateData.seller_type) {
-    updateObj.seller_type = updateData.seller_type;
-  }
-if (user.role === 'seller' || user.role === 'company_seller') {
-    updateObj.status = 'approved';
-  }
-  await user.update(updateObj);
+    // Find User
+    const user = await User.findByPk(id);
 
-  // Remove sensitive fields before returning
-  const userData = user.toJSON();
-  delete userData.password_hash;
+    if (!user) {
+        throw new AppError("User not found.", 404);
+    }
 
-  return userData;
+    // Check Duplicate Phone
+    if (body.phone) {
+
+        const phoneExists = await User.findOne({
+            where: {
+                phone: body.phone,
+                id: {
+                    [Op.ne]: id
+                }
+            }
+        });
+
+        if (phoneExists) {
+            throw new AppError("Phone number already exists.", 409);
+        }
+    }
+
+    // Check Duplicate Email
+    if (body.email) {
+
+        const emailExists = await User.findOne({
+            where: {
+                email: body.email.toLowerCase().trim(),
+                id: {
+                    [Op.ne]: id
+                }
+            }
+        });
+
+        if (emailExists) {
+            throw new AppError("Email already exists.", 409);
+        }
+    }
+
+    // Build Update Object
+    const updateData = {};
+
+    if (body.full_name !== undefined)
+        updateData.full_name = body.full_name.trim();
+
+    if (body.phone !== undefined)
+        updateData.phone = body.phone;
+
+    if (body.email !== undefined)
+        updateData.email = body.email.toLowerCase().trim();
+
+    if (body.address !== undefined)
+        updateData.address = body.address.trim();
+
+    if (body.state_id !== undefined)
+        updateData.state_id = body.state_id;
+
+    if (body.city_id !== undefined)
+        updateData.city_id = body.city_id;
+
+    if (body.pincode !== undefined)
+        updateData.pincode = body.pincode;
+
+    if (body.aadhaar !== undefined)
+        updateData.aadhaar = body.aadhaar;
+
+    if (file) {
+        if (user.profile_picture) {
+
+            const oldImage = path.join(
+                process.cwd(),
+                user.profile_picture.replace(/^\//, "")
+            );
+
+            if (fs.existsSync(oldImage)) {
+                fs.unlinkSync(oldImage);
+            }
+        }
+
+        updateData.profile_picture = `/uploads/user/${file.filename}`;
+    }
+
+    // Update User
+    await user.update(updateData);
+
+    // Return Updated Profile
+    const updatedUser = await User.findByPk(id, {
+        attributes: {
+            exclude: ["password_hash"]
+        },
+        include: [
+            {
+                model: State,
+                attributes: ["id", "name"]
+            },
+            {
+                model: City,
+                attributes: ["id", "name"]
+            }
+        ]
+    });
+
+    return updatedUser;
+};
+
+exports.getProfile = async (id) => {
+
+    const user = await User.findByPk(id, {
+        attributes: {
+            exclude: ["password_hash"]
+        },
+        include: [
+            {
+                model: State,
+                attributes: ["id", "name"]
+            },
+            {
+                model: City,
+                attributes: ["id", "name"]
+            }
+        ]
+    });
+
+    if (!user) {
+        throw new AppError("User not found.", 404);
+    }
+
+    return user;
 };

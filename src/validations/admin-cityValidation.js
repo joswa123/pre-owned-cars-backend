@@ -8,6 +8,4 @@ const addcitySchema = Joi.object({
     status: Joi.string().valid('Active', 'Inactive').default('Active'),
 });
 
-module.exports = {
-    addcitySchema,
-};
+module.exports = { addcitySchema };

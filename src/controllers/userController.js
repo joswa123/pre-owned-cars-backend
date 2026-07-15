@@ -4,8 +4,9 @@ const { catchAsync } = require('../utils/errorHandler');
 exports.updateProfile = catchAsync(async (req, res) => {
   const userId = req.user.id;
   const updateData = req.body;
+  const file = req.file;
 
-  const user = await userService.updateProfile(userId, updateData);
+  const user = await userService.updateProfile(userId, updateData, file);
 
   res.status(200).json({
     status: 'success',
@@ -15,8 +16,8 @@ exports.updateProfile = catchAsync(async (req, res) => {
 });
 
 exports.getProfile = catchAsync(async (req, res) => {
-  const userId = req.user.id;
-  const user = await userService.getProfile(userId);
+  const id = req.user.id;
+  const user = await userService.getProfile(id);
 
   res.status(200).json({
     status: 'success',

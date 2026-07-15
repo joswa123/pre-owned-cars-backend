@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
+const User = require('./User');
 
 const Brand = sequelize.define('Brand', {
     id: {
@@ -10,14 +11,18 @@ const Brand = sequelize.define('Brand', {
     user_id: {
         type: DataTypes.UUID,
         allowNull: false,
+        references: {
+            model: User, // Name of the referenced table
+            key: 'id',      // Column in the referenced table
+        },
     },
     brand_name: {
         type: DataTypes.STRING(100),
         allowNull: false,
     },
-    brand_logo: {
-        type: DataTypes.STRING,
-        allowNull: true,
+    brand_logo_url: {
+        type: DataTypes.STRING(500),
+        allowNull: false,
     },
     status: {
         type: DataTypes.ENUM('Active', 'Inactive'),

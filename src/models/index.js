@@ -2,11 +2,10 @@
 // Represents the users table in MySQL
 const User = require('./User');
 const Otp = require('./Otp');
-const State = require('./State');
-const City = require('./City');
 const Car = require('./Car');
-const CarImage = require('./CarImage');const State = require('./admin-stateModel');
-const City = require('./admin-cityModel');
+const CarImage = require('./CarImage');
+const City = require('./City');
+const State = require('./State');
 const Brand = require('./admin-brandModel');
 
 // =========================
@@ -52,35 +51,31 @@ CarImage.belongsTo(Car, { foreignKey: 'car_id' });
 
 State.hasMany(City, { foreignKey: 'state_id' });
 City.belongsTo(State, { foreignKey: 'state_id' });
-// One User can have many State records
-User.hasMany(State, {
-  foreignKey: 'user_id',
-  as: 'stateRecords'
-});
 
-State.belongsTo(User, {
-  foreignKey: 'user_id'
-});
+// // One User can have many State records
+// User.hasMany(State, { foreignKey: 'user_id', as: 'stateRecords' });
 
-// One User can have many City records
-User.hasMany(City, {
-  foreignKey: 'user_id',
-  as: 'cityRecords'
-});
+// State.belongsTo(User, { foreignKey: 'user_id' });
 
-City.belongsTo(User, {
-  foreignKey: 'user_id'
-});
+// // One User can have many City records
+// User.hasMany(City, {
+//   foreignKey: 'user_id',
+//   as: 'cityRecords'
+// });
 
-// One State can have many City records
-State.hasMany(City, {
-  foreignKey: 'state_id',
-  as: 'cityRecords'
-});
+// City.belongsTo(User, {
+//   foreignKey: 'user_id'
+// });
 
-City.belongsTo(State, {
-  foreignKey: 'state_id'
-});
+// // One State can have many City records
+// State.hasMany(City, {
+//   foreignKey: 'state_id',
+//   as: 'cityRecords'
+// });
+
+// City.belongsTo(State, {
+//   foreignKey: 'state_id'
+// });
 
 // One User can have many Brand records
 User.hasMany(Brand, {
@@ -92,6 +87,26 @@ Brand.belongsTo(User, {
   foreignKey: 'user_id'
 });
 
+// One State can have many User records
+State.hasMany(User, {
+  foreignKey: 'state_id',
+});
+
+User.belongsTo(State, {
+  foreignKey: 'state_id'
+});
+
+// One City can have many User records
+City.hasMany(User, {
+  foreignKey: 'city_id',
+});
+
+User.belongsTo(City, {
+  foreignKey: 'city_id'
+});
+
+
+
 // Export all models
 // So other files can import them like:
 //
@@ -102,8 +117,6 @@ module.exports = {
   Otp,
   Car,
   CarImage,
-  State,
-  City,,
   State,
   City,
   Brand

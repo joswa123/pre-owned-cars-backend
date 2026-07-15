@@ -64,7 +64,7 @@ exports.resendOtp = catchAsync(async (req, res) => {
 
 /**
  * Login
- */
+*/
 exports.login = catchAsync(async (req, res) => {
   const { phone, password } = req.body;
   const { user, token } = await authService.loginUser(phone, password);
