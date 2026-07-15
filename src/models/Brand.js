@@ -21,9 +21,7 @@ const Brand = sequelize.define('Brand', {
   get() {
     const logo = this.getDataValue('logo');
     if (!logo) return null;
-    // Use VERCEL_URL if available, otherwise BASE_URL, else fallback to localhost
-    const base = process.env.BASE_URL
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://pre-owned-cars-backend.onrender.com');
+    const base ='https://pre-owned-cars-backend.onrender.com';
     return `${base}/uploads/brands/${logo}`;
   },
 }
