@@ -3,48 +3,68 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
 const { globalErrorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
 
 const app = express();
 
-// Security
+// ─── Trust Proxy (required for Render/Heroku) ────────────────────────────────
+app.set('trust proxy', 1);
+
+// ─── Security ────────────────────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors());
+
+// Single, correctly configured CORS (don't use cors() twice)
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  origin: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
-app.set('trust proxy', 1);
 
-// Rate limiting
+// ─── Rate Limiting ────────────────────────────────────────────────────────────
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use('/api', limiter);
 
-// Body parsing
+// ─── Body Parsing ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Compression
+// ─── Compression ──────────────────────────────────────────────────────────────
 app.use(compression());
-const path = require('path');
-const os = require('os');
-const fs = require('fs');
 
-// Serve from standard root uploads folder (local)
-const uploadDir = process.env.VERCEL ? path.join(os.tmpdir(), 'uploads') : path.join(__dirname, '..', 'uploads');
+// ─── Static Uploads ──────────────────────────────────────────────────────────
+// Render has a persistent disk if configured, otherwise use local uploads folder.
+// Do NOT route to /tmp here — Render is NOT Vercel. /tmp files are not served.
+const uploadDir = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'uploads')
+  : path.join(__dirname, '..', 'uploads');
+
+// Ensure the uploads directory exists at startup so static serving doesn't fail
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    logger.info(`📁 Created uploads directory: ${uploadDir}`);
+  }
+} catch (err) {
+  logger.warn(`⚠️  Could not create uploads directory: ${err.message}`);
+}
+
 app.use('/uploads', express.static(uploadDir));
 
-// Debug endpoint to check upload directory contents
+// ─── Debug Endpoint ──────────────────────────────────────────────────────────
 app.get('/api/debug/uploads', (req, res) => {
   const brandsDir = path.join(uploadDir, 'brands');
-  const tempBrandsDir = path.join(os.tmpdir(), 'uploads', 'brands'); // Keep for debugging Vercel specific temp dir
-  
   const getDirContents = (dir) => {
     try {
       if (fs.existsSync(dir)) {
@@ -55,63 +75,45 @@ app.get('/api/debug/uploads', (req, res) => {
       return { exists: true, error: error.message };
     }
   };
-
   res.json({
     success: true,
-    local: { directory: brandsDir, ...getDirContents(brandsDir) },
-    temp: { directory: tempBrandsDir, ...getDirContents(tempBrandsDir) }
+    uploadDir,
+    brands: { directory: brandsDir, ...getDirContents(brandsDir) },
   });
 });
-// Routes
+
+// ─── Health Check ─────────────────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date() });
+});
+
+// ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));
 app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
 app.use('/api/v1/location', require('./routes/v1/locationRoutes'));
-
-app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
-// Public brand routes (no auth)
-app.use('/api/v1/brands', require('./routes/v1/brandRoutes'))
-// other routes later...
-// Public fuel type routes (no auth)
+app.use('/api/v1/brands', require('./routes/v1/brandRoutes'));
 app.use('/api/v1/fuel-types', require('./routes/v1/fuelTypeRoutes'));
-
-// Admin fuel type routes (protected)
-app.use('/api/v1/admin/fuel-types', require('./routes/v1/admin/fuelTypeRoutes'));
-
-// Public transmissions
 app.use('/api/v1/transmissions', require('./routes/v1/transmissionRoutes'));
-
-// Admin transmissions (protected)
-app.use('/api/v1/admin/transmissions', require('./routes/v1/admin/transmissionRoutes'));
-// Public models – no token
 app.use('/api/v1/models', require('./routes/v1/modelRoutes'));
-// Public car types
 app.use('/api/v1/car-types', require('./routes/v1/carTypeRoutes'));
 
-// Admin car types
+// Admin routes (protected)
+app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
+app.use('/api/v1/admin/fuel-types', require('./routes/v1/admin/fuelTypeRoutes'));
+app.use('/api/v1/admin/transmissions', require('./routes/v1/admin/transmissionRoutes'));
 app.use('/api/v1/admin/car-types', require('./routes/v1/admin/carTypeRoutes'));
-
-// Admin models – protected
 app.use('/api/v1/admin/models', require('./routes/v1/admin/modelRoutes'));
-// Health check
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date() });
-});
-app.use((err, req, res, next) => {
-  console.error('🔥 Error:', err);
-  res.status(err.statusCode || 500).json({
-    success: false,
-    message: err.message || 'Internal Server Error',
-  });
-});
-// 404
+
+// ─── 404 Handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
   });
 });
-// Global error handler
+
+// ─── Global Error Handler (must be LAST) ─────────────────────────────────────
 app.use(globalErrorHandler);
 
 module.exports = app;

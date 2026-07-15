@@ -1,9 +1,9 @@
 /**
  * Multer Configuration for Brand Image Uploads
- * 
+ *
  * Purpose: Configures how brand images are received, validated, and saved.
- * - In development: saves to local `uploads/brands/` folder.
- * - In production (Vercel): saves to `/tmp/uploads/brands/` (ephemeral).
+ * - On Vercel: saves to /tmp/uploads/brands/ (ephemeral, only /tmp is writable).
+ * - On Render / Local: saves to <project-root>/uploads/brands/ (persistent).
  */
 
 const multer = require('multer');
@@ -11,27 +11,18 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// Determine the appropriate upload directory based on environment
-const getUploadDir = () => {
-  // Vercel sets `VERCEL` env var automatically; also check NODE_ENV
-  const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
-  
-  if (isVercel) {
-    // On Vercel, only /tmp is writable
-    const dir = path.join(os.tmpdir(), 'uploads', 'brands');
-    console.log(`📁 Vercel environment detected – using temp directory: ${dir}`);
-    return dir;
-  } else {
-    // Local development – store in project's uploads folder
-    const dir = path.join(__dirname, '..', 'uploads', 'brands');
-    console.log(`📁 Development environment – using local directory: ${dir}`);
-    return dir;
-  }
-};
+// ─── Upload Directory Resolution ──────────────────────────────────────────────
+// Vercel: only /tmp is writable (serverless, ephemeral)
+// Render / Local: use project-relative uploads/brands/ folder
+const isVercel = !!process.env.VERCEL;
 
-const brandDir = getUploadDir();
+const brandDir = isVercel
+  ? path.join(os.tmpdir(), 'uploads', 'brands')
+  : path.join(__dirname, '..', '..', 'uploads', 'brands'); // <root>/uploads/brands
 
-// Ensure the directory exists (lazy creation on first upload)
+console.log(`📁 Brand upload directory: ${brandDir}`);
+
+// ─── Ensure Directory Exists ──────────────────────────────────────────────────
 const ensureDirExists = (dir) => {
   try {
     if (!fs.existsSync(dir)) {
@@ -44,7 +35,7 @@ const ensureDirExists = (dir) => {
   }
 };
 
-// Storage configuration
+// ─── Storage Configuration ────────────────────────────────────────────────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     try {
@@ -55,13 +46,13 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     cb(null, `brand-${unique}${ext}`);
-  }
+  },
 });
 
-// File filter – only allow images
+// ─── File Filter ──────────────────────────────────────────────────────────────
 const fileFilter = (req, file, cb) => {
   const allowed = /jpeg|jpg|png|gif|webp/;
   const ext = allowed.test(path.extname(file.originalname).toLowerCase());
@@ -70,13 +61,13 @@ const fileFilter = (req, file, cb) => {
   cb(new Error('Only image files are allowed'), false);
 };
 
-// Multer instance
+// ─── Multer Instance ──────────────────────────────────────────────────────────
 const upload = multer({
   storage,
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 // 5MB default
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024, // 5MB default
   },
-  fileFilter
+  fileFilter,
 });
 
 module.exports = upload;

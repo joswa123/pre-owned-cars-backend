@@ -1,31 +1,36 @@
 const multer = require('multer');
 const path = require('path');
-const { AppError } = require('../utils/errorHandler');
-
 const fs = require('fs');
 const os = require('os');
+const { AppError } = require('../utils/errorHandler');
 
-// Configure storage
+// ─── Upload Directory Resolution ──────────────────────────────────────────────
+// Vercel: only /tmp is writable (serverless, ephemeral)
+// Render / Local: use project-relative uploads/ folder
+const isVercel = !!process.env.VERCEL;
+const uploadBase = isVercel
+  ? path.join(os.tmpdir(), 'uploads')
+  : path.join(__dirname, '..', '..', 'uploads');
+
+// ─── Storage Configuration ────────────────────────────────────────────────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     try {
-      const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
-      const dest = isVercel ? path.join(os.tmpdir(), 'uploads') : 'uploads/';
-      if (!fs.existsSync(dest)) {
-        fs.mkdirSync(dest, { recursive: true });
+      if (!fs.existsSync(uploadBase)) {
+        fs.mkdirSync(uploadBase, { recursive: true });
       }
-      cb(null, dest);
+      cb(null, uploadBase);
     } catch (err) {
       cb(err);
     }
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
   },
 });
 
-// File filter – allow only images
+// ─── File Filter ──────────────────────────────────────────────────────────────
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
   if (allowedTypes.includes(file.mimetype)) {
@@ -37,7 +42,7 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
+  limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 },
   fileFilter,
 });
 
