@@ -1,31 +1,29 @@
+
+// controllers/carController.js
 const carService = require('../services/carService');
 const { catchAsync } = require('../utils/errorHandler');
 
 exports.createCar = catchAsync(async (req, res) => {
-  // req.user is set by auth middleware
   const userId = req.user.id;
   const carData = req.body;
-  const imageFiles = req.files || [];
+  const files = req.files; // { primary_image: [file], images: [file] }
 
-  const car = await carService.createCar(userId, carData, imageFiles);
+  const car = await carService.createCar(userId, carData, files);
 
-  res.status(200).json({
+  res.status(201).json({
     status: 'success',
     message: 'Car listed successfully. Waiting for admin approval.',
     data: { car },
   });
 });
 
+// ... other methods
+
 exports.getCars = catchAsync(async (req, res) => {
-  const { page = 1, limit = 20, ...filters } = req.query;
-  const result = await carService.getCars(filters, Number(page), Number(limit));
-
-  res.status(200).json({
-    status: 'success',
-    data: result,
-  });
+  const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'DESC', ...filters } = req.query;
+  const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder);
+  res.status(200).json({ status: 'success', data: result });
 });
-
 exports.getCarById = catchAsync(async (req, res) => {
   const { id } = req.params;
   const car = await carService.getCarById(id);

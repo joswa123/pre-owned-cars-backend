@@ -1,9 +1,41 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Otp } = require('../models');
+const { User, Otp,RefreshToken } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { generateOtp, sendOtpViaSms } = require('../utils/otpgenerator');
 const { Op } = require('sequelize');
+
+
+// Helper: generate tokens
+
+const generateTokens = async (user) => {
+  const accessToken = jwt.sign(
+    { id: user.id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
+
+  const refreshToken = jwt.sign(
+    { id: user.id },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '90d' }
+  );
+
+  // Calculate expiry date for DB
+  const expiresAt = new Date();
+  expiresAt.setDate(
+    expiresAt.getDate() + parseInt(process.env.JWT_REFRESH_EXPIRES_IN || '90')
+  );
+
+  // Store refresh token in DB (revoke any old ones later)
+  await RefreshToken.create({
+    user_id: user.id,
+    token: refreshToken,
+    expires_at: expiresAt,
+  });
+
+  return { accessToken, refreshToken };
+};
 
 /**
  * Register a new user, send OTP for verification
@@ -86,18 +118,12 @@ exports.verifyOtp = async (phone, otp) => {
   // Delete used OTP
   await Otp.destroy({ where: { id: otpRecord.id } });
 
-  // Generate JWT (auto‑login)
-  const token = jwt.sign(
-    { id: user.id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-  );
 
   // Remove sensitive data
   const userData = user.toJSON();
   delete userData.password_hash;
 
-  return { user: userData, token };
+  return { user: userData};
 };
 
 /**
@@ -145,21 +171,24 @@ exports.loginUser = async (phone, password) => {
     throw new AppError('Invalid phone or password.', 401);
   }
 
-  // Update last login
+ // 4. Update last login
   await user.update({ last_login: new Date() });
 
-  // Generate JWT
-  const token = jwt.sign(
-    { id: user.id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  // 5. Revoke all previous refresh tokens (rotation)
+  await RefreshToken.update(
+    { is_revoked: true },
+    { where: { user_id: user.id, is_revoked: false } }
   );
 
-  // Remove sensitive fields
+  // 6. Generate new tokens
+  const tokens = await generateTokens(user);
+
+  // 7. Remove sensitive fields
   const userData = user.toJSON();
   delete userData.password_hash;
 
-  return { user: userData, token };
+  // 8. Return user + tokens
+  return { user: userData, ...tokens };
 };
 
 /**

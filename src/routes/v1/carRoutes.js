@@ -1,24 +1,47 @@
+// routes/v1/carRoutes.js
 const express = require('express');
 const router = express.Router();
 const carController = require('../../controllers/carController');
 const { protect } = require('../../middlewares/auth');
-const { uploadImages } = require('../../middlewares/upload');
+const upload = require('../../middlewares/upload');
 const validate = require('../../middlewares/validate');
-const { carSchema } = require('../../validations/carValidation');
+const { createCarSchema, updateCarSchema } = require('../../validations/carValidation');
 
-// ── Public routes ─────────────────────────────────────────────────────────────
-router.get('/', carController.getCars);
+// ─── Create Car ─────────────────────────────────────────────
+router.post(
+  '/',
+  protect,
+  upload.fields([
+    { name: 'primary_image', maxCount: 1 },
+    { name: 'images', maxCount: 10 }
+  ]),
+  (req, res, next) => {
+    console.log('📝 req.body:', req.body);
+    console.log('📁 req.files:', req.files);
+    next();
+  },
+  (req, res, next) => {
+    if (!req.files || !req.files.primary_image || req.files.primary_image.length === 0) {
+      return res.status(400).json({ success: false, message: 'Primary image is required.' });
+    }
+    next();
+  },
+  validate(createCarSchema),
+  carController.createCar
+);
 
-// IMPORTANT: /my/listings MUST come before /:id to avoid Express matching
-// "my" as a car ID parameter.
-// Apply protect middleware explicitly on this route.
-router.get('/my/listings', protect, carController.getUserCars);
 
-router.get('/:id', carController.getCarById);
+// ─── Get Seller's Cars ──────────────────────────────────────
+router.get('/me', protect, carController.getUserCars);
 
-// ── Protected routes (require authentication) ────────────────────────────────
-router.post('/', protect, uploadImages, validate(carSchema), carController.createCar);
-router.put('/:id', protect, validate(carSchema), carController.updateCar);
+// ─── Update Car ─────────────────────────────────────────────
+router.put('/:id', protect, validate(updateCarSchema), carController.updateCar);
+
+// ─── Delete Car ─────────────────────────────────────────────
 router.delete('/:id', protect, carController.deleteCar);
+
+// ─── Public Routes ──────────────────────────────────────────
+router.get('/', carController.getCars);
+router.get('/:id', carController.getCarById);
 
 module.exports = router;

@@ -11,6 +11,7 @@ const Model= require('./Model');
 const FuelType = require('./FuelType');
 const Transmission = require('./Transmission');
 const CarType = require('./CarType');
+const RefreshToken=require('./RefreshToken')
 // =========================
 // MODEL RELATIONSHIPS
 // =========================
@@ -69,6 +70,8 @@ User.hasMany(FuelType, { foreignKey: 'user_id' });
 Transmission.belongsTo(User, { foreignKey: 'user_id', as: 'creator' });
 User.hasMany(Transmission, { foreignKey: 'user_id' });
 
+RefreshToken.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+User.hasMany(RefreshToken, { foreignKey: 'user_id' });
 
 module.exports = {
   User,
@@ -81,5 +84,6 @@ module.exports = {
   Model,
   FuelType,
   Transmission,
-  CarType
+  CarType,
+  RefreshToken
 };

@@ -26,8 +26,20 @@ const Car = sequelize.define('Car', {
   fuel_type: { type: DataTypes.ENUM('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG'), allowNull: false },
   transmission: { type: DataTypes.ENUM('Manual', 'Automatic', 'CVT', 'DCT'), allowNull: false },
   ownership: { type: DataTypes.ENUM('1st Owner', '2nd Owner', '3rd Owner', '4th+ Owner'), allowNull: false },
-  location: { type: DataTypes.STRING(100), allowNull: false },
-  description: { type: DataTypes.TEXT, allowNull: true },
+  price_negotiable: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  car_type: { type: DataTypes.STRING(50), allowNull: false },
+  state: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+  },
+  city: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+  }, description: { type: DataTypes.TEXT, allowNull: true },
   status: { type: DataTypes.ENUM('pending', 'approved', 'rejected', 'sold'), defaultValue: 'pending' },
   views: { type: DataTypes.INTEGER, defaultValue: 0 },
 }, {
