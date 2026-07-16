@@ -5,7 +5,6 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { globalErrorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
-const path = require('path');
 
 
 const app = express();
@@ -64,13 +63,14 @@ app.get('/api/debug/uploads', (req, res) => {
     temp: { directory: tempBrandsDir, ...getDirContents(tempBrandsDir) }
   });
 });
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(path.join(__dirname, "../uploads")));
 
 // Routes
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));
 app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
 app.use('/api/v1/location', require('./routes/v1/locationRoutes'));
+app.use('/api/v1/dealers', require('./routes/v1/dealerRoutes'));
 
 app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
 // Public brand routes (no auth)

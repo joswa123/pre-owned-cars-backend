@@ -8,9 +8,10 @@ const Brand = require('./Brand');
 const Model= require('./Model');
 const FuelType = require('./FuelType');
 const Transmission = require('./Transmission');
-const CarType = require('./CarType');const City = require('./City');
+const CarType = require('./CarType');
+const City = require('./City');
 const State = require('./State');
-const Brand = require('./admin-brandModel');
+const Dealer = require('./Dealer');
 
 // =========================
 // MODEL RELATIONSHIPS
@@ -109,7 +110,15 @@ User.belongsTo(City, {
   foreignKey: 'city_id'
 });
 
+// One User can have many Dealer records
+User.hasMany(Dealer, { foreignKey: 'user_id', as: 'dealerRecords' });
+Dealer.belongsTo(User, { foreignKey: 'user_id' });
 
+State.hasMany(Dealer, { foreignKey: 'cp_state_id' });
+Dealer.belongsTo(State, { foreignKey: 'cp_state_id' });
+
+City.hasMany(Dealer, { foreignKey: 'cp_city_id' });
+Dealer.belongsTo(City, { foreignKey: 'cp_city_id' });
 
 // Export all models
 // So other files can import them like:
@@ -137,6 +146,6 @@ module.exports = {
   Model,
   FuelType,
   Transmission,
-  CarType
-  Brand
+  CarType,
+  Dealer
 };

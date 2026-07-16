@@ -1,6 +1,5 @@
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { AppError } = require('../utils/errorHandler');
 
 const fs = require('fs');

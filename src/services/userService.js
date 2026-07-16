@@ -40,7 +40,6 @@ exports.updateProfile = async (id, body, file) => {
 
     // Check Duplicate Email
     if (body.email) {
-
         const emailExists = await User.findOne({
             where: {
                 email: body.email.toLowerCase().trim(),
@@ -107,14 +106,8 @@ exports.updateProfile = async (id, body, file) => {
             exclude: ["password_hash"]
         },
         include: [
-            {
-                model: State,
-                attributes: ["id", "name"]
-            },
-            {
-                model: City,
-                attributes: ["id", "name"]
-            }
+            { model: State, attributes: ["id", "name"] },
+            { model: City, attributes: ["id", "name"] }
         ]
     });
 
@@ -128,14 +121,8 @@ exports.getProfile = async (id) => {
             exclude: ["password_hash"]
         },
         include: [
-            {
-                model: State,
-                attributes: ["id", "name"]
-            },
-            {
-                model: City,
-                attributes: ["id", "name"]
-            }
+            { model: State, attributes: ["id", "name"]},
+            { model: City, attributes: ["id", "name"]}
         ]
     });
 
