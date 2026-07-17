@@ -12,10 +12,7 @@ const Dealer = sequelize.define('Dealer', {
     user_id: {
         type: DataTypes.UUID,
         allowNull: false,
-        references: {
-            model: 'users', // name of the User model
-            key: 'id',
-        },
+        references: { model: 'users', key: 'id' },
     },
     company_name: {
         type: DataTypes.STRING(200),
@@ -55,18 +52,12 @@ const Dealer = sequelize.define('Dealer', {
     cp_city_id: {
         type: DataTypes.UUID,
         allowNull: false,
-        references: {
-            model: 'cities', // name of the City model
-            key: 'id',
-        },
+        references: { model: 'cities', key: 'id' },
     },
     cp_state_id: {
         type: DataTypes.UUID,
         allowNull: false,
-        references: {
-            model: 'states', // name of the State model
-            key: 'id',
-        },
+        references: { model: 'states', key: 'id' },
     },
     cp_pincode: {
         type: DataTypes.STRING(6),

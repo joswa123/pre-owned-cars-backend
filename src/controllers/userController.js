@@ -2,7 +2,7 @@ const userService = require('../services/userService');
 const { catchAsync } = require('../utils/errorHandler');
 
 exports.updateProfile = catchAsync(async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.params.id;
   const updateData = req.body;
   const file = req.file;
 
@@ -16,7 +16,7 @@ exports.updateProfile = catchAsync(async (req, res) => {
 });
 
 exports.getProfile = catchAsync(async (req, res) => {
-  const id = req.user.id;
+  const id = req.params.id;
   const user = await userService.getProfile(id);
 
   res.status(200).json({
