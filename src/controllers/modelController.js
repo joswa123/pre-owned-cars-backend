@@ -1,9 +1,11 @@
 const modelService = require('../services/modelService');
 
 // --- Public GET (no auth) ---
+// controllers/modelController.js
 exports.getAllModels = async (req, res, next) => {
   try {
-    const models = await modelService.getAllModels();
+    const { brandId } = req.query; // 👈 read query param
+    const models = await modelService.getAllModels(brandId);
     res.status(200).json({ success: true, data: models });
   } catch (error) {
     next(error);

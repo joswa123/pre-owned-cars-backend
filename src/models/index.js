@@ -63,7 +63,7 @@ City.belongsTo(State, { foreignKey: 'state_id' });
 //
 
 Brand.hasMany(Model, { foreignKey: 'brandId', onDelete: 'CASCADE' });
-Model.belongsTo(Brand, { foreignKey: 'brandId' });
+Model.belongsTo(Brand, { foreignKey: 'brandId', as: 'brand'});
 FuelType.belongsTo(User, { foreignKey: 'user_id', as: 'creator' });
 User.hasMany(FuelType, { foreignKey: 'user_id' });
 

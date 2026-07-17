@@ -8,10 +8,17 @@ exports.createFuelType = async (fuelTypeData) => {
     if (!user) {
         throw new AppError('User not found.', 404);
     }
+ const normalizedName = fuel_type_name.trim().toLowerCase();
 
-    const existing = await FuelType.findOne({
-        where: { fuel_type_name: fuel_type_name.trim().toLowerCase() }
-    });
+  // ✅ Check case‑insensitively
+  const existing = await FuelType.findOne({
+    where: {
+      fuel_type_name: sequelize.where(
+        sequelize.fn('LOWER', sequelize.col('fuel_type_name')),
+        normalizedName
+      )
+    }
+  });
     if (existing) {
         throw new AppError('Fuel type already exists.', 400);
     }
@@ -51,6 +58,20 @@ exports.getFuelType = async (fuel_type_id) => {
 
 exports.updateFuelType = async (fuel_type_id, fuelTypeData) => {
     const { user_id, fuel_type_name, status } = fuelTypeData;
+const normalizedName = fuel_type_name.trim().toLowerCase();
+
+  const existing = await FuelType.findOne({
+    where: {
+      fuel_type_name: sequelize.where(
+        sequelize.fn('LOWER', sequelize.col('fuel_type_name')),
+        normalizedName
+      ),
+      fuel_type_id: { [Op.ne]: fuel_type_id } // exclude current
+    }
+  });
+  if(existing){
+    throw new AppError('Fuel type already exists.', 400);
+  }
 
     const fuelType = await FuelType.findByPk(fuel_type_id);
     if (!fuelType) {

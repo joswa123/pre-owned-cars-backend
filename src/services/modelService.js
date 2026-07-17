@@ -1,13 +1,15 @@
 const { Model, Brand } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 
-exports.getAllModels = async () => {
+// services/modelService.js
+exports.getAllModels = async (brandId = null) => {
+  const where = {};
+  if (brandId) {
+    where.brandId = brandId;
+  }
   return await Model.findAll({
-    include: [{ 
-      model: Brand, 
-      // ❌ remove as: 'brand' – use default alias 'Brand'
-      attributes: ['id', 'name', 'logo'] 
-    }],
+    where,
+    include: [{ model: Brand, as: 'brand', attributes: ['id', 'name', 'logo'] }],
     order: [['name', 'ASC']],
   });
 };

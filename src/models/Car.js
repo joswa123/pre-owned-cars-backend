@@ -40,7 +40,7 @@ const Car = sequelize.define('Car', {
     type: DataTypes.STRING(50),
     allowNull: false,
   }, description: { type: DataTypes.TEXT, allowNull: true },
-  status: { type: DataTypes.ENUM('pending', 'approved', 'rejected', 'sold'), defaultValue: 'pending' },
+  status: { type: DataTypes.ENUM('pending', 'active', 'inactive', 'sold'), defaultValue: 'pending' },
   views: { type: DataTypes.INTEGER, defaultValue: 0 },
 }, {
   tableName: 'cars',

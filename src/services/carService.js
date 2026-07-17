@@ -5,6 +5,32 @@ const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 
+
+// Helper to transform car images and make URLs absolute
+const transformCarImages = (car, baseUrl = null) => {
+  const images = car.images || [];
+  const primary = images.find(img => img.is_primary === true);
+  const secondary = images.filter(img => img.is_primary !== true);
+  const base = baseUrl || process.env.BASE_URL || ' https://repose-anthill-durably.ngrok-free.dev';
+
+  const toAbsolute = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    // If it's a local path, prepend base URL
+    return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+
+  return {
+    ...car.toJSON(),
+    primary_image: primary ? toAbsolute(primary.image_url) : null,
+    secondary_images: secondary.map(img => toAbsolute(img.image_url)),
+    // Keep the original images array for backward compatibility
+    images: images.map(img => ({
+      ...img.toJSON(),
+      image_url: toAbsolute(img.image_url),
+    })),
+  };
+};
 /**
  * Create a car listing with primary + secondary images.
  * 
@@ -45,29 +71,24 @@ exports.createCar = async (userId, carData, files) => {
 
     const car = await Car.create(carFields, { transaction });
 
-    // ─── Images ──────────────────────────────────────────────────
-    const imageRecords = [];
-
-    // 1. Primary image (MANDATORY – exactly 1)
-    const primaryFile = files.primary_image ? files.primary_image[0] : null;
-    if (!primaryFile) {
-      throw new AppError('Primary image is required.', 400);
-    }
-    imageRecords.push({
-      car_id: car.id,
-      image_url: `/uploads/${primaryFile.filename}`,
-      is_primary: true,
-    });
-
-    // 2. Secondary images (OPTIONAL – as many as user uploads, up to multer limit)
-    const secondaryFiles = files.images || [];
-    secondaryFiles.forEach((file) => {
-      imageRecords.push({
-        car_id: car.id,
-        image_url: `/uploads/${file.filename}`,
-        is_primary: false,
-      });
-    });
+  // In createCar function
+const imageRecords = [];
+const primaryFile = files.primary_image ? files.primary_image[0] : null;
+if (primaryFile) {
+  imageRecords.push({
+    car_id: car.id,
+    image_url: primaryFile.path,   // ← Cloudinary URL
+    is_primary: true,
+  });
+}
+const secondaryFiles = files.images || [];
+secondaryFiles.forEach((file) => {
+  imageRecords.push({
+    car_id: car.id,
+    image_url: file.path,          // ← Cloudinary URL
+    is_primary: false,
+  });
+});
 
     await CarImage.bulkCreate(imageRecords, { transaction });
 
@@ -88,14 +109,34 @@ exports.createCar = async (userId, carData, files) => {
 
 exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'DESC') => {
   const offset = (page - 1) * limit;
-  const where = { status: 'approved' };
+  const where = { status: 'approved' }; // Only show approved cars
 
-  // ... filters (price, state, city, brand, etc.)
+  // Apply filters (price, state, city, brand, etc.)
+  if (filters.min_price) {
+    where.price = { [Op.gte]: parseFloat(filters.min_price) };
+  }
+  if (filters.max_price) {
+    where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
+  }
+  if (filters.state) where.state = filters.state;
+  if (filters.city) where.city = { [Op.like]: `%${filters.city}%` };
+  if (filters.brand) where.brand = filters.brand;
+  if (filters.model) where.model = { [Op.like]: `%${filters.model}%` };
+  if (filters.min_km) {
+    where.km_driven = { [Op.gte]: parseInt(filters.min_km) };
+  }
+  if (filters.max_km) {
+    where.km_driven = { ...where.km_driven, [Op.lte]: parseInt(filters.max_km) };
+  }
+  if (filters.fuel_type) where.fuel_type = filters.fuel_type;
+  if (filters.transmission) where.transmission = filters.transmission;
+  if (filters.ownership) where.ownership = filters.ownership;
+  if (filters.year) where.year = filters.year;
 
   const { count, rows } = await Car.findAndCountAll({
     where,
     include: [
-      { model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] },
+      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, attributes: ['id', 'full_name', 'phone'] },
     ],
     limit,
@@ -103,29 +144,46 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = 'created_a
     order: [[sortBy, sortOrder.toUpperCase()]],
   });
 
-  return { total: count, cars: rows, page, limit, totalPages: Math.ceil(count / limit) };
+  const baseUrl = process.env.BASE_URL || ' https://repose-anthill-durably.ngrok-free.dev';
+  const transformedCars = rows.map(car => transformCarImages(car, baseUrl));
+
+  return {
+    total: count,
+    cars: transformedCars,
+    page,
+    limit,
+    totalPages: Math.ceil(count / limit),
+  };
 };
 
 exports.getCarById = async (carId) => {
   const car = await Car.findByPk(carId, {
     include: [
-      { model: CarImage, as: 'images' },
+      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, attributes: ['id', 'full_name', 'phone', 'email', 'city', 'state'] },
     ],
   });
   if (!car) throw new AppError('Car not found.', 404);
+
+  // Increment views (async, don't wait)
   car.increment('views');
-  return car;
+
+  const baseUrl = process.env.BASE_URL || ' https://repose-anthill-durably.ngrok-free.dev';
+  return transformCarImages(car, baseUrl);
 };
 
 exports.getUserCars = async (userId) => {
-  return await Car.findAll({
+  const cars = await Car.findAll({
     where: { dealer_id: userId },
-    include: [{ model: CarImage, as: 'images' }],
+    include: [
+      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+    ],
     order: [['created_at', 'DESC']],
   });
-};
 
+  const baseUrl = process.env.BASE_URL || ' https://repose-anthill-durably.ngrok-free.dev';
+  return cars.map(car => transformCarImages(car, baseUrl));
+};
 exports.updateCar = async (carId, userId, updateData) => {
   const car = await Car.findOne({ where: { id: carId, dealer_id: userId } });
   if (!car) throw new AppError('Car not found or unauthorized.', 404);

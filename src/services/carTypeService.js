@@ -25,8 +25,19 @@ exports.updateCarType = async (id, data) => {
   if (!carType) throw new AppError('Car type not found', 404);
 
   if (data.name) {
-    const existing = await CarType.findOne({ where: { name: data.name.trim().toLowerCase() } });
-    if (existing && existing.id !== id) throw new AppError('Car type name already exists', 400);
+      const normalizedName = name.trim().toLowerCase();
+
+  const existing = await CarType.findOne({
+    where: {
+      name: sequelize.where(
+        sequelize.fn('LOWER', sequelize.col('name')),
+        normalizedName
+      )
+    }
+  });
+      if (existing && existing.id !== id) {
+        throw new AppError('Car type name already exists', 400);
+      }
   }
 
   await carType.update(data);

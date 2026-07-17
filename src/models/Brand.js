@@ -1,3 +1,4 @@
+const path = require('path');
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database'); // your sequelize instance
 
@@ -21,8 +22,15 @@ const Brand = sequelize.define('Brand', {
   get() {
     const logo = this.getDataValue('logo');
     if (!logo) return null;
-    const base ='https://pre-owned-cars-backend.onrender.com';
-    return `${base}/uploads/brands/${logo}`;
+     // If it's already a full URL (Cloudinary), return as is
+    if (logo.startsWith('http://') || logo.startsWith('https://')) {
+      return logo;
+    }
+
+    // Fallback for old local paths: extract just the filename
+    const filename = path.basename(logo);
+    const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+    return `${baseUrl}/uploads/brands/${filename}`;
   },
 }
 }, {

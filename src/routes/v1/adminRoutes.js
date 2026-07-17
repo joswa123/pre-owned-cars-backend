@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, adminOnly } = require('../../middlewares/auth');
-const upload = require('../../middlewares/uploadBrand');
+const { brandUpload } = require('../../middlewares/upload');
 const multer = require('multer');
 const brandController = require('../../controllers/brandController');
 // const modelController = require('../../controllers/modelController');
@@ -10,7 +10,7 @@ const brandController = require('../../controllers/brandController');
 router.use(protect, adminOnly);
 
 const handleUpload = (req, res, next) => {
-  upload.single('logo')(req, res, (err) => {
+  brandUpload.single('logo')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ success: false, message: err.message });
     } else if (err) {

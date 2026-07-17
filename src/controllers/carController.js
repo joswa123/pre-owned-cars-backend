@@ -10,7 +10,7 @@ exports.createCar = catchAsync(async (req, res) => {
 
   const car = await carService.createCar(userId, carData, files);
 
-  res.status(201).json({
+  res.status(200).json({
     status: 'success',
     message: 'Car listed successfully. Waiting for admin approval.',
     data: { car },

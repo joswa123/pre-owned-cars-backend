@@ -12,4 +12,3 @@ const CarImage = sequelize.define('CarImage', {
 }, { tableName: 'car_images', timestamps: true });
 
 module.exports = CarImage;
-module.exports = CarImage;

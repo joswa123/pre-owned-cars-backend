@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const carController = require('../../controllers/carController');
 const { protect } = require('../../middlewares/auth');
-const upload = require('../../middlewares/upload');
+const { carUpload } = require('../../middlewares/upload');
 const validate = require('../../middlewares/validate');
 const { createCarSchema, updateCarSchema } = require('../../validations/carValidation');
 
@@ -11,7 +11,7 @@ const { createCarSchema, updateCarSchema } = require('../../validations/carValid
 router.post(
   '/',
   protect,
-  upload.fields([
+  carUpload.fields([
     { name: 'primary_image', maxCount: 1 },
     { name: 'images', maxCount: 10 }
   ]),
