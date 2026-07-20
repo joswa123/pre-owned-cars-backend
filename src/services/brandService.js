@@ -1,7 +1,6 @@
 const { Brand } = require('../models');
 const { Op } = require('sequelize');
-
-// ─── No need for fs, path, os – we rely on Cloudinary URLs ──────────────
+const sequelize = require('../config/database'); 
 
 exports.getAllBrands = async () => {
   return await Brand.findAll({ order: [['name', 'ASC']] });

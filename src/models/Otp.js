@@ -3,12 +3,12 @@ const sequelize = require('../config/database');
 
 const Otp = sequelize.define('Otp', {
   id: {
-    type: DataTypes.UUID,
+    type: DataTypes.INTEGER,
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
   },
   user_id: {
-    type: DataTypes.UUID,
+    type: DataTypes.INTEGER,
     allowNull: false,
   },
   otp: {

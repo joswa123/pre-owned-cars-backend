@@ -1,6 +1,6 @@
 const { User } = require('../models');
 const { AppError } = require('../utils/errorHandler');
-
+const sequelize = require('../config/database'); 
 exports.updateProfile = async (userId, updateData) => {
   const user = await User.findByPk(userId);
   if (!user) throw new AppError('User not found.', 404);

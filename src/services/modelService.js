@@ -1,6 +1,6 @@
 const { Model, Brand } = require('../models');
 const { AppError } = require('../utils/errorHandler');
-
+const sequelize= require('../config/database')
 // services/modelService.js
 exports.getAllModels = async (brandId = null) => {
   const where = {};

@@ -4,6 +4,7 @@ const { User, Otp,RefreshToken } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { generateOtp, sendOtpViaSms } = require('../utils/otpgenerator');
 const { Op } = require('sequelize');
+const sequelize = require('../config/database');
 
 
 // Helper: generate tokens

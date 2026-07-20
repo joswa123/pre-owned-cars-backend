@@ -1,6 +1,6 @@
 const { Transmission, User } = require('../models');
 const { AppError } = require('../utils/errorHandler');
-
+const sequelize = require('../config/database'); 
 exports.createTransmission = async (transmissionData) => {
     const { user_id, transmission_name, status } = transmissionData;
 

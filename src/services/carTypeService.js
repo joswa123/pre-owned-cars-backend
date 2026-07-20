@@ -1,6 +1,6 @@
 const { CarType } = require('../models');
 const { AppError } = require('../utils/errorHandler');
-
+const sequelize =require('../config/database')
 exports.getAllCarTypes = async () => {
   return await CarType.findAll({ order: [['name', 'ASC']] });
 };

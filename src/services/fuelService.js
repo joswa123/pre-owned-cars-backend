@@ -1,6 +1,6 @@
 const { FuelType, User } = require('../models');
 const { AppError } = require('../utils/errorHandler');
-
+const sequelize = require('../config/database'); 
 exports.createFuelType = async (fuelTypeData) => {
     const { user_id, fuel_type_name, status } = fuelTypeData;
 
