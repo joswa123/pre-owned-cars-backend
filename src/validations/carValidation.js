@@ -25,7 +25,7 @@ const createCarSchema = Joi.object({
   kmdriven: Joi.number().integer().min(0).required(),
   fueltype: Joi.string().lowercase().valid('petrol', 'diesel', 'electric', 'hybrid', 'cng').required(),
   transmission: Joi.string().lowercase().valid('manual', 'automatic', 'cvt', 'dct').required(),
-  ownership: Joi.string().lowercase().valid('1', '2', '3', '4+').required(),
+  ownership: Joi.string().lowercase().valid('1st Owner', '2nd Owner', '3rd Owner', '4th+ Owner').required(),
   state: Joi.string().max(100).required(),
   city: Joi.string().max(100).required(),
   car_type: Joi.string().valid(...CAR_TYPES).required(),
