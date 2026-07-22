@@ -109,7 +109,7 @@ secondaryFiles.forEach((file) => {
 
 exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'DESC') => {
   const offset = (page - 1) * limit;
-  const where = { status: 'approved' }; // Only show approved cars
+  const where = { status: 'active' }; // Only show approved cars
 
   // Apply filters (price, state, city, brand, etc.)
   if (filters.min_price) {
