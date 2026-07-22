@@ -35,7 +35,10 @@ router.post(
 router.get('/me', protect, carController.getUserCars);
 
 // ─── Update Car ─────────────────────────────────────────────
-router.put('/:id', protect, validate(updateCarSchema), carController.updateCar);
+router.put('/:id', protect, carUpload.fields([
+    { name: 'primary_image', maxCount: 1 },
+    { name: 'images', maxCount: 10 }
+  ]),validate(updateCarSchema), carController.updateCar);
 
 // ─── Delete Car ─────────────────────────────────────────────
 router.delete('/:id', protect, carController.deleteCar);
