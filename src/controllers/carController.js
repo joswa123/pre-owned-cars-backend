@@ -69,3 +69,27 @@ exports.deleteCar = catchAsync(async (req, res) => {
     message: 'Car deleted successfully.',
   });
 });
+/**
+ * Admin – Update car status (approve/reject)
+ * PUT /admin/cars/:id/status
+ */
+exports.updateCarStatus = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const adminId = req.user.id;
+
+  if (!status) {
+    return res.status(400).json({
+      success: false,
+      message: 'Status is required.',
+    });
+  }
+
+  const car = await carService.updateCarStatus(id, status, adminId);
+
+  res.status(200).json({
+    success: true,
+    message: `Car status updated to '${status}' successfully.`,
+    data: { car },
+  });
+});

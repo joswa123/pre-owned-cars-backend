@@ -168,7 +168,7 @@ exports.getCarById = async (carId) => {
   // Increment views (async, don't wait)
   car.increment('views');
 
-  const baseUrl = process.env.BASE_URL || ' https://repose-anthill-durably.ngrok-free.dev';
+  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
   return transformCarImages(car, baseUrl);
 };
 
@@ -181,7 +181,7 @@ exports.getUserCars = async (userId) => {
     order: [['created_at', 'DESC']],
   });
 
-  const baseUrl = process.env.BASE_URL || ' https://repose-anthill-durably.ngrok-free.dev';
+  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
   return cars.map(car => transformCarImages(car, baseUrl));
 };
 exports.updateCar = async (carId, userId, updateData) => {
@@ -208,4 +208,23 @@ exports.deleteCar = async (carId, userId) => {
   await CarImage.destroy({ where: { car_id: carId } });
   await car.destroy();
   return { success: true };
+};
+
+/**
+ * Admin: Update car status (approve, reject, activate, deactivate)
+ * @param {string} carId - Car UUID
+ * @param {string} status - 'active', 'inactive', 'sold'
+ * @param {string} adminId - Admin user ID (for logging)
+ */
+exports.updateCarStatus = async (carId, status, adminId) => {
+  const validStatuses = ['active', 'inactive', 'sold'];
+  if (!validStatuses.includes(status)) {
+    throw new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400);
+  }
+
+  const car = await Car.findByPk(carId);
+  if (!car) throw new AppError('Car not found.', 404);
+
+  await car.update({ status });
+  return car;
 };

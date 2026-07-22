@@ -5,7 +5,7 @@ const { brandUpload } = require('../../middlewares/upload');
 const multer = require('multer');
 const brandController = require('../../controllers/brandController');
 // const modelController = require('../../controllers/modelController');
-
+const carController = require('../../controllers/carController')
 // All routes require authentication and admin role
 router.use(protect, adminOnly);
 
@@ -39,5 +39,16 @@ router.route('/brands/:id')
 //   .get(modelController.getModel)
 //   .put(modelController.updateModel)
 //   .delete(modelController.deleteModel);
+const statusUpdateSchema = Joi.object({
+  status: Joi.string().valid('active', 'inactive', 'sold').required(),
+});
+
+router.put(
+  '/cars/:id/status',
+  protect,
+  adminOnly,
+  validate(statusUpdateSchema),
+  carController.updateCarStatus
+);
 
 module.exports = router;
