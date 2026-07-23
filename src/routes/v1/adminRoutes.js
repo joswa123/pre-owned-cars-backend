@@ -46,5 +46,10 @@ router.put(
   validate(statusUpdateSchema),
   carController.updateCarStatus
 );
-
+router.patch(
+  '/cars/:id/featured',
+  protect,
+  adminOnly,
+  carController.toggleFeatured
+);
 module.exports = router;

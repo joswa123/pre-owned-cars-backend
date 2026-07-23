@@ -326,3 +326,28 @@ exports.updateCarStatus = async (carId, status, adminId) => {
   console.log('✅ Car status updated to:', updatedCar.status);
   return updatedCar;
 };
+/**
+ * Toggle featured status of a car (admin only)
+ */
+exports.toggleFeatured = async (carId, is_featured) => {
+  const car = await Car.findByPk(carId);
+  if (!car) throw new AppError('Car not found', 404);
+  await car.update({ is_featured });
+  return car;
+};
+
+/**
+ * Get featured cars (public) – only active ones
+ */
+exports.getFeaturedCars = async (limit = 10) => {
+  const cars = await Car.findAll({
+    where: { status: 'active', is_featured: true },
+    include: [
+      { model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] },
+      { model: User, attributes: ['id', 'full_name', 'phone'] },
+    ],
+    order: [['created_at', 'DESC']],
+    limit,
+  });
+  return cars;
+};

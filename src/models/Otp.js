@@ -3,12 +3,12 @@ const sequelize = require('../config/database');
 
 const Otp = sequelize.define('Otp', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,          // ← must match users.id type (UUID/VARCHAR(36))
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
   },
   user_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,          // ← was INTEGER — FK must match users.id (UUID)
     allowNull: false,
   },
   otp: {
@@ -23,9 +23,8 @@ const Otp = sequelize.define('Otp', {
     type: DataTypes.DATE,
     allowNull: false,
   },
-  // Remove phone and email fields; they don't exist in the new schema
 }, {
-  tableName: 'otp_verifications', // ← match existing table name
+  tableName: 'otp_verifications',
   timestamps: true,
 });
 

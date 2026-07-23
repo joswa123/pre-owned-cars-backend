@@ -102,3 +102,30 @@ exports.updateCarStatus = catchAsync(async (req, res) => {
   const car = await carService.updateCarStatus(id, status, req.user.id);
   res.status(200).json({ success: true, message: `Car status updated to "${status}" successfully.`, data: { car } });
 });
+
+
+/**
+ * Admin toggle featured
+ */
+exports.toggleFeatured = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { is_featured } = req.body; // expects boolean
+  if (typeof is_featured !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'is_featured must be a boolean' });
+  }
+  const car = await carService.toggleFeatured(id, is_featured);
+  res.status(200).json({
+    success: true,
+    message: `Car featured status updated to ${is_featured}`,
+    data: { car },
+  });
+});
+
+/**
+ * Public get featured cars
+ */
+exports.getFeaturedCars = catchAsync(async (req, res) => {
+  const { limit = 10 } = req.query;
+  const cars = await carService.getFeaturedCars(Number(limit));
+  res.status(200).json({ success: true, data: { cars } });
+});

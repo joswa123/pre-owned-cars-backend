@@ -32,15 +32,19 @@
       defaultValue: false,
     },
     car_type: { type: DataTypes.STRING(50), allowNull: false },
-    state: {
-      type: DataTypes.STRING(50),
+    state: { type: DataTypes.STRING(50), allowNull: false },
+    city: { type: DataTypes.STRING(50), allowNull: false },
+    description: { type: DataTypes.TEXT, allowNull: true },
+    status: {
+      type: DataTypes.ENUM('pending', 'active', 'inactive', 'sold'),
+      defaultValue: 'pending',
       allowNull: false,
     },
-    city: {
-      type: DataTypes.STRING(50),
+    is_featured: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
       allowNull: false,
-    }, description: { type: DataTypes.TEXT, allowNull: true },
-    status: { type: DataTypes.ENUM('pending', 'active', 'inactive', 'sold'), defaultValue: 'pending' },
+    },
     views: { type: DataTypes.INTEGER, defaultValue: 0 },
   }, {
     tableName: 'cars',
