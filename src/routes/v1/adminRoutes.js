@@ -1,4 +1,6 @@
 const express = require('express');
+const Joi = require('joi');
+const validate = require('../../middlewares/validate');
 const router = express.Router();
 const { protect, adminOnly } = require('../../middlewares/auth');
 const { brandUpload } = require('../../middlewares/upload');
