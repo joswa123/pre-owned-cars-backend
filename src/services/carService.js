@@ -1,9 +1,9 @@
-
 // services/carService.js
-const { Car, CarImage, User } = require('../models');
-const { Op } = require('sequelize');
-const { AppError } = require('../utils/errorHandler');
-const sequelize = require('../config/database');
+const { Car, CarImage, User } = require("../models");
+const { Op } = require("sequelize");
+const { AppError } = require("../utils/errorHandler");
+const sequelize = require("../config/database");
+const { mapToDbValues } = require("../validations/carValidation");
 
 
 // Helper to transform car images and make URLs absolute
@@ -11,13 +11,13 @@ const transformCarImages = (car, baseUrl = null) => {
   const images = car.images || [];
   const primary = images.find(img => img.is_primary === true);
   const secondary = images.filter(img => img.is_primary !== true);
-  const base = baseUrl || process.env.BASE_URL || ' https://repose-anthill-durably.ngrok-free.dev';
+  const base = baseUrl || process.env.BASE_URL || " https://repose-anthill-durably.ngrok-free.dev";
 
   const toAbsolute = (url) => {
     if (!url) return null;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
     // If it's a local path, prepend base URL
-    return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+    return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
   };
 
   return {
@@ -43,30 +43,33 @@ exports.createCar = async (userId, carData, files) => {
 
   try {
     const user = await User.findByPk(userId, { transaction });
-    if (!user) throw new AppError('User not found.', 404);
+    if (!user) throw new AppError("User not found.", 404);
+
+    // ─── Map Joi-normalised lowercase values → MySQL ENUM mixed-case ────────
+    const mapped = mapToDbValues(carData);
 
     // ─── Car Fields ─────────────────────────────────────────────
     const carFields = {
       dealer_id: userId,
-      brand: carData.brand,
-      model: carData.model,
-      variant: carData.variant,
-      year: carData.year,
-      purchase_date: carData.purchasedate,
-      number_plate: carData.numplate,
-      price: carData.price,
-      price_negotiable: carData.price_negotiable || false,
-      exterior_colour: carData.exteriorColour,
-      interior_colour: carData.interiorColour,
-      km_driven: carData.kmdriven,
-      fuel_type: carData.fueltype,
-      transmission: carData.transmission,
-      ownership: carData.ownership,
-      state: carData.state,
-      city: carData.city,
-      car_type: carData.car_type,
-      description: carData.description || null,
-      status: 'pending',
+      brand: mapped.brand,
+      model: mapped.model,
+      variant: mapped.variant,
+      year: mapped.year,
+      purchase_date: mapped.purchasedate,
+      number_plate: mapped.numplate,
+      price: mapped.price,
+      price_negotiable: mapped.price_negotiable || false,
+      exterior_colour: mapped.exteriorColour,
+      interior_colour: mapped.interiorColour,
+      km_driven: mapped.kmdriven,
+      fuel_type: mapped.fueltype,
+      transmission: mapped.transmission,
+      ownership: mapped.ownership,
+      state: mapped.state,
+      city: mapped.city,
+      car_type: mapped.car_type,
+      description: mapped.description || null,
+      status: "pending",
     };
 
     const car = await Car.create(carFields, { transaction });
@@ -95,7 +98,7 @@ secondaryFiles.forEach((file) => {
     await transaction.commit();
 
     const createdCar = await Car.findByPk(car.id, {
-      include: [{ model: CarImage, as: 'images' }],
+      include: [{ model: CarImage, as: "images" }],
     });
 
     return createdCar;
@@ -107,9 +110,9 @@ secondaryFiles.forEach((file) => {
 
 // ─── Other Methods (unchanged) ──────────────────────────────
 
-exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'DESC') => {
+exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC") => {
   const offset = (page - 1) * limit;
-  const where = { status: 'active' }; // Only show approved cars
+  const where = { status: "active" }; // Only show approved cars
 
   // Apply filters (price, state, city, brand, etc.)
   if (filters.min_price) {
@@ -136,15 +139,15 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = 'created_a
   const { count, rows } = await Car.findAndCountAll({
     where,
     include: [
-      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-      { model: User, attributes: ['id', 'full_name', 'phone'] },
+      { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
+      { model: User, attributes: ["id", "full_name", "phone"] },
     ],
     limit,
     offset,
     order: [[sortBy, sortOrder.toUpperCase()]],
   });
 
-  const baseUrl = process.env.BASE_URL || ' https://repose-anthill-durably.ngrok-free.dev';
+  const baseUrl = process.env.BASE_URL || " https://repose-anthill-durably.ngrok-free.dev";
   const transformedCars = rows.map(car => transformCarImages(car, baseUrl));
 
   return {
@@ -159,16 +162,16 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = 'created_a
 exports.getCarById = async (carId) => {
   const car = await Car.findByPk(carId, {
     include: [
-      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-      { model: User, attributes: ['id', 'full_name', 'phone', 'email', 'city', 'state'] },
+      { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
+      { model: User, attributes: ["id", "full_name", "phone", "email", "city", "state"] },
     ],
   });
-  if (!car) throw new AppError('Car not found.', 404);
+  if (!car) throw new AppError("Car not found.", 404);
 
   // Increment views (async, don't wait)
-  car.increment('views');
+  car.increment("views");
 
-  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  const baseUrl = process.env.BASE_URL || "https://pre-owned-cars-backend.onrender.com";
   return transformCarImages(car, baseUrl);
 };
 
@@ -176,26 +179,31 @@ exports.getUserCars = async (userId) => {
   const cars = await Car.findAll({
     where: { dealer_id: userId },
     include: [
-      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+      { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
     ],
-    order: [['created_at', 'DESC']],
+    order: [["created_at", "DESC"]],
   });
 
-  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  const baseUrl = process.env.BASE_URL || "https://pre-owned-cars-backend.onrender.com";
   return cars.map(car => transformCarImages(car, baseUrl));
 };
 exports.updateCar = async (carId, userId, updateData) => {
   const car = await Car.findOne({ where: { id: carId, dealer_id: userId } });
-  if (!car) throw new AppError('Car not found or unauthorized.', 404);
+  if (!car) throw new AppError("Car not found or unauthorized.", 404);
 
+  // Fields accepted for update (using DB column names)
   const allowedFields = [
-    'brand', 'model', 'variant', 'year', 'purchase_date', 'number_plate',
-    'price', 'exterior_colour', 'interior_colour', 'km_driven',
-    'fuel_type', 'transmission', 'ownership', 'state', 'city', 'description',
+    "brand", "model", "variant", "year", "purchase_date", "number_plate",
+    "price", "exterior_colour", "interior_colour", "km_driven",
+    "fuel_type", "transmission", "ownership", "state", "city", "description",
   ];
+
+  // Map Joi-normalised (lowercase) values → MySQL ENUM mixed-case before filtering
+  const mapped = mapToDbValues(updateData);
+
   const filteredData = {};
   allowedFields.forEach((field) => {
-    if (updateData[field] !== undefined) filteredData[field] = updateData[field];
+    if (mapped[field] !== undefined) filteredData[field] = mapped[field];
   });
 
   await car.update(filteredData);
@@ -204,10 +212,87 @@ exports.updateCar = async (carId, userId, updateData) => {
 
 exports.deleteCar = async (carId, userId) => {
   const car = await Car.findOne({ where: { id: carId, dealer_id: userId } });
-  if (!car) throw new AppError('Car not found or unauthorized.', 404);
+  if (!car) throw new AppError("Car not found or unauthorized.", 404);
   await CarImage.destroy({ where: { car_id: carId } });
   await car.destroy();
   return { success: true };
+};
+
+/**
+ * Admin: Get all cars with filtering and pagination
+ */
+exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", status = null) => {
+  const offset = (page - 1) * limit;
+  const where = {};
+
+  if (status) {
+    where.status = status;
+  }
+
+  // Apply filters (price, state, city, brand, etc.)
+  if (filters.min_price) {
+    where.price = { [Op.gte]: parseFloat(filters.min_price) };
+  }
+  if (filters.max_price) {
+    where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
+  }
+  if (filters.state) where.state = filters.state;
+  if (filters.city) where.city = { [Op.like]: `%${filters.city}%` };
+  if (filters.brand) where.brand = filters.brand;
+  if (filters.model) where.model = { [Op.like]: `%${filters.model}%` };
+  if (filters.min_km) {
+    where.km_driven = { [Op.gte]: parseInt(filters.min_km) };
+  }
+  if (filters.max_km) {
+    where.km_driven = { ...where.km_driven, [Op.lte]: parseInt(filters.max_km) };
+  }
+  if (filters.fuel_type) where.fuel_type = filters.fuel_type;
+  if (filters.transmission) where.transmission = filters.transmission;
+  if (filters.ownership) where.ownership = filters.ownership;
+  if (filters.year) where.year = filters.year;
+
+  const { count, rows } = await Car.findAndCountAll({
+    where,
+    include: [
+      { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
+      { model: User, attributes: ["id", "full_name", "phone"] },
+    ],
+    limit,
+    offset,
+    order: [[sortBy, sortOrder.toUpperCase()]],
+  });
+
+  const baseUrl = process.env.BASE_URL || " https://repose-anthill-durably.ngrok-free.dev";
+  const transformedCars = rows.map(car => transformCarImages(car, baseUrl));
+
+  return {
+    total: count,
+    cars: transformedCars,
+    page,
+    limit,
+    totalPages: Math.ceil(count / limit),
+  };
+};
+
+/**
+ * Get admin dashboard statistics
+ * @returns {Promise<Object>} Stats object
+ */
+exports.getAdminStats = async () => {
+    // Use Promise.all to run queries in parallel for better performance
+    const [totalListings, pendingApprovals, approvedListings, rejectedListings] = await Promise.all([
+        Car.count(), // Total cars
+        Car.count({ where: { status: "pending" } }),
+        Car.count({ where: { status: "active" } }), // Make sure this matches your DB ENUM
+        Car.count({ where: { status: "rejected" } })
+    ]);
+
+    return {
+        totalListings,
+        pendingApprovals,
+        approvedListings,
+        rejectedListings
+    };
 };
 
 /**
@@ -217,14 +302,27 @@ exports.deleteCar = async (carId, userId) => {
  * @param {string} adminId - Admin user ID (for logging)
  */
 exports.updateCarStatus = async (carId, status, adminId) => {
-  const validStatuses = ['active', 'inactive', 'sold'];
+  console.log('🔍 updateCarStatus called with:', { carId, status });
+
+  const validStatuses = ["active", "inactive", "sold", "pending"];
   if (!validStatuses.includes(status)) {
-    throw new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400);
+    throw new AppError(`Status must be one of: ${validStatuses.join(", ")}`, 400);
   }
 
-  const car = await Car.findByPk(carId);
-  if (!car) throw new AppError('Car not found.', 404);
+  // Use static Car.update() instead of instance .update() to avoid Sequelize
+  // running full-model validation on other fields (e.g. ENUM fields that may
+  // have stale / mismatched values on existing rows).
+  const [affectedRows] = await Car.update(
+    { status },
+    { where: { id: carId }, validate: false }
+  );
 
-  await car.update({ status });
-  return car;
+  if (affectedRows === 0) {
+    throw new AppError("Car not found or status unchanged.", 404);
+  }
+
+  // Re-fetch the updated car to return fresh data
+  const updatedCar = await Car.findByPk(carId);
+  console.log('✅ Car status updated to:', updatedCar.status);
+  return updatedCar;
 };

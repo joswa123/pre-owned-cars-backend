@@ -1,7 +1,6 @@
-
 // controllers/carController.js
-const carService = require('../services/carService');
-const { catchAsync } = require('../utils/errorHandler');
+const carService = require("../services/carService");
+const { catchAsync } = require("../utils/errorHandler");
 
 exports.createCar = catchAsync(async (req, res) => {
   const userId = req.user.id;
@@ -11,8 +10,8 @@ exports.createCar = catchAsync(async (req, res) => {
   const car = await carService.createCar(userId, carData, files);
 
   res.status(200).json({
-    status: 'success',
-    message: 'Car listed successfully. Waiting for admin approval.',
+    status: "success",
+    message: "Car listed successfully. Waiting for admin approval.",
     data: { car },
   });
 });
@@ -20,16 +19,16 @@ exports.createCar = catchAsync(async (req, res) => {
 // ... other methods
 
 exports.getCars = catchAsync(async (req, res) => {
-  const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'DESC', ...filters } = req.query;
+  const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...filters } = req.query;
   const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder);
-  res.status(200).json({ status: 'success', data: result });
+  res.status(200).json({ status: "success", data: result });
 });
 exports.getCarById = catchAsync(async (req, res) => {
   const { id } = req.params;
   const car = await carService.getCarById(id);
 
   res.status(200).json({
-    status: 'success',
+    status: "success",
     data: { car },
   });
 });
@@ -39,7 +38,7 @@ exports.getUserCars = catchAsync(async (req, res) => {
   const cars = await carService.getUserCars(userId);
 
   res.status(200).json({
-    status: 'success',
+    status: "success",
     data: { cars },
   });
 });
@@ -52,8 +51,8 @@ exports.updateCar = catchAsync(async (req, res) => {
   const car = await carService.updateCar(id, userId, updateData);
 
   res.status(200).json({
-    status: 'success',
-    message: 'Car updated successfully.',
+    status: "success",
+    message: "Car updated successfully.",
     data: { car },
   });
 });
@@ -65,10 +64,28 @@ exports.deleteCar = catchAsync(async (req, res) => {
   await carService.deleteCar(id, userId);
 
   res.status(200).json({
-    status: 'success',
-    message: 'Car deleted successfully.',
+    status: "success",
+    message: "Car deleted successfully.",
   });
 });
+
+exports.getAdminCars = catchAsync(async (req, res) => {
+  const { page = 1, limit = 20, status, sortBy = "created_at", sortOrder = "DESC", ...filters } = req.query;
+  const result = await carService.getAdminCars(filters, Number(page), Number(limit), sortBy, sortOrder, status);
+  res.status(200).json({ status: "success", data: result });
+});
+
+/**
+ * Get admin dashboard stats
+ */
+exports.getAdminStats = catchAsync(async (req, res) => {
+    const stats = await carService.getAdminStats();
+    res.status(200).json({
+        success: true,
+        data: stats
+    });
+});
+
 /**
  * Admin – Update car status (approve/reject)
  * PUT /admin/cars/:id/status
@@ -76,20 +93,12 @@ exports.deleteCar = catchAsync(async (req, res) => {
 exports.updateCarStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
-  const adminId = req.user.id;
 
+  // Validate that status is provided
   if (!status) {
-    return res.status(400).json({
-      success: false,
-      message: 'Status is required.',
-    });
+    return res.status(400).json({ success: false, message: 'Status is required' });
   }
 
-  const car = await carService.updateCarStatus(id, status, adminId);
-
-  res.status(200).json({
-    success: true,
-    message: `Car status updated to '${status}' successfully.`,
-    data: { car },
-  });
+  const car = await carService.updateCarStatus(id, status, req.user.id);
+  res.status(200).json({ success: true, message: `Car status updated to "${status}" successfully.`, data: { car } });
 });

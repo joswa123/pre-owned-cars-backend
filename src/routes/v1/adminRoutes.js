@@ -1,18 +1,18 @@
-const express = require('express');
-const Joi = require('joi');
-const validate = require('../../middlewares/validate');
+const express = require("express");
+const Joi = require("joi");
+const validate = require("../../middlewares/validate");
 const router = express.Router();
-const { protect, adminOnly } = require('../../middlewares/auth');
-const { brandUpload } = require('../../middlewares/upload');
-const multer = require('multer');
-const brandController = require('../../controllers/brandController');
-// const modelController = require('../../controllers/modelController');
-const carController = require('../../controllers/carController')
+const { protect, adminOnly } = require("../../middlewares/auth");
+const { brandUpload } = require("../../middlewares/upload");
+const multer = require("multer");
+const brandController = require("../../controllers/brandController");
+const carController = require("../../controllers/carController");
+
 // All routes require authentication and admin role
 router.use(protect, adminOnly);
 
 const handleUpload = (req, res, next) => {
-  brandUpload.single('logo')(req, res, (err) => {
+  brandUpload.single("logo")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ success: false, message: err.message });
     } else if (err) {
@@ -23,32 +23,26 @@ const handleUpload = (req, res, next) => {
 };
 
 // Brand routes
-router.route('/brands')
+router.route("/brands")
   .get(brandController.getAllBrands)
   .post(handleUpload, brandController.createBrand);
 
-router.route('/brands/:id')
+router.route("/brands/:id")
   .get(brandController.getBrand)
   .put(handleUpload, brandController.updateBrand)
   .delete(brandController.deleteBrand);
 
-// Model routes
-// router.route('/models')
-//   .get(modelController.getAllModels)
-//   .post(modelController.createModel);
+// Car routes
+router.get("/cars", carController.getAdminCars);
 
-// router.route('/models/:id')
-//   .get(modelController.getModel)
-//   .put(modelController.updateModel)
-//   .delete(modelController.deleteModel);
+router.get("/stats", protect, adminOnly, carController.getAdminStats);
+
 const statusUpdateSchema = Joi.object({
-  status: Joi.string().valid('active', 'inactive', 'sold').required(),
+  status: Joi.string().valid("active", "inactive", "sold", "pending").required(),
 });
 
 router.put(
-  '/cars/:id/status',
-  protect,
-  adminOnly,
+  "/cars/:id/status",
   validate(statusUpdateSchema),
   carController.updateCarStatus
 );

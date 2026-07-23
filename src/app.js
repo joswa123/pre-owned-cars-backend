@@ -23,7 +23,7 @@ app.use(cors({
     ? process.env.ALLOWED_ORIGINS.split(',')
     : '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning', 'X-Requested-With', 'Accept'],
   credentials: true,
 }));
 
