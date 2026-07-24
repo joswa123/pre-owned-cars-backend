@@ -339,6 +339,9 @@ exports.toggleFeatured = async (carId, is_featured) => {
 /**
  * Get featured cars (public) – only active ones
  */
+/**
+ * Get featured cars (public) – only active ones
+ */
 exports.getFeaturedCars = async (limit = 10) => {
   const cars = await Car.findAll({
     where: { status: 'active', is_featured: true },
@@ -349,5 +352,10 @@ exports.getFeaturedCars = async (limit = 10) => {
     order: [['created_at', 'DESC']],
     limit,
   });
-  return cars;
+
+  // Transform images to include primary_image and secondary_images
+  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  const transformedCars = cars.map(car => transformCarImages(car, baseUrl));
+
+  return transformedCars;
 };
