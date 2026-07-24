@@ -11,7 +11,7 @@ const transformCarImages = (car, baseUrl = null) => {
   const images = car.images || [];
   const primary = images.find(img => img.is_primary === true);
   const secondary = images.filter(img => img.is_primary !== true);
-  const base = baseUrl || process.env.BASE_URL || " https://repose-anthill-durably.ngrok-free.dev";
+  const base = baseUrl || process.env.BASE_URL || "https://pre-owned-cars-backend.onrender.com";
 
   const toAbsolute = (url) => {
     if (!url) return null;
@@ -262,7 +262,7 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = "crea
     order: [[sortBy, sortOrder.toUpperCase()]],
   });
 
-  const baseUrl = process.env.BASE_URL || " https://repose-anthill-durably.ngrok-free.dev";
+  const baseUrl = process.env.BASE_URL || "https://pre-owned-cars-backend.onrender.com";
   const transformedCars = rows.map(car => transformCarImages(car, baseUrl));
 
   return {
