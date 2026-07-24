@@ -13,7 +13,7 @@ async function init() {
     console.log('✅ Connection has been established successfully.');
 
     console.log('🔄 Syncing models (safe alter)...');
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     console.log('✅ Models synced.');
 
     console.log('🔄 Checking / Seeding default admin user...');

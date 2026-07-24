@@ -44,7 +44,7 @@ router.put('/:id', protect, carUpload.fields([
 router.delete('/:id', protect, carController.deleteCar);
 
 // ─── Public Routes ──────────────────────────────────────────
-router.get('/featured', carController.getFeaturedCars); // ← must be BEFORE /:id
 router.get('/', carController.getCars);
+router.get('/featured', carController.getFeaturedCars); // must be BEFORE /:id
 router.get('/:id', carController.getCarById);
 module.exports = router;
