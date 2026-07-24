@@ -140,14 +140,14 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_a
     where,
     include: [
       { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
-      { model: User, attributes: ["id", "full_name", "phone"] },
+      { model: User, attributes: ["id", "full_name", "phone", "profile_picture"] },
     ],
     limit,
     offset,
     order: [[sortBy, sortOrder.toUpperCase()]],
   });
 
-  const baseUrl = process.env.BASE_URL || " https://repose-anthill-durably.ngrok-free.dev";
+  const baseUrl = process.env.BASE_URL || "https://pre-owned-cars-backend.onrender.com";
   const transformedCars = rows.map(car => transformCarImages(car, baseUrl));
 
   return {
@@ -163,7 +163,7 @@ exports.getCarById = async (carId) => {
   const car = await Car.findByPk(carId, {
     include: [
       { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
-      { model: User, attributes: ["id", "full_name", "phone", "email", "city", "state"] },
+      { model: User, attributes: ["id", "full_name", "phone", "email", "city", "state", "profile_picture"] },
     ],
   });
   if (!car) throw new AppError("Car not found.", 404);
@@ -255,7 +255,7 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = "crea
     where,
     include: [
       { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
-      { model: User, attributes: ["id", "full_name", "phone"] },
+      { model: User, attributes: ["id", "full_name", "phone", "profile_picture"] },
     ],
     limit,
     offset,
@@ -344,7 +344,7 @@ exports.getFeaturedCars = async (limit = 10) => {
     where: { status: 'active', is_featured: true },
     include: [
       { model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] },
-      { model: User, attributes: ['id', 'full_name', 'phone'] },
+      { model: User, attributes: ['id', 'full_name', 'phone', 'profile_picture'] },
     ],
     order: [['created_at', 'DESC']],
     limit,
