@@ -5,26 +5,18 @@ exports.updateProfile = async (userId, updateData) => {
   const user = await User.findByPk(userId);
   if (!user) throw new AppError('User not found.', 404);
 
-  
-  // Map frontend field names to DB column names
-  const fieldMap = {
-    name: 'full_name',
-    company_name: 'company_name',
-    license_no: 'license_no',
-    gst_no: 'gst_no',
-    contact_person: 'contact_person',
-  };
-
-  // Build update object
+  // Allowed DB fields
   const allowedFields = [
-    'seller_type', 'full_name', 'phone', 'email', 'address',
+    'full_name', 'phone', 'email', 'address',
     'city', 'state', 'pincode', 'company_name', 'license_no',
-    'gst_no', 'contact_person',
+    'gst_no', 'contact_person', 'seller_type',
   ];
 
+  // Build update object
   const updateObj = {};
   for (const [key, value] of Object.entries(updateData)) {
-    const dbKey = fieldMap[key] || key;
+    // Map frontend field 'name' to 'full_name' if sent
+    const dbKey = key === 'name' ? 'full_name' : key;
     if (allowedFields.includes(dbKey) && value !== undefined && value !== null && value !== '') {
       updateObj[dbKey] = value;
     }
@@ -34,14 +26,32 @@ exports.updateProfile = async (userId, updateData) => {
   if (updateData.seller_type) {
     updateObj.seller_type = updateData.seller_type;
   }
-if (user.role === 'seller' || user.role === 'company_seller') {
+
+  // Auto‑approve seller profiles
+  if (user.role === 'seller' || user.role === 'company_seller') {
     updateObj.status = 'approved';
   }
+
   await user.update(updateObj);
 
-  // Remove sensitive fields before returning
   const userData = user.toJSON();
   delete userData.password_hash;
-
   return userData;
+};
+exports.uploadProfilePicture = async (userId, file) => {
+  const user = await User.findByPk(userId);
+  if (!user) throw new AppError('User not found', 404);
+  if (!file) throw new AppError('No file provided', 400);
+  // Cloudinary URL is already in user.profile_picture if updated
+  return user;
+};
+/**
+ * Get user profile by ID (exclude password_hash)
+ */
+exports.getProfile = async (userId) => {
+  const user = await User.findByPk(userId, {
+    attributes: { exclude: ['password_hash'] }
+  });
+  if (!user) throw new AppError('User not found', 404);
+  return user;
 };

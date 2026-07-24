@@ -8,6 +8,7 @@ const os = require('os');
 const fs = require('fs');
 const { globalErrorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
+const { cacheMiddleware } = require('./middlewares/cacheMiddleware');
 
 const app = express();
 
@@ -30,7 +31,7 @@ app.use(cors({
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 300,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -90,13 +91,16 @@ app.get('/health', (req, res) => {
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));
-app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
-app.use('/api/v1/location', require('./routes/v1/locationRoutes'));
-app.use('/api/v1/brands', require('./routes/v1/brandRoutes'));
-app.use('/api/v1/fuel-types', require('./routes/v1/fuelTypeRoutes'));
-app.use('/api/v1/transmissions', require('./routes/v1/transmissionRoutes'));
-app.use('/api/v1/models', require('./routes/v1/modelRoutes'));
-app.use('/api/v1/car-types', require('./routes/v1/carTypeRoutes'));
+// Apply 60s cache for public car listings (GET only)
+app.use('/api/v1/cars', cacheMiddleware(60), require('./routes/v1/carRoutes'));
+// Apply 5m cache for location metadata
+app.use('/api/v1/location', cacheMiddleware(300), require('./routes/v1/locationRoutes'));
+// Apply 5m cache for vehicle metadata
+app.use('/api/v1/brands', cacheMiddleware(300), require('./routes/v1/brandRoutes'));
+app.use('/api/v1/fuel-types', cacheMiddleware(300), require('./routes/v1/fuelTypeRoutes'));
+app.use('/api/v1/transmissions', cacheMiddleware(300), require('./routes/v1/transmissionRoutes'));
+app.use('/api/v1/models', cacheMiddleware(300), require('./routes/v1/modelRoutes'));
+app.use('/api/v1/car-types', cacheMiddleware(300), require('./routes/v1/carTypeRoutes'));
 
 // Admin routes (protected)
 app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));

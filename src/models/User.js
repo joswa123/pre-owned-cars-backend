@@ -86,6 +86,10 @@ seller_type: {
   type: DataTypes.ENUM('individual', 'company'),
   allowNull: true,
 },
+profile_picture: {
+  type: DataTypes.STRING(255),
+  allowNull: true,
+},
 }, {
   tableName: 'users',
   timestamps:true,

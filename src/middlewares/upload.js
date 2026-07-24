@@ -11,6 +11,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+
 // ─── File Filter ────────────────────────────────────────
 const fileFilter = (req, file, cb) => {
   const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",'application/octet-stream'];
@@ -55,4 +56,5 @@ function createUpload(folderName) {
 module.exports = {
   brandUpload: createUpload('brands'),
   carUpload: createUpload('cars'),
+  profileUpload: createUpload('profiles'),
 };
