@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 // Initialize cache
 // stdTTL: default time to live in seconds.
 // checkperiod: period in seconds for the automatic delete check interval.
-const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+const cache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false });
 
 /**
  * Middleware to cache HTTP responses
@@ -23,7 +23,7 @@ const cacheMiddleware = (duration = 300) => {
 
     if (cachedResponse) {
       // logger.info(`Cache HIT for ${key}`); // Optional log
-      return res.json(cachedResponse);
+      return res.setHeader('Content-Type', 'application/json').send(cachedResponse);
     } else {
       // logger.info(`Cache MISS for ${key}`); // Optional log
       // Override res.json to capture the response body
@@ -32,7 +32,12 @@ const cacheMiddleware = (duration = 300) => {
         // Cache the response body
         // Ensure we don't cache error responses
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          cache.set(key, body, duration);
+          try {
+            const stringified = JSON.stringify(body);
+            cache.set(key, stringified, duration);
+          } catch (e) {
+            logger.error(`Cache serialization error: ${e.message}`);
+          }
         }
         return originalJson(body);
       };
