@@ -10,12 +10,11 @@ const upload = require('../../middlewares/profileUploads');
 router.use(protect);
 
 router.get('/me', userController.getProfile);
-router.put('/me', validate(updateProfileSchema), userController.updateProfile);
-
 router.put(
-  '/me/profile-picture',
-  protect,
+  '/me',
   upload.single('profile_picture'),
-  userController.uploadProfilePicture
+  validate(updateProfileSchema),
+  userController.updateProfile
 );
+
 module.exports = router;

@@ -9,7 +9,7 @@ exports.updateProfile = async (userId, updateData) => {
   const allowedFields = [
     'full_name', 'phone', 'email', 'address',
     'city', 'state', 'pincode', 'company_name', 'license_no',
-    'gst_no', 'contact_person', 'seller_type',
+    'gst_no', 'contact_person', 'seller_type', 'profile_picture'
   ];
 
   // Build update object
@@ -38,13 +38,7 @@ exports.updateProfile = async (userId, updateData) => {
   delete userData.password_hash;
   return userData;
 };
-exports.uploadProfilePicture = async (userId, file) => {
-  const user = await User.findByPk(userId);
-  if (!user) throw new AppError('User not found', 404);
-  if (!file) throw new AppError('No file provided', 400);
-  // Cloudinary URL is already in user.profile_picture if updated
-  return user;
-};
+
 /**
  * Get user profile by ID (exclude password_hash)
  */
