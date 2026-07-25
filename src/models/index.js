@@ -12,6 +12,7 @@ const FuelType = require('./FuelType');
 const Transmission = require('./Transmission');
 const CarType = require('./CarType');
 const RefreshToken=require('./RefreshToken')
+const Wishlist=require('./Wishlist')
 // =========================
 // MODEL RELATIONSHIPS
 // =========================
@@ -73,6 +74,11 @@ User.hasMany(Transmission, { foreignKey: 'user_id' });
 RefreshToken.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(RefreshToken, { foreignKey: 'user_id' });
 
+
+Wishlist.belongsTo(User, { foreignKey: 'user_id' });
+Wishlist.belongsTo(Car, { foreignKey: 'car_id' });
+User.hasMany(Wishlist, { foreignKey: 'user_id' });
+Car.hasMany(Wishlist, { foreignKey: 'car_id' });
 module.exports = {
   User,
   Otp,
@@ -85,5 +91,7 @@ module.exports = {
   FuelType,
   Transmission,
   CarType,
-  RefreshToken
+  RefreshToken,
+  Wishlist
+
 };
