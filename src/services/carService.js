@@ -1,5 +1,5 @@
 // services/carService.js
-const { Car, CarImage, User } = require("../models");
+const { Car, CarImage, User, Wishlist } = require("../models");
 const { Op } = require("sequelize");
 const { AppError } = require("../utils/errorHandler");
 const sequelize = require("../config/database");
@@ -31,6 +31,18 @@ const transformCarImages = (car, baseUrl = null) => {
     })),
   };
 };
+
+exports.transformCarImages = transformCarImages;
+
+const getWishlistSet = async (userId) => {
+  if (!userId) return new Set();
+  const wishlist = await Wishlist.findAll({
+    where: { user_id: userId },
+    attributes: ['car_id']
+  });
+  return new Set(wishlist.map(w => w.car_id));
+};
+
 /**
  * Create a car listing with primary + secondary images.
  * 
@@ -110,7 +122,7 @@ secondaryFiles.forEach((file) => {
 
 // ─── Other Methods (unchanged) ──────────────────────────────
 
-exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC") => {
+exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", userId = null) => {
   const offset = (page - 1) * limit;
   const where = { status: "active" }; // Only show approved cars
 
@@ -152,16 +164,22 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_a
   const baseUrl = process.env.BASE_URL || "https://pre-owned-cars-backend.onrender.com";
   const transformedCars = rows.map(car => transformCarImages(car, baseUrl));
 
+  const wishlistSet = await getWishlistSet(userId);
+  const carsWithWishlist = transformedCars.map(car => ({
+    ...car,
+    isWishlist: wishlistSet.has(car.id)
+  }));
+
   return {
     total: count,
-    cars: transformedCars,
+    cars: carsWithWishlist,
     page,
     limit,
     totalPages: Math.ceil(count / limit),
   };
 };
 
-exports.getCarById = async (carId) => {
+exports.getCarById = async (carId, userId = null) => {
   const car = await Car.findByPk(carId, {
     include: [
       { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
@@ -174,7 +192,13 @@ exports.getCarById = async (carId) => {
   car.increment("views");
 
   const baseUrl = process.env.BASE_URL || "https://pre-owned-cars-backend.onrender.com";
-  return transformCarImages(car, baseUrl);
+  const transformedCar = transformCarImages(car, baseUrl);
+  
+  const wishlistSet = await getWishlistSet(userId);
+  return {
+    ...transformedCar,
+    isWishlist: wishlistSet.has(car.id)
+  };
 };
 
 exports.getUserCars = async (userId) => {
@@ -346,7 +370,7 @@ exports.toggleFeatured = async (carId, is_featured) => {
 /**
  * Get featured cars (public) – only active ones
  */
-exports.getFeaturedCars = async (limit = 10) => {
+exports.getFeaturedCars = async (limit = 10, userId = null) => {
   const cars = await Car.findAll({
     where: { status: 'active', is_featured: true },
     include: [
@@ -361,5 +385,9 @@ exports.getFeaturedCars = async (limit = 10) => {
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
   const transformedCars = cars.map(car => transformCarImages(car, baseUrl));
 
-  return transformedCars;
+  const wishlistSet = await getWishlistSet(userId);
+  return transformedCars.map(car => ({
+    ...car,
+    isWishlist: wishlistSet.has(car.id)
+  }));
 };

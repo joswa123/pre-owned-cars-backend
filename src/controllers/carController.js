@@ -20,12 +20,14 @@ exports.createCar = catchAsync(async (req, res) => {
 
 exports.getCars = catchAsync(async (req, res) => {
   const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...filters } = req.query;
-  const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder);
+  const userId = req.user?.id;
+  const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder, userId);
   res.status(200).json({ status: "success", data: result });
 });
 exports.getCarById = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const car = await carService.getCarById(id);
+  const userId = req.user?.id;
+  const car = await carService.getCarById(id, userId);
 
   res.status(200).json({
     status: "success",
@@ -126,6 +128,7 @@ exports.toggleFeatured = catchAsync(async (req, res) => {
  */
 exports.getFeaturedCars = catchAsync(async (req, res) => {
   const { limit = 10 } = req.query;
-  const cars = await carService.getFeaturedCars(Number(limit));
+  const userId = req.user?.id;
+  const cars = await carService.getFeaturedCars(Number(limit), userId);
   res.status(200).json({ success: true, data: { cars } });
 });

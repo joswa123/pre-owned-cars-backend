@@ -1,4 +1,5 @@
 const wishlistService = require('../services/wishlistService');
+const { transformCarImages } = require('../services/carService');
 const { catchAsync } = require('../utils/errorHandler');
 
 exports.addToWishlist = catchAsync(async (req, res) => {
@@ -20,9 +21,6 @@ exports.getWishlist = catchAsync(async (req, res) => {
   const cars = await wishlistService.getWishlist(userId);
   // Transform images if needed (optional)
   const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const transformed = cars.map(car => {
-    // You can reuse transformCarImages if you have it
-    return car; // or transformed
-  });
+  const transformed = cars.map(car => transformCarImages(car, baseUrl));
   res.status(200).json({ success: true, data: transformed });
 });
