@@ -137,6 +137,8 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_a
   if (filters.year) where.year = filters.year;
 
   const { count, rows } = await Car.findAndCountAll({
+    distinct: true,
+    col: "Car.id",
     where,
     include: [
       { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
@@ -252,6 +254,8 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = "crea
   if (filters.year) where.year = filters.year;
 
   const { count, rows } = await Car.findAndCountAll({
+    distinct: true,
+    col: "Car.id",
     where,
     include: [
       { model: CarImage, as: "images", attributes: ["id", "image_url", "is_primary"] },
