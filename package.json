@@ -4,8 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon src/server.js",
+      "start": "node src/server.js",
+  "dev": "nodemon src/server.js",
+  "test": "echo \"Error: no test specified\" && exit 1",
     "db:init": "node scripts/db-init.js",
     "vercel-build": "npm ci --omit=dev"
   },
@@ -15,6 +16,7 @@
   "type": "commonjs",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^1.41.3",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -25,6 +27,7 @@
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
+    "multer-storage-cloudinary": "^4.0.0",
     "mysql": "^2.18.1",
     "mysql2": "^3.22.6",
     "node-cache": "^5.1.2",

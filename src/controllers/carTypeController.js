@@ -25,7 +25,7 @@ exports.createCarType = async (req, res, next) => {
   try {
     const { name } = req.body;
     const newCarType = await carTypeService.createCarType({ name });
-    res.status(201).json({ success: true, data: newCarType });
+    res.status(200).json({ success: true, data: newCarType });
   } catch (error) {
     next(error);
   }

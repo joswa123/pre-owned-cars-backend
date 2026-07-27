@@ -1,15 +1,23 @@
 const { Transmission, User } = require('../models');
 const { AppError } = require('../utils/errorHandler');
-
+const sequelize = require('../config/database'); 
 exports.createTransmission = async (transmissionData) => {
     const { user_id, transmission_name, status } = transmissionData;
 
     const user = await User.findByPk(user_id);
     if (!user) throw new AppError('User not found.', 404);
 
-    const existing = await Transmission.findOne({
-        where: { transmission_name: transmission_name.trim().toLowerCase() }
-    });
+     const normalizedName = transmission_name.trim().toLowerCase();
+
+  const existing = await Transmission.findOne({
+    where: {
+      transmission_name: sequelize.where(
+        sequelize.fn('LOWER', sequelize.col('transmission_name')),
+        normalizedName
+      )
+    }
+  });
+  
     if (existing) throw new AppError('Transmission already exists.', 400);
 
     const newTransmission = await Transmission.create({

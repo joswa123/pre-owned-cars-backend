@@ -1,47 +1,60 @@
 const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('cloudinary').v2;
 const path = require('path');
-const { AppError } = require('../utils/errorHandler');
+require('dotenv').config();
 
-const fs = require('fs');
-const os = require('os');
-
-// Configure storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    try {
-      const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
-      const dest = isVercel ? path.join(os.tmpdir(), 'uploads') : 'uploads/';
-      if (!fs.existsSync(dest)) {
-        fs.mkdirSync(dest, { recursive: true });
-      }
-      cb(null, dest);
-    } catch (err) {
-      cb(err);
-    }
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
+// ─── Configure Cloudinary ──────────────────────────────
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// File filter – allow only images
+
+// ─── File Filter ────────────────────────────────────────
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  if (allowedTypes.includes(file.mimetype)) {
+  const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",'application/octet-stream'];
+  if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new AppError('Only image files are allowed.', 400), false);
-  }
+    cb(new Error('Only image files are allowed'));
+  } 
+  // const ext = allowed.test(path.extname(file.originalname).toLowerCase());
+  // const mime = allowed.test(file.mimetype);
+  // if (mime && ext) return cb(null, true);
+  // cb(new Error('Only image files are allowed'), false);
+};  
+
+// ─── Factory: Create a Cloudinary-backed Multer instance ─
+/**
+ * Creates a multer instance that uploads to a specific Cloudinary folder.
+ * @param {string} folderName - Cloudinary folder (e.g. 'brands', 'cars')
+ * @returns {multer.Multer}
+ */
+function createUpload(folderName) {
+  const storage = new CloudinaryStorage({
+    cloudinary,
+    params: {
+      folder: folderName,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+      public_id: (req, file) => {
+        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        return `${folderName}-${unique}`;
+      },
+    },
+  });
+
+  return multer({
+    storage,
+    limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 },
+    fileFilter,
+  });
+}
+
+// ─── Named Exports ──────────────────────────────────────
+module.exports = {
+  brandUpload: createUpload('brands'),
+  carUpload: createUpload('cars'),
+  profileUpload: createUpload('profiles'),
 };
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
-  fileFilter,
-});
-
-// Middleware for multiple images (max 5)
-const uploadImages = upload.array('images', 5);
-
-module.exports = { uploadImages };

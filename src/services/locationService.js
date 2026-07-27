@@ -1,6 +1,6 @@
 const { State, City } = require('../models');
 const { AppError } = require('../utils/errorHandler');
-
+const sequelize = require('../config/database'); 
 // Get all states
 exports.getStates = async () => {
   return await State.findAll({ order: [['name', 'ASC']] });
