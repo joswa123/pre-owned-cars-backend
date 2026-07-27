@@ -3,9 +3,10 @@ const { transformCarImages } = require('../services/carService');
 const { catchAsync } = require('../utils/errorHandler');
 
 exports.addToWishlist = catchAsync(async (req, res) => {
-  const { carId } = req.body;
+  const { carId, car_id } = req.body;
+  const finalCarId = car_id || carId;
   const userId = req.user.id;
-  const wishlist = await wishlistService.addToWishlist(userId, carId);
+  const wishlist = await wishlistService.addToWishlist(userId, finalCarId);
   res.status(201).json({ success: true, message: 'Added to wishlist', data: wishlist });
 });
 
