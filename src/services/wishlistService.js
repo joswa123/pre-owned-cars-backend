@@ -6,25 +6,26 @@ const { Op } = require('sequelize');
  * Add a car to wishlist
  */
 exports.addToWishlist = async (userId, carId) => {
-  // Check if car exists
-  const car = await Car.findByPk(carId);
-  if (!car) throw new AppError('Car not found', 404);
-
-  // Check if already in wishlist
-  const existing = await Wishlist.findOne({ where: { user_id: userId, car_id: carId } });
-  if (existing) throw new AppError('Car already in wishlist', 400);
-
-  const wishlist = await Wishlist.create({ user_id: userId, car_id: carId });
-  return wishlist;
+  try {
+    const wishlist = await Wishlist.create({ user_id: userId, car_id: carId });
+    return wishlist;
+  } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      throw new AppError('Car already in wishlist', 400);
+    }
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      throw new AppError('Car not found', 404);
+    }
+    throw error;
+  }
 };
 
 /**
  * Remove a car from wishlist
  */
 exports.removeFromWishlist = async (userId, carId) => {
-  const wishlist = await Wishlist.findOne({ where: { user_id: userId, car_id: carId } });
-  if (!wishlist) throw new AppError('Car not in wishlist', 404);
-  await wishlist.destroy();
+  const deletedCount = await Wishlist.destroy({ where: { user_id: userId, car_id: carId } });
+  if (deletedCount === 0) throw new AppError('Car not in wishlist', 404);
   return { success: true };
 };
 

@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const carController = require('../../controllers/carController');
 const { protect } = require('../../middlewares/auth');
+const { cacheMiddleware } = require('../../middlewares/cacheMiddleware');
 const { carUpload } = require('../../middlewares/upload');
 const validate = require('../../middlewares/validate');
 const { createCarSchema, updateCarSchema } = require('../../validations/carValidation');
@@ -45,7 +46,7 @@ router.delete('/:id', protect, carController.deleteCar);
 
 // ─── Public Routes ──────────────────────────────────────────
 const { optionalAuth } = require('../../middlewares/auth');
-router.get('/', optionalAuth, carController.getCars);
-router.get('/featured', optionalAuth, carController.getFeaturedCars); // must be BEFORE /:id
-router.get('/:id', optionalAuth, carController.getCarById);
+router.get('/', optionalAuth, cacheMiddleware(300), carController.getCars);
+router.get('/featured', optionalAuth, cacheMiddleware(600), carController.getFeaturedCars); // must be BEFORE /:id
+router.get('/:id', optionalAuth, cacheMiddleware(120), carController.getCarById);
 module.exports = router;
