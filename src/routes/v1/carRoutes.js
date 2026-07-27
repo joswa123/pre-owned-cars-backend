@@ -44,7 +44,8 @@ router.put('/:id', protect, carUpload.fields([
 router.delete('/:id', protect, carController.deleteCar);
 
 // ─── Public Routes ──────────────────────────────────────────
-router.get('/', carController.getCars);
-router.get('/featured', carController.getFeaturedCars); // must be BEFORE /:id
-router.get('/:id', carController.getCarById);
+const { optionalAuth } = require('../../middlewares/auth');
+router.get('/', optionalAuth, carController.getCars);
+router.get('/featured', optionalAuth, carController.getFeaturedCars); // must be BEFORE /:id
+router.get('/:id', optionalAuth, carController.getCarById);
 module.exports = router;

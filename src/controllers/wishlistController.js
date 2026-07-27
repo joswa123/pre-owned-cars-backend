@@ -21,6 +21,9 @@ exports.getWishlist = catchAsync(async (req, res) => {
   const cars = await wishlistService.getWishlist(userId);
   // Transform images if needed (optional)
   const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const transformed = cars.map(car => transformCarImages(car, baseUrl));
+  const transformed = cars.map(car => ({
+    ...transformCarImages(car, baseUrl),
+    isWishlist: true
+  }));
   res.status(200).json({ success: true, data: transformed });
 });
