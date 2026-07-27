@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 5000;
     // 2. Sync schema — never alter/force in production
     logger.info('⏳ Syncing database schema...');
     const isDev = process.env.NODE_ENV === 'development';
-    await sequelize.sync({ alter: isDev, force: false });
+    await sequelize.sync();
     logger.info('✅ Database schema synced');
 
     // 3. Seed data — only in development; skipped on Render/production
