@@ -102,6 +102,8 @@ app.use('/api/v1/transmissions', cacheMiddleware(300), require('./routes/v1/tran
 app.use('/api/v1/models', cacheMiddleware(300), require('./routes/v1/modelRoutes'));
 app.use('/api/v1/car-types', cacheMiddleware(300), require('./routes/v1/carTypeRoutes'));
 app.use('/api/v1/wishlist', require('./routes/v1/wishlistRoutes'));
+app.use('/api/v1/leads', require('./routes/v1/leadRoutes'));
+app.use('/api/v1/subscriptions', require('./routes/v1/subscriptionRoutes'));
 // Admin routes (protected)
 app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
 app.use('/api/v1/admin/fuel-types', require('./routes/v1/admin/fuelTypeRoutes'));
