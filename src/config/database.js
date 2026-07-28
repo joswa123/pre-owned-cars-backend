@@ -50,7 +50,7 @@ const sequelize = new Sequelize(
       : false,
     dialectOptions,
     pool: {
-      max: parseInt(process.env.DB_POOL_MAX) || (process.env.NODE_ENV === 'production' ? 5 : 10),
+      max: parseInt(process.env.DB_POOL_MAX) || 3,
       min: 0,
       acquire: 30000,
       idle: 10000,

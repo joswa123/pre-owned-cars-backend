@@ -8,7 +8,7 @@ exports.enquire = catchAsync(async (req, res) => {
   const buyerId = req.user?.id; // optional, if logged in
 
   const lead = await leadService.createLead(carId, { name, phone, email, message });
-  res.status(201).json({ success: true, data: lead });
+  res.status(200).json({ success: true, data: lead });
 });
 
 exports.getSellerLeads = catchAsync(async (req, res) => {
