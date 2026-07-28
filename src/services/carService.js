@@ -143,6 +143,19 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_a
   if (filters.max_km) {
     where.km_driven = { ...where.km_driven, [Op.lte]: parseInt(filters.max_km) };
   }
+  
+  // Handle literal string kmdriven parameter like "0-25k" or "75k+"
+  if (filters.kmdriven) {
+    if (filters.kmdriven === '0-25k') {
+      where.km_driven = { ...where.km_driven, [Op.gte]: 0, [Op.lte]: 25000 };
+    } else if (filters.kmdriven === '25k-50k') {
+      where.km_driven = { ...where.km_driven, [Op.gte]: 25000, [Op.lte]: 50000 };
+    } else if (filters.kmdriven === '50k-75k') {
+      where.km_driven = { ...where.km_driven, [Op.gte]: 50000, [Op.lte]: 75000 };
+    } else if (filters.kmdriven === '75k+') {
+      where.km_driven = { ...where.km_driven, [Op.gte]: 75000 };
+    }
+  }
   if (filters.fuel_type) where.fuel_type = filters.fuel_type;
   if (filters.transmission) where.transmission = filters.transmission;
   if (filters.ownership) where.ownership = filters.ownership;

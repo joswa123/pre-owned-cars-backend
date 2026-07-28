@@ -49,6 +49,13 @@
   }, {
     tableName: 'cars',
     timestamps: true,
+    indexes: [
+      { fields: ['km_driven'] },
+      { fields: ['price'] },
+      { fields: ['status'] },
+      { fields: ['brand'] },
+      { fields: ['state', 'city'] }
+    ]
   });
 
   module.exports = Car;
