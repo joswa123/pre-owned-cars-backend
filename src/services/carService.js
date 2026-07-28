@@ -144,16 +144,21 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_a
     where.km_driven = { ...where.km_driven, [Op.lte]: parseInt(filters.max_km) };
   }
   
-  // Handle literal string kmdriven parameter like "0-25k" or "75k+"
+  // Handle literal string kmdriven parameter
   if (filters.kmdriven) {
-    if (filters.kmdriven === '0-25k') {
-      where.km_driven = { ...where.km_driven, [Op.gte]: 0, [Op.lte]: 25000 };
-    } else if (filters.kmdriven === '25k-50k') {
-      where.km_driven = { ...where.km_driven, [Op.gte]: 25000, [Op.lte]: 50000 };
-    } else if (filters.kmdriven === '50k-75k') {
-      where.km_driven = { ...where.km_driven, [Op.gte]: 50000, [Op.lte]: 75000 };
-    } else if (filters.kmdriven === '75k+') {
-      where.km_driven = { ...where.km_driven, [Op.gte]: 75000 };
+    switch (filters.kmdriven) {
+      case "0-25k":
+        where.km_driven = { [Op.between]: [0, 25000] };
+        break;
+      case "25k-50k":
+        where.km_driven = { [Op.between]: [25000, 50000] };
+        break;
+      case "50k-75k":
+        where.km_driven = { [Op.between]: [50000, 75000] };
+        break;
+      case "75k+":
+        where.km_driven = { [Op.gte]: 75000 };
+        break;
     }
   }
   if (filters.fueltype) where.fuel_type = filters.fueltype; // Handle frontend param
