@@ -1,5 +1,5 @@
 // controllers/leadController.js
-const leadService = require('../services/leadService');
+const leadService = require('../services/LeadService');
 const { catchAsync } = require('../utils/errorHandler');
 
 exports.enquire = catchAsync(async (req, res) => {
