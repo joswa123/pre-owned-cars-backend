@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
 const updateProfileSchema = Joi.object({
-  seller_type: Joi.string().valid('individual', 'company').required(),
+  seller_type: Joi.string().valid('individual', 'company').required().optional(),
   // Common fields
   name: Joi.string().min(3).max(100).optional(),
   phone: Joi.string().pattern(/^[0-9]{10}$/).optional(),

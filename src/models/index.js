@@ -13,6 +13,8 @@ const Transmission = require('./Transmission');
 const CarType = require('./CarType');
 const RefreshToken=require('./RefreshToken')
 const Wishlist=require('./Wishlist')
+const Lead = require('./Lead')
+const Subscription = require('./Subscription')
 // =========================
 // MODEL RELATIONSHIPS
 // =========================
@@ -79,7 +81,19 @@ Wishlist.belongsTo(User, { foreignKey: 'user_id' });
 Wishlist.belongsTo(Car, { foreignKey: 'car_id' });
 User.hasMany(Wishlist, { foreignKey: 'user_id' });
 Car.hasMany(Wishlist, { foreignKey: 'car_id' });
-module.exports = {
+
+// Leads Associations
+Car.hasMany(Lead, { foreignKey: 'car_id' });
+Lead.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
+User.hasMany(Lead, { foreignKey: 'buyer_id', as: 'buyerLeads' });
+Lead.belongsTo(User, { foreignKey: 'buyer_id', as: 'buyer' });
+User.hasMany(Lead, { foreignKey: 'seller_id', as: 'sellerLeads' });
+Lead.belongsTo(User, { foreignKey: 'seller_id', as: 'seller' });
+
+// Subscriptions Associations
+User.hasMany(Subscription, { foreignKey: 'seller_id' });
+Subscription.belongsTo(User, { foreignKey: 'seller_id' });
+const models = {
   User,
   Otp,
   Car,
@@ -92,6 +106,16 @@ module.exports = {
   Transmission,
   CarType,
   RefreshToken,
-  Wishlist
-
+  Wishlist,
+  Lead,
+  Subscription
 };
+
+// Polyfill for Sequelize v3 compatibility where modern code expects findByPk
+Object.values(models).forEach(model => {
+  if (model && typeof model.findById === 'function') {
+    model.findByPk = model.findById;
+  }
+});
+
+module.exports = models;

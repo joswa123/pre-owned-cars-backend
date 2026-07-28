@@ -17,8 +17,9 @@ const cacheMiddleware = (duration = 300) => {
       return next();
     }
 
-    // Construct cache key based on URL and query params
-    const key = `__express__${req.originalUrl || req.url}`;
+    // Construct cache key based on URL, query params, and authorization header
+    const authHeader = req.headers.authorization || '';
+    const key = `__express__${req.originalUrl || req.url}__${authHeader}`;
     const cachedResponse = cache.get(key);
 
     if (cachedResponse) {

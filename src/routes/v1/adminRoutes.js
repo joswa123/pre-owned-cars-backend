@@ -7,7 +7,7 @@ const { brandUpload } = require("../../middlewares/upload");
 const multer = require("multer");
 const brandController = require("../../controllers/brandController");
 const carController = require("../../controllers/carController");
-
+const adminController = require("../../controllers/adminController");
 // All routes require authentication and admin role
 router.use(protect, adminOnly);
 
@@ -52,4 +52,7 @@ router.patch(
   adminOnly,
   carController.toggleFeatured
 );
+
+router.get('/subscriptions', protect, adminOnly, adminController.getSubscriptions);
+router.get('/payments', protect, adminOnly, adminController.getPayments);
 module.exports = router;

@@ -20,6 +20,8 @@ exports.createCar = catchAsync(async (req, res) => {
 
 exports.getCars = catchAsync(async (req, res) => {
   const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...filters } = req.query;
+  console.log("CONTROLLER - req query:", req.query);
+  console.log("CONTROLLER - filters:", filters);
   const userId = req.user?.id;
   const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder, userId);
   res.status(200).json({ status: "success", data: result });

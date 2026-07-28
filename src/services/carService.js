@@ -143,10 +143,32 @@ exports.getCars = async (filters = {}, page = 1, limit = 20, sortBy = "created_a
   if (filters.max_km) {
     where.km_driven = { ...where.km_driven, [Op.lte]: parseInt(filters.max_km) };
   }
+  
+  // Handle literal string kmdriven parameter
+  if (filters.kmdriven) {
+    switch (filters.kmdriven) {
+      case "0-25k":
+        where.km_driven = { [Op.between]: [0, 25000] };
+        break;
+      case "25k-50k":
+        where.km_driven = { [Op.between]: [25000, 50000] };
+        break;
+      case "50k-75k":
+        where.km_driven = { [Op.between]: [50000, 75000] };
+        break;
+      case "75k+":
+        where.km_driven = { [Op.gte]: 75000 };
+        break;
+    }
+  }
+  if (filters.fueltype) where.fuel_type = filters.fueltype; // Handle frontend param
   if (filters.fuel_type) where.fuel_type = filters.fuel_type;
   if (filters.transmission) where.transmission = filters.transmission;
   if (filters.ownership) where.ownership = filters.ownership;
   if (filters.year) where.year = filters.year;
+
+  console.log("DEBUG-FILTERS:", filters);
+  console.log("DEBUG-WHERE:", JSON.stringify(where, null, 2));
 
   const { count, rows } = await Car.findAndCountAll({
     distinct: true,
@@ -364,9 +386,6 @@ exports.toggleFeatured = async (carId, is_featured) => {
   return car;
 };
 
-/**
- * Get featured cars (public) – only active ones
- */
 /**
  * Get featured cars (public) – only active ones
  */
