@@ -9,6 +9,10 @@ exports.createCar = catchAsync(async (req, res) => {
 
   const car = await carService.createCar(userId, carData, files);
 
+  // Clear cache so the new car appears immediately
+  const { clearCache } = require('../middlewares/cacheMiddleware');
+  clearCache('/api/v1/cars');
+
   res.status(200).json({
     status: "success",
     message: "Car listed successfully. Waiting for admin approval.",
@@ -54,25 +58,31 @@ exports.updateCar = catchAsync(async (req, res) => {
 
   const car = await carService.updateCar(id, userId, updateData);
 
+  // Clear cache for cars so the updated car appears immediately
+  const { clearCache } = require('../middlewares/cacheMiddleware');
+  clearCache('/api/v1/cars');
+
   res.status(200).json({
     status: "success",
     message: "Car updated successfully.",
     data: { car },
   });
 });
-
 exports.deleteCar = catchAsync(async (req, res) => {
   const { id } = req.params;
   const userId = req.user.id;
 
   await carService.deleteCar(id, userId);
 
+  // Clear cache for cars so the deleted car stops appearing
+  const { clearCache } = require('../middlewares/cacheMiddleware');
+  clearCache('/api/v1/cars');
+
   res.status(200).json({
     status: "success",
     message: "Car deleted successfully.",
   });
 });
-
 exports.getAdminCars = catchAsync(async (req, res) => {
   const { page = 1, limit = 20, status, sortBy = "created_at", sortOrder = "DESC", ...filters } = req.query;
   const result = await carService.getAdminCars(filters, Number(page), Number(limit), sortBy, sortOrder, status);
