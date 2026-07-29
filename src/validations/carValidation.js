@@ -113,6 +113,7 @@ const CAR_TYPE_MAP = {
  * @returns {object} - data with enum fields mapped to DB values
  */
 const mapToDbValues = (data) => {
+  if (!data) return {};
   const mapped = { ...data };
   if (data.fueltype)     mapped.fueltype     = FUEL_TYPE_MAP[data.fueltype]     ?? data.fueltype;
   if (data.transmission) mapped.transmission = TRANSMISSION_MAP[data.transmission] ?? data.transmission;
