@@ -47,9 +47,9 @@
     },
     views: { type: DataTypes.INTEGER, defaultValue: 0 },
     number_plate_color: {
-      type: DataTypes.ENUM('White', 'Yellow', 'Black', 'Green', 'Red'),
+      type: DataTypes.ENUM('Own Board', 'T-Board', 'EV'),
       allowNull: false,
-      defaultValue: 'White',
+      defaultValue: 'Own Board',
     },
     insurance_type: {
       type: DataTypes.ENUM('Comprehensive', 'Third Party', 'Not Insured'),

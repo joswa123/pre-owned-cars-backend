@@ -82,7 +82,7 @@ exports.createCar = async (userId, carData, files) => {
       car_type: mapped.car_type,
       description: mapped.description || null,
       status: "pending",
-      number_plate_color: mapped.numberPlateColor || 'White',
+      number_plate_color: mapped.numberPlateColor || 'Own Board',
       insurance_type: mapped.insuranceType || 'Not Insured',
       appointment_required: mapped.appointmentRequired || false,
     };

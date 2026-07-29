@@ -21,7 +21,7 @@ const FUEL_TYPES_IN       = ['petrol', 'diesel', 'electric', 'hybrid', 'cng'];
 const TRANSMISSION_TYPES_IN = ['manual', 'automatic', 'cvt', 'dct'];
 const OWNERSHIP_TYPES_IN  = ['1st owner', '2nd owner', '3rd owner', '4th+ owner'];
 
-const NUMBER_PLATE_COLOR_IN = ['white', 'yellow', 'black', 'green', 'red'];
+const NUMBER_PLATE_COLOR_IN = ['own board', 't-board', 'ev'];
 const INSURANCE_TYPE_IN = ['comprehensive', 'third party', 'not insured'];
 
 // ─── Reusable Helpers ────────────────────────────────────────────────────────
@@ -115,11 +115,9 @@ const CAR_TYPE_MAP = {
 };
 
 const NUMBER_PLATE_COLOR_MAP = {
-  white:  'White',
-  yellow: 'Yellow',
-  black:  'Black',
-  green:  'Green',
-  red:    'Red',
+  'own board': 'Own Board',
+  't-board': 'T-Board',
+  ev: 'EV',
 };
 
 const INSURANCE_TYPE_MAP = {
