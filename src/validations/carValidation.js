@@ -49,9 +49,9 @@ const createCarSchema = Joi.object({
   city:             Joi.string().trim().max(100).required(),
   car_type:         enumString(CAR_TYPES).required(),
   description:      Joi.string().trim().allow('', null).optional(),
-  numberPlateColor: enumString(NUMBER_PLATE_COLOR_IN).optional(),
-  insuranceType:    enumString(INSURANCE_TYPE_IN).optional(),
-  appointmentRequired: Joi.boolean().optional(),
+  numberPlateColor: enumString(NUMBER_PLATE_COLOR_IN).allow('', null).optional(),
+  insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
+  appointmentRequired: Joi.boolean().allow('', null, 'true', 'false').optional(),
 }).unknown(false);
 
 // ─── Update Car Schema (all fields optional, but at least one required) ──────
@@ -74,9 +74,9 @@ const updateCarSchema = Joi.object({
   city:             Joi.string().trim().max(100),
   car_type:         enumString(CAR_TYPES),
   description:      Joi.string().trim().allow('', null).optional(),
-  numberPlateColor: enumString(NUMBER_PLATE_COLOR_IN).optional(),
-  insuranceType:    enumString(INSURANCE_TYPE_IN).optional(),
-  appointmentRequired: Joi.boolean().optional(),
+  numberPlateColor: enumString(NUMBER_PLATE_COLOR_IN).allow('', null).optional(),
+  insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
+  appointmentRequired: Joi.boolean().allow('', null, 'true', 'false').optional(),
 }).unknown(false).min(1);
 
 // ─── DB Mapping Helpers (use in service layer) ───────────────────────────────
