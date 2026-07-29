@@ -269,7 +269,13 @@ exports.updateCar = async (carId, userId, updateData) => {
 exports.deleteCar = async (carId, userId) => {
   const car = await Car.findOne({ where: { id: carId, dealer_id: userId } });
   if (!car) throw new AppError("Car not found or unauthorized.", 404);
+  
+  // Cascade delete associated records manually
   await CarImage.destroy({ where: { car_id: carId } });
+  const { Wishlist, Lead } = require("../models");
+  if (Wishlist) await Wishlist.destroy({ where: { car_id: carId } });
+  if (Lead) await Lead.destroy({ where: { car_id: carId } });
+
   await car.destroy();
   return { success: true };
 };
