@@ -14,6 +14,7 @@ const Model = sequelize.define('Model', {
   brandId: {
     type: DataTypes.UUID,
     allowNull: false,
+    field: 'brand_id',
     references: {
       model: 'brands',
       key: 'id',
