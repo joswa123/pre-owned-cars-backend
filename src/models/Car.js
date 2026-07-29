@@ -46,6 +46,21 @@
       allowNull: false,
     },
     views: { type: DataTypes.INTEGER, defaultValue: 0 },
+    number_plate_color: {
+      type: DataTypes.ENUM('White', 'Yellow', 'Black', 'Green', 'Red'),
+      allowNull: false,
+      defaultValue: 'White',
+    },
+    insurance_type: {
+      type: DataTypes.ENUM('Comprehensive', 'Third Party', 'Not Insured'),
+      allowNull: false,
+      defaultValue: 'Not Insured',
+    },
+    appointment_required: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
   }, {
     tableName: 'cars',
     timestamps: true,

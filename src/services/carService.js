@@ -82,6 +82,9 @@ exports.createCar = async (userId, carData, files) => {
       car_type: mapped.car_type,
       description: mapped.description || null,
       status: "pending",
+      number_plate_color: mapped.numberPlateColor || 'White',
+      insurance_type: mapped.insuranceType || 'Not Insured',
+      appointment_required: mapped.appointmentRequired || false,
     };
 
     const car = await Car.create(carFields, { transaction });
@@ -261,6 +264,9 @@ exports.updateCar = async (carId, userId, updateData) => {
   if (mapped.city !== undefined) filteredData.city = mapped.city;
   if (mapped.car_type !== undefined) filteredData.car_type = mapped.car_type;
   if (mapped.description !== undefined) filteredData.description = mapped.description;
+  if (mapped.numberPlateColor !== undefined) filteredData.number_plate_color = mapped.numberPlateColor;
+  if (mapped.insuranceType !== undefined) filteredData.insurance_type = mapped.insuranceType;
+  if (mapped.appointmentRequired !== undefined) filteredData.appointment_required = mapped.appointmentRequired;
 
   await car.update(filteredData);
   return car;
