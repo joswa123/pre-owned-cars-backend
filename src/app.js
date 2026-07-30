@@ -100,6 +100,7 @@ app.use('/api/v1/brands', cacheMiddleware(300), require('./routes/v1/brandRoutes
 app.use('/api/v1/fuel-types', cacheMiddleware(300), require('./routes/v1/fuelTypeRoutes'));
 app.use('/api/v1/transmissions', cacheMiddleware(300), require('./routes/v1/transmissionRoutes'));
 app.use('/api/v1/models', cacheMiddleware(300), require('./routes/v1/modelRoutes'));
+app.use('/api/v1/variants', cacheMiddleware(300), require('./routes/v1/variantRoutes'));
 app.use('/api/v1/car-types', cacheMiddleware(300), require('./routes/v1/carTypeRoutes'));
 app.use('/api/v1/wishlist', require('./routes/v1/wishlistRoutes'));
 app.use('/api/v1/leads', require('./routes/v1/leadRoutes'));
@@ -110,6 +111,7 @@ app.use('/api/v1/admin/fuel-types', require('./routes/v1/admin/fuelTypeRoutes'))
 app.use('/api/v1/admin/transmissions', require('./routes/v1/admin/transmissionRoutes'));
 app.use('/api/v1/admin/car-types', require('./routes/v1/admin/carTypeRoutes'));
 app.use('/api/v1/admin/models', require('./routes/v1/admin/modelRoutes'));
+app.use('/api/v1/admin/variants', require('./routes/v1/admin/variantRoutes'));
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

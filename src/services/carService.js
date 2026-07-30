@@ -82,6 +82,9 @@ exports.createCar = async (userId, carData, files) => {
       car_type: mapped.car_type,
       description: mapped.description || null,
       status: "pending",
+      number_plate_color: mapped.number_plate_color || 'Own Board',
+      insurance_type: mapped.insuranceType || 'Not Insured',
+      appointment_required: mapped.appointmentRequired || false,
     };
 
     const car = await Car.create(carFields, { transaction });
@@ -239,20 +242,31 @@ exports.updateCar = async (carId, userId, updateData) => {
   const car = await Car.findOne({ where: { id: carId, dealer_id: userId } });
   if (!car) throw new AppError("Car not found or unauthorized.", 404);
 
-  // Fields accepted for update (using DB column names)
-  const allowedFields = [
-    "brand", "model", "variant", "year", "purchase_date", "number_plate",
-    "price", "exterior_colour", "interior_colour", "km_driven",
-    "fuel_type", "transmission", "ownership", "state", "city", "description",
-  ];
-
   // Map Joi-normalised (lowercase) values → MySQL ENUM mixed-case before filtering
-  const mapped = mapToDbValues(updateData);
+  const mapped = mapToDbValues(updateData || {});
 
   const filteredData = {};
-  allowedFields.forEach((field) => {
-    if (mapped[field] !== undefined) filteredData[field] = mapped[field];
-  });
+  if (mapped.brand !== undefined) filteredData.brand = mapped.brand;
+  if (mapped.model !== undefined) filteredData.model = mapped.model;
+  if (mapped.variant !== undefined) filteredData.variant = mapped.variant;
+  if (mapped.year !== undefined) filteredData.year = mapped.year;
+  if (mapped.purchasedate !== undefined) filteredData.purchase_date = mapped.purchasedate;
+  if (mapped.numplate !== undefined) filteredData.number_plate = mapped.numplate;
+  if (mapped.price !== undefined) filteredData.price = mapped.price;
+  if (mapped.price_negotiable !== undefined) filteredData.price_negotiable = mapped.price_negotiable;
+  if (mapped.exteriorColour !== undefined) filteredData.exterior_colour = mapped.exteriorColour;
+  if (mapped.interiorColour !== undefined) filteredData.interior_colour = mapped.interiorColour;
+  if (mapped.kmdriven !== undefined) filteredData.km_driven = mapped.kmdriven;
+  if (mapped.fueltype !== undefined) filteredData.fuel_type = mapped.fueltype;
+  if (mapped.transmission !== undefined) filteredData.transmission = mapped.transmission;
+  if (mapped.ownership !== undefined) filteredData.ownership = mapped.ownership;
+  if (mapped.state !== undefined) filteredData.state = mapped.state;
+  if (mapped.city !== undefined) filteredData.city = mapped.city;
+  if (mapped.car_type !== undefined) filteredData.car_type = mapped.car_type;
+  if (mapped.description !== undefined) filteredData.description = mapped.description;
+  if (mapped.number_plate_color !== undefined) filteredData.number_plate_color = mapped.number_plate_color;
+  if (mapped.insuranceType !== undefined) filteredData.insurance_type = mapped.insuranceType;
+  if (mapped.appointmentRequired !== undefined) filteredData.appointment_required = mapped.appointmentRequired;
 
   await car.update(filteredData);
   return car;
@@ -261,7 +275,13 @@ exports.updateCar = async (carId, userId, updateData) => {
 exports.deleteCar = async (carId, userId) => {
   const car = await Car.findOne({ where: { id: carId, dealer_id: userId } });
   if (!car) throw new AppError("Car not found or unauthorized.", 404);
+  
+  // Cascade delete associated records manually
   await CarImage.destroy({ where: { car_id: carId } });
+  const { Wishlist, Lead } = require("../models");
+  if (Wishlist) await Wishlist.destroy({ where: { car_id: carId } });
+  if (Lead) await Lead.destroy({ where: { car_id: carId } });
+
   await car.destroy();
   return { success: true };
 };
