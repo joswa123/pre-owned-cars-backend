@@ -8,6 +8,7 @@ const Car = require('./Car');
 const CarImage = require('./CarImage');
 const Brand = require('./Brand');
 const Model= require('./Model');
+const Variant = require('./Variant');
 const FuelType = require('./FuelType');
 const Transmission = require('./Transmission');
 const CarType = require('./CarType');
@@ -67,6 +68,9 @@ City.belongsTo(State, { foreignKey: 'state_id' });
 
 Brand.hasMany(Model, { foreignKey: 'brandId', onDelete: 'CASCADE' });
 Model.belongsTo(Brand, { foreignKey: 'brandId', as: 'brand'});
+
+Model.hasMany(Variant, { foreignKey: 'model_id', onDelete: 'CASCADE' });
+Variant.belongsTo(Model, { foreignKey: 'model_id', as: 'model'});
 FuelType.belongsTo(User, { foreignKey: 'user_id', as: 'creator' });
 User.hasMany(FuelType, { foreignKey: 'user_id' });
 
@@ -102,6 +106,7 @@ const models = {
   City,
   Brand,
   Model,
+  Variant,
   FuelType,
   Transmission,
   CarType,
