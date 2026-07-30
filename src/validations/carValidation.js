@@ -49,7 +49,7 @@ const createCarSchema = Joi.object({
   city:             Joi.string().trim().max(100).required(),
   car_type:         enumString(CAR_TYPES).required(),
   description:      Joi.string().trim().allow('', null).optional(),
-  numberPlateColor: enumString(NUMBER_PLATE_COLOR_IN).allow('', null).optional(),
+  number_plate_color: enumString(NUMBER_PLATE_COLOR_IN).allow('', null).optional(),
   insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   appointmentRequired: Joi.boolean().allow('', null, 'true', 'false').optional(),
 }).unknown(false);
@@ -74,7 +74,7 @@ const updateCarSchema = Joi.object({
   city:             Joi.string().trim().max(100),
   car_type:         enumString(CAR_TYPES),
   description:      Joi.string().trim().allow('', null).optional(),
-  numberPlateColor: enumString(NUMBER_PLATE_COLOR_IN).allow('', null).optional(),
+  number_plate_color: enumString(NUMBER_PLATE_COLOR_IN).allow('', null).optional(),
   insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   appointmentRequired: Joi.boolean().allow('', null, 'true', 'false').optional(),
 }).unknown(false).min(1);
@@ -140,7 +140,7 @@ const mapToDbValues = (data) => {
   if (data.transmission) mapped.transmission = TRANSMISSION_MAP[data.transmission] ?? data.transmission;
   if (data.ownership)    mapped.ownership    = OWNERSHIP_MAP[data.ownership]    ?? data.ownership;
   if (data.car_type)     mapped.car_type     = CAR_TYPE_MAP[data.car_type]      ?? data.car_type;
-  if (data.numberPlateColor) mapped.numberPlateColor = NUMBER_PLATE_COLOR_MAP[data.numberPlateColor] ?? data.numberPlateColor;
+  if (data.number_plate_color) mapped.number_plate_color = NUMBER_PLATE_COLOR_MAP[data.number_plate_color] ?? data.number_plate_color;
   if (data.insuranceType) mapped.insuranceType = INSURANCE_TYPE_MAP[data.insuranceType] ?? data.insuranceType;
   return mapped;
 };
