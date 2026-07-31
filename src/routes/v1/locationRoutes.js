@@ -5,6 +5,8 @@ const locationController = require('../../controllers/locationController');
 // Public endpoints – no authentication needed
 router.get('/states', locationController.getStates);
 router.get('/cities', locationController.getAllCities);
+router.get('/states/:stateId/districts', locationController.getDistrictsByState);
+router.get('/districts/:districtId/cities', locationController.getCitiesByDistrict);
 router.get('/states/:stateId/cities', locationController.getCitiesByState);
 
 module.exports = router;

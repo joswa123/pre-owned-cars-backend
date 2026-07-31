@@ -85,6 +85,7 @@ exports.createCar = async (userId, carData, files) => {
       number_plate_color: mapped.number_plate_color || 'Own Board',
       insurance_type: mapped.insuranceType || 'Not Insured',
       appointment_required: mapped.appointmentRequired || false,
+      seller_type: ['dealer', 'seller', 'company_seller'].includes(user.role) ? 'dealer' : 'private',
     };
 
     const car = await Car.create(carFields, { transaction });

@@ -42,11 +42,27 @@ const generateTokens = async (user) => {
  * Register a new user, send OTP for verification
  */
 exports.registerUser = async (userData) => {
-  const { full_name, phone, password, role } = userData;
+  const {
+    full_name,
+    phone,
+    password,
+    role,
+    email,
+    address,
+    city_id,
+    city,
+    state,
+    pincode,
+    company_name,
+    license_no,
+    gst_no,
+    contact_person,
+    seller_type,
+  } = userData;
 
   // Check if phone already registered
   const existingUser = await User.findOne({ where: { phone } });
-   if (existingUser) {
+  if (existingUser) {
     throw new AppError('Phone number already registered. Please login.', 200);
   }
   // Hash password
@@ -58,8 +74,19 @@ exports.registerUser = async (userData) => {
     full_name,
     phone,
     password_hash: passwordHash,
-    role: role || 'buyer',
+    role: role || 'customer',
     is_verified: false,
+    email: email || null,
+    address: address || null,
+    city_id: city_id || null,
+    city: city || null,
+    state: state || null,
+    pincode: pincode || null,
+    company_name: company_name || null,
+    license_no: license_no || null,
+    gst_no: gst_no || null,
+    contact_person: contact_person || null,
+    seller_type: seller_type || (role === 'dealer' ? 'company' : null),
   });
 
   // Generate and store OTP

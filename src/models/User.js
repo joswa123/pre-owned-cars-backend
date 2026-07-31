@@ -24,8 +24,8 @@ const User = sequelize.define('User', {
     allowNull: false,
   },
   role: {
-    type: DataTypes.ENUM('buyer', 'seller', 'company_seller','admin'),
-    defaultValue: 'buyer',
+    type: DataTypes.ENUM('customer', 'dealer', 'buyer', 'seller', 'company_seller', 'admin'),
+    defaultValue: 'customer',
   },
   is_verified: {
     type: DataTypes.BOOLEAN,
@@ -36,18 +36,26 @@ const User = sequelize.define('User', {
   },
 
   email: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-  validate: { isEmail: true },
-},
-address: {
-  type: DataTypes.TEXT,
-  allowNull: true,
-},
-city: {
-  type: DataTypes.STRING(100),
-  allowNull: true,
-},
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    validate: { isEmail: true },
+  },
+  address: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  city_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'cities',
+      key: 'id',
+    },
+  },
+  city: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
 state: {
   type: DataTypes.STRING(100),
   allowNull: true,

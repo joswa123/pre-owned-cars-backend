@@ -56,6 +56,11 @@
       allowNull: false,
       defaultValue: 'Not Insured',
     },
+    seller_type: {
+      type: DataTypes.ENUM('private', 'dealer'),
+      allowNull: false,
+      defaultValue: 'private',
+    },
     appointment_required: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
