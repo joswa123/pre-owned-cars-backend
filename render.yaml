@@ -14,7 +14,7 @@ services:
     plan: free                         # Use 'free' for now; upgrade to 'starter' for production
 
     # ── Build & Start ────────────────────────────────────────────────────────
-    buildCommand: npm install --legacy-peer-deps  # Install deps (needed for Sequelize v3)
+    buildCommand: npm run render-build             # Installs deps & runs DB migrations automatically
     startCommand: node src/server.js               # Explicit path — avoids Render path confusion
 
     # ── Health Check ─────────────────────────────────────────────────────────
