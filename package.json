@@ -29,10 +29,11 @@
     "multer": "^2.2.0",
     "multer-storage-cloudinary": "^4.0.0",
     "mysql": "^2.18.1",
-    "mysql2": "^3.22.6",
+    "mysql2": "^3.23.2",
     "node-cache": "^5.1.2",
     "nodemailer": "^9.0.3",
     "razorpay": "^2.9.8",
+    "redis": "^6.1.0",
     "sequelize": "^3.30.0",
     "winston": "^3.19.0"
   },

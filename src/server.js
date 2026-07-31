@@ -16,9 +16,13 @@ const PORT = process.env.PORT || 5000;
 
     // 2. Sync schema — never alter/force in production
     logger.info('⏳ Syncing database schema...');
-    const isDev = process.env.NODE_ENV === 'development';
-    await sequelize.sync(isDev ? { alter: true } : {});
-    logger.info('✅ Database schema synced');
+    try {
+      const isDev = process.env.NODE_ENV === 'development';
+      await sequelize.sync(isDev ? { alter: true } : {});
+      logger.info('✅ Database schema synced');
+    } catch (syncErr) {
+      logger.warn('⚠️  Database sync warning (safe to ignore in clustered setup):', syncErr.message);
+    }
 
     // 3. Seed data — only in development; skipped on Render/production
     if (process.env.NODE_ENV === 'development') {
@@ -36,10 +40,20 @@ const PORT = process.env.PORT || 5000;
         logger.warn('⚠️  Location seed failed (non-fatal):', seedErr.message);
       }
     }
+    // 3.5 Connect to Redis
+    const redisClient = require('./config/redis');
+    await redisClient.connect();
 
     // 4. Start HTTP server
-    app.listen(PORT, () => {
+    // Add health check endpoint for Load Balancer
+    app.get('/health', (req, res) => {
+      res.status(200).send('OK');
+    });
+
+    // Bind to 0.0.0.0 to accept connections from Docker network
+    app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+      logger.info(`🆔 Process ID: ${process.pid}`);
     });
 
   } catch (err) {
