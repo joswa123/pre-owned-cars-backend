@@ -1,214 +1,230 @@
-const { State, City } = require('../models');
+const { State, District, City } = require('../models');
 const logger = require('./logger');
 
-const statesData = [
-  { name: 'Andhra Pradesh', code: 'AP' },
-  { name: 'Arunachal Pradesh', code: 'AR' },
-  { name: 'Assam', code: 'AS' },
-  { name: 'Bihar', code: 'BR' },
-  { name: 'Chhattisgarh', code: 'CG' },
-  { name: 'Goa', code: 'GA' },
-  { name: 'Gujarat', code: 'GJ' },
-  { name: 'Haryana', code: 'HR' },
-  { name: 'Himachal Pradesh', code: 'HP' },
-  { name: 'Jharkhand', code: 'JH' },
-  { name: 'Karnataka', code: 'KA' },
-  { name: 'Kerala', code: 'KL' },
-  { name: 'Madhya Pradesh', code: 'MP' },
-  { name: 'Maharashtra', code: 'MH' },
-  { name: 'Manipur', code: 'MN' },
-  { name: 'Meghalaya', code: 'ML' },
-  { name: 'Mizoram', code: 'MZ' },
-  { name: 'Nagaland', code: 'NL' },
-  { name: 'Odisha', code: 'OD' },
-  { name: 'Punjab', code: 'PB' },
-  { name: 'Rajasthan', code: 'RJ' },
-  { name: 'Sikkim', code: 'SK' },
-  { name: 'Tamil Nadu', code: 'TN' },
-  { name: 'Telangana', code: 'TS' },
-  { name: 'Tripura', code: 'TR' },
-  { name: 'Uttar Pradesh', code: 'UP' },
-  { name: 'Uttarakhand', code: 'UK' },
-  { name: 'West Bengal', code: 'WB' },
+// ─── Location Seeder Data ──────────────────────────────────────────────────────
+const locationTree = {
+  'Tamil Nadu': {
+    code: 'TN',
+    districts: {
+      'Coimbatore': ['Coimbatore', 'Pollachi', 'Mettupalayam'],
+      'Chennai': ['Chennai', 'Guindy', 'Velachery', 'Tambaram'],
+      'Madurai': ['Madurai', 'Melur'],
+      'Salem': ['Salem', 'Attur'],
+      'Erode': ['Erode', 'Gobichettipalayam'],
+      'Tiruppur': ['Tiruppur', 'Dharapuram'],
+      'Tiruchirappalli': ['Trichy', 'Srirangam'],
+      'Vellore': ['Vellore', 'Katpadi'],
+      'Thoothukudi': ['Thoothukudi', 'Kovilpatti'],
+      'Kanyakumari': ['Nagercoil', 'Marthandam']
+    }
+  },
 
-  { name: 'Andaman and Nicobar Islands', code: 'AN' },
-  { name: 'Chandigarh', code: 'CH' },
-  { name: 'Dadra and Nagar Haveli and Daman and Diu', code: 'DN' },
-  { name: 'Delhi', code: 'DL' },
-  { name: 'Jammu and Kashmir', code: 'JK' },
-  { name: 'Ladakh', code: 'LA' },
-  { name: 'Lakshadweep', code: 'LD' },
-  { name: 'Puducherry', code: 'PY' }
-];
+  'Kerala': {
+    code: 'KL',
+    districts: {
+      'Thiruvananthapuram': ['Thiruvananthapuram', 'Neyyattinkara'],
+      'Ernakulam': ['Kochi', 'Aluva', 'Muvattupuzha'],
+      'Kozhikode': ['Kozhikode', 'Vatakara'],
+      'Thrissur': ['Thrissur', 'Chalakudy'],
+      'Kollam': ['Kollam', 'Punalur'],
+      'Kannur': ['Kannur', 'Thalassery'],
+      'Alappuzha': ['Alappuzha', 'Cherthala'],
+      'Palakkad': ['Palakkad', 'Ottapalam']
+    }
+  },
 
-const citiesData = {
-  'Tamil Nadu': [
-    'Chennai',
-    'Coimbatore',
-    'Madurai',
-    'Salem',
-    'Erode',
-    'Tiruppur',
-    'Trichy',
-    'Vellore',
-    'Thoothukudi',
-    'Nagercoil'
-  ],
+  'Karnataka': {
+    code: 'KA',
+    districts: {
+      'Bengaluru Urban': ['Bengaluru', 'Electronic City', 'Whitefield'],
+      'Mysuru': ['Mysuru', 'Nanjangud'],
+      'Dharwad': ['Hubli', 'Dharwad'],
+      'Dakshina Kannada': ['Mangaluru', 'Puttur'],
+      'Belagavi': ['Belagavi', 'Chikkodi'],
+      'Shivamogga': ['Shivamogga', 'Bhadravathi'],
+      'Tumakuru': ['Tumakuru', 'Sira']
+    }
+  },
 
-  'Kerala': [
-    'Thiruvananthapuram',
-    'Kochi',
-    'Kozhikode',
-    'Thrissur',
-    'Kollam',
-    'Kannur',
-    'Alappuzha',
-    'Palakkad'
-  ],
+  'Andhra Pradesh': {
+    code: 'AP',
+    districts: {
+      'Visakhapatnam': ['Visakhapatnam', 'Anakapalle'],
+      'NTR': ['Vijayawada'],
+      'Guntur': ['Guntur', 'Tenali'],
+      'Tirupati': ['Tirupati', 'Srikalahasti'],
+      'Kurnool': ['Kurnool', 'Adoni'],
+      'SPSR Nellore': ['Nellore', 'Kavali']
+    }
+  },
 
-  'Karnataka': [
-    'Bengaluru',
-    'Mysuru',
-    'Hubli',
-    'Mangaluru',
-    'Belagavi',
-    'Shivamogga',
-    'Tumakuru'
-  ],
+  'Telangana': {
+    code: 'TS',
+    districts: {
+      'Hyderabad': ['Hyderabad', 'Secunderabad'],
+      'Hanamkonda': ['Warangal', 'Hanamkonda'],
+      'Karimnagar': ['Karimnagar'],
+      'Nizamabad': ['Nizamabad'],
+      'Khammam': ['Khammam']
+    }
+  },
 
-  'Andhra Pradesh': [
-    'Visakhapatnam',
-    'Vijayawada',
-    'Guntur',
-    'Tirupati',
-    'Kurnool',
-    'Nellore'
-  ],
+  'Maharashtra': {
+    code: 'MH',
+    districts: {
+      'Mumbai City': ['Mumbai', 'South Mumbai'],
+      'Pune': ['Pune', 'Pimpri-Chinchwad'],
+      'Nagpur': ['Nagpur'],
+      'Nashik': ['Nashik'],
+      'Chhatrapati Sambhajinagar': ['Aurangabad'],
+      'Kolhapur': ['Kolhapur'],
+      'Solapur': ['Solapur'],
+      'Thane': ['Thane', 'Kalyan', 'Navi Mumbai']
+    }
+  },
 
-  'Telangana': [
-    'Hyderabad',
-    'Warangal',
-    'Karimnagar',
-    'Nizamabad',
-    'Khammam'
-  ],
+  'Gujarat': {
+    code: 'GJ',
+    districts: {
+      'Ahmedabad': ['Ahmedabad', 'Sanand'],
+      'Surat': ['Surat'],
+      'Vadodara': ['Vadodara'],
+      'Rajkot': ['Rajkot'],
+      'Bhavnagar': ['Bhavnagar'],
+      'Jamnagar': ['Jamnagar']
+    }
+  },
 
-  'Maharashtra': [
-    'Mumbai',
-    'Pune',
-    'Nagpur',
-    'Nashik',
-    'Aurangabad',
-    'Kolhapur',
-    'Solapur',
-    'Thane'
-  ],
+  'Delhi': {
+    code: 'DL',
+    districts: {
+      'New Delhi': ['New Delhi'],
+      'North Delhi': ['North Delhi'],
+      'South Delhi': ['South Delhi'],
+      'East Delhi': ['East Delhi'],
+      'West Delhi': ['West Delhi']
+    }
+  },
 
-  'Gujarat': [
-    'Ahmedabad',
-    'Surat',
-    'Vadodara',
-    'Rajkot',
-    'Bhavnagar',
-    'Jamnagar'
-  ],
+  'Rajasthan': {
+    code: 'RJ',
+    districts: {
+      'Jaipur': ['Jaipur'],
+      'Jodhpur': ['Jodhpur'],
+      'Udaipur': ['Udaipur'],
+      'Ajmer': ['Ajmer'],
+      'Kota': ['Kota'],
+      'Bikaner': ['Bikaner']
+    }
+  },
 
-  'Delhi': [
-    'New Delhi',
-    'North Delhi',
-    'South Delhi',
-    'East Delhi',
-    'West Delhi'
-  ],
+  'Punjab': {
+    code: 'PB',
+    districts: {
+      'Ludhiana': ['Ludhiana'],
+      'Amritsar': ['Amritsar'],
+      'Jalandhar': ['Jalandhar'],
+      'Patiala': ['Patiala'],
+      'SAS Nagar': ['Mohali']
+    }
+  },
 
-  'Rajasthan': [
-    'Jaipur',
-    'Jodhpur',
-    'Udaipur',
-    'Ajmer',
-    'Kota',
-    'Bikaner'
-  ],
+  'Uttar Pradesh': {
+    code: 'UP',
+    districts: {
+      'Lucknow': ['Lucknow'],
+      'Kanpur Nagar': ['Kanpur'],
+      'Agra': ['Agra'],
+      'Varanasi': ['Varanasi'],
+      'Prayagraj': ['Prayagraj'],
+      'Gautam Buddha Nagar': ['Noida'],
+      'Ghaziabad': ['Ghaziabad'],
+      'Meerut': ['Meerut']
+    }
+  },
 
-  'Punjab': [
-    'Ludhiana',
-    'Amritsar',
-    'Jalandhar',
-    'Patiala',
-    'Mohali'
-  ],
+  'West Bengal': {
+    code: 'WB',
+    districts: {
+      'Kolkata': ['Kolkata'],
+      'Howrah': ['Howrah'],
+      'Paschim Bardhaman': ['Durgapur', 'Asansol'],
+      'Darjeeling': ['Siliguri']
+    }
+  },
 
-  'Uttar Pradesh': [
-    'Lucknow',
-    'Kanpur',
-    'Agra',
-    'Varanasi',
-    'Prayagraj',
-    'Noida',
-    'Ghaziabad',
-    'Meerut'
-  ],
+  'Madhya Pradesh': {
+    code: 'MP',
+    districts: {
+      'Bhopal': ['Bhopal'],
+      'Indore': ['Indore'],
+      'Jabalpur': ['Jabalpur'],
+      'Gwalior': ['Gwalior'],
+      'Ujjain': ['Ujjain']
+    }
+  },
 
-  'West Bengal': [
-    'Kolkata',
-    'Howrah',
-    'Durgapur',
-    'Siliguri',
-    'Asansol'
-  ],
-
-  'Madhya Pradesh': [
-    'Bhopal',
-    'Indore',
-    'Jabalpur',
-    'Gwalior',
-    'Ujjain'
-  ],
-
-  'Bihar': [
-    'Patna',
-    'Gaya',
-    'Muzaffarpur',
-    'Bhagalpur'
-  ],
-
-  'Odisha': [
-    'Bhubaneswar',
-    'Cuttack',
-    'Rourkela',
-    'Sambalpur'
-  ],
-
-  'Haryana': [
-    'Gurugram',
-    'Faridabad',
-    'Panipat',
-    'Hisar',
-    'Ambala'
-  ]
+  'Haryana': {
+    code: 'HR',
+    districts: {
+      'Gurugram': ['Gurugram'],
+      'Faridabad': ['Faridabad'],
+      'Panipat': ['Panipat'],
+      'Hisar': ['Hisar'],
+      'Ambala': ['Ambala']
+    }
+  }
 };
 
 const seedLocations = async () => {
   try {
-    // Check if states already exist
-    const count = await State.count();
-    if (count > 0) {
-      logger.info('📍 Locations already seeded');
+    const stateCount = await State.count();
+    const districtCount = await District.count();
+
+    // If districts are already seeded, skip
+    if (districtCount > 0) {
+      logger.info('📍 Districts and locations already fully seeded');
       return;
     }
 
-    // Create states
-    for (const stateData of statesData) {
-      const state = await State.create(stateData);
-      const cities = citiesData[stateData.name] || [];
-      for (const cityName of cities) {
-        await City.create({ state_id: state.id, name: cityName });
+    logger.info('⏳ Seeding States, Districts, and Cities...');
+
+    for (const [stateName, stateInfo] of Object.entries(locationTree)) {
+      // Find or create state
+      let [state] = await State.findOrCreate({
+        where: { name: stateName },
+        defaults: { name: stateName, code: stateInfo.code }
+      });
+
+      for (const [districtName, cityList] of Object.entries(stateInfo.districts)) {
+        // Find or create district
+        let [district] = await District.findOrCreate({
+          where: { state_id: state.id, name: districtName },
+          defaults: { state_id: state.id, name: districtName }
+        });
+
+        // Find or create cities and link to district
+        for (const cityName of cityList) {
+          let city = await City.findOne({ where: { state_id: state.id, name: cityName } });
+          if (city) {
+            if (!city.district_id) {
+              await city.update({ district_id: district.id });
+            }
+          } else {
+            await City.create({
+              state_id: state.id,
+              district_id: district.id,
+              name: cityName
+            });
+          }
+        }
       }
     }
-    logger.info('✅ Locations seeded successfully');
+
+    logger.info('✅ States, Districts, and Cities seeded successfully');
   } catch (error) {
     logger.error('❌ Failed to seed locations:', error);
   }
 };
 
-module.exports = seedLocations;
+module.exports = seedLocations;
