@@ -15,7 +15,7 @@ services:
 
     # ── Build & Start ────────────────────────────────────────────────────────
     buildCommand: npm install --legacy-peer-deps  # Install deps (needed for Sequelize v3)
-    startCommand: npm start                        # Runs: node src/server.js
+    startCommand: node src/server.js               # Explicit path — avoids Render path confusion
 
     # ── Health Check ─────────────────────────────────────────────────────────
     # Render pings this endpoint to know if your service is healthy.
