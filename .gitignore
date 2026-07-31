@@ -1,8 +1,26 @@
+# Dependencies
 node_modules/
+
+# Environment variables — NEVER commit real .env files
 .env
-.env.*
-.vercel
+.env.local
+.env.*.local
+
+# Allow the example file (has no real secrets)
+!.env.example
+
+# Uploaded files (use Cloudinary in production, not local disk)
 uploads/
 
+# Build artifacts
 .vercel
-.env*
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
