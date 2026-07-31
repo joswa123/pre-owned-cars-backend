@@ -1,7 +1,7 @@
 const { State, District, City } = require('../models');
 const logger = require('./logger');
 
-// ─── Location Seeder Data ──────────────────────────────────────────────────────
+// ─── Location Seeder Data (All 28 States + 8 UTs of India) ────────────────────
 const locationTree = {
   'Tamil Nadu': {
     code: 'TN',
@@ -18,7 +18,6 @@ const locationTree = {
       'Kanyakumari': ['Nagercoil', 'Marthandam']
     }
   },
-
   'Kerala': {
     code: 'KL',
     districts: {
@@ -32,7 +31,6 @@ const locationTree = {
       'Palakkad': ['Palakkad', 'Ottapalam']
     }
   },
-
   'Karnataka': {
     code: 'KA',
     districts: {
@@ -45,7 +43,6 @@ const locationTree = {
       'Tumakuru': ['Tumakuru', 'Sira']
     }
   },
-
   'Andhra Pradesh': {
     code: 'AP',
     districts: {
@@ -57,7 +54,6 @@ const locationTree = {
       'SPSR Nellore': ['Nellore', 'Kavali']
     }
   },
-
   'Telangana': {
     code: 'TS',
     districts: {
@@ -68,7 +64,6 @@ const locationTree = {
       'Khammam': ['Khammam']
     }
   },
-
   'Maharashtra': {
     code: 'MH',
     districts: {
@@ -82,7 +77,6 @@ const locationTree = {
       'Thane': ['Thane', 'Kalyan', 'Navi Mumbai']
     }
   },
-
   'Gujarat': {
     code: 'GJ',
     districts: {
@@ -94,7 +88,6 @@ const locationTree = {
       'Jamnagar': ['Jamnagar']
     }
   },
-
   'Delhi': {
     code: 'DL',
     districts: {
@@ -105,7 +98,6 @@ const locationTree = {
       'West Delhi': ['West Delhi']
     }
   },
-
   'Rajasthan': {
     code: 'RJ',
     districts: {
@@ -117,7 +109,6 @@ const locationTree = {
       'Bikaner': ['Bikaner']
     }
   },
-
   'Punjab': {
     code: 'PB',
     districts: {
@@ -128,7 +119,6 @@ const locationTree = {
       'SAS Nagar': ['Mohali']
     }
   },
-
   'Uttar Pradesh': {
     code: 'UP',
     districts: {
@@ -142,7 +132,6 @@ const locationTree = {
       'Meerut': ['Meerut']
     }
   },
-
   'West Bengal': {
     code: 'WB',
     districts: {
@@ -152,7 +141,6 @@ const locationTree = {
       'Darjeeling': ['Siliguri']
     }
   },
-
   'Madhya Pradesh': {
     code: 'MP',
     districts: {
@@ -163,7 +151,6 @@ const locationTree = {
       'Ujjain': ['Ujjain']
     }
   },
-
   'Haryana': {
     code: 'HR',
     districts: {
@@ -172,6 +159,165 @@ const locationTree = {
       'Panipat': ['Panipat'],
       'Hisar': ['Hisar'],
       'Ambala': ['Ambala']
+    }
+  },
+  'Bihar': {
+    code: 'BR',
+    districts: {
+      'Patna': ['Patna'],
+      'Gaya': ['Gaya'],
+      'Muzaffarpur': ['Muzaffarpur'],
+      'Bhagalpur': ['Bhagalpur']
+    }
+  },
+  'Odisha': {
+    code: 'OD',
+    districts: {
+      'Khordha': ['Bhubaneswar'],
+      'Cuttack': ['Cuttack'],
+      'Sundargarh': ['Rourkela'],
+      'Sambalpur': ['Sambalpur']
+    }
+  },
+  'Assam': {
+    code: 'AS',
+    districts: {
+      'Kamrup Metropolitan': ['Guwahati'],
+      'Cachar': ['Silchar'],
+      'Dibrugarh': ['Dibrugarh'],
+      'Jorhat': ['Jorhat']
+    }
+  },
+  'Chhattisgarh': {
+    code: 'CG',
+    districts: {
+      'Raipur': ['Raipur'],
+      'Durg': ['Bhilai', 'Durg'],
+      'Bilaspur': ['Bilaspur'],
+      'Korba': ['Korba']
+    }
+  },
+  'Jharkhand': {
+    code: 'JH',
+    districts: {
+      'Ranchi': ['Ranchi'],
+      'East Singhbhum': ['Jamshedpur'],
+      'Dhanbad': ['Dhanbad'],
+      'Bokaro': ['Bokaro Steel City']
+    }
+  },
+  'Himachal Pradesh': {
+    code: 'HP',
+    districts: {
+      'Shimla': ['Shimla'],
+      'Kangra': ['Dharamshala'],
+      'Mandi': ['Mandi'],
+      'Solan': ['Solan']
+    }
+  },
+  'Uttarakhand': {
+    code: 'UK',
+    districts: {
+      'Dehradun': ['Dehradun', 'Rishikesh'],
+      'Haridwar': ['Haridwar', 'Roorkee'],
+      'Nainital': ['Haldwani', 'Nainital']
+    }
+  },
+  'Goa': {
+    code: 'GA',
+    districts: {
+      'North Goa': ['Panaji', 'Mapusa'],
+      'South Goa': ['Margao', 'Vasco da Gama']
+    }
+  },
+  'Tripura': {
+    code: 'TR',
+    districts: {
+      'West Tripura': ['Agartala']
+    }
+  },
+  'Manipur': {
+    code: 'MN',
+    districts: {
+      'Imphal East': ['Imphal']
+    }
+  },
+  'Meghalaya': {
+    code: 'ML',
+    districts: {
+      'East Khasi Hills': ['Shillong']
+    }
+  },
+  'Nagaland': {
+    code: 'NL',
+    districts: {
+      'Kohima': ['Kohima'],
+      'Dimapur': ['Dimapur']
+    }
+  },
+  'Mizoram': {
+    code: 'MZ',
+    districts: {
+      'Aizawl': ['Aizawl']
+    }
+  },
+  'Sikkim': {
+    code: 'SK',
+    districts: {
+      'Gangtok': ['Gangtok']
+    }
+  },
+  'Arunachal Pradesh': {
+    code: 'AR',
+    districts: {
+      'Papum Pare': ['Itanagar']
+    }
+  },
+  'Jammu and Kashmir': {
+    code: 'JK',
+    districts: {
+      'Srinagar': ['Srinagar'],
+      'Jammu': ['Jammu']
+    }
+  },
+  'Ladakh': {
+    code: 'LA',
+    districts: {
+      'Leh': ['Leh'],
+      'Kargil': ['Kargil']
+    }
+  },
+  'Chandigarh': {
+    code: 'CH',
+    districts: {
+      'Chandigarh': ['Chandigarh']
+    }
+  },
+  'Puducherry': {
+    code: 'PY',
+    districts: {
+      'Puducherry': ['Puducherry'],
+      'Karaikal': ['Karaikal']
+    }
+  },
+  'Andaman and Nicobar Islands': {
+    code: 'AN',
+    districts: {
+      'South Andaman': ['Port Blair']
+    }
+  },
+  'Dadra and Nagar Haveli and Daman and Diu': {
+    code: 'DN',
+    districts: {
+      'Daman': ['Daman'],
+      'Diu': ['Diu'],
+      'Dadra and Nagar Haveli': ['Silvassa']
+    }
+  },
+  'Lakshadweep': {
+    code: 'LD',
+    districts: {
+      'Lakshadweep': ['Kavaratti']
     }
   }
 };
@@ -188,21 +334,19 @@ const seedLocations = async (force = false) => {
 
     logger.info('⏳ Seeding States, Districts, and Cities...');
 
+    // 1. Process all entries in locationTree
     for (const [stateName, stateInfo] of Object.entries(locationTree)) {
-      // Find or create state
       let [state] = await State.findOrCreate({
         where: { name: stateName },
         defaults: { name: stateName, code: stateInfo.code }
       });
 
       for (const [districtName, cityList] of Object.entries(stateInfo.districts)) {
-        // Find or create district
         let [district] = await District.findOrCreate({
           where: { state_id: state.id, name: districtName },
           defaults: { state_id: state.id, name: districtName }
         });
 
-        // Find or create cities and link to district
         for (const cityName of cityList) {
           let city = await City.findOne({ where: { state_id: state.id, name: cityName } });
           if (city) {
@@ -220,10 +364,30 @@ const seedLocations = async (force = false) => {
       }
     }
 
-    logger.info('✅ States, Districts, and Cities seeded successfully');
+    // 2. FALLBACK GUARANTEE: Ensure EVERY state in DB has at least one District and linked Cities
+    const allDbStates = await State.findAll();
+    for (const state of allDbStates) {
+      const dCount = await District.count({ where: { state_id: state.id } });
+      if (dCount === 0) {
+        logger.info(`📍 Generating fallback district for state: ${state.name}`);
+        const defaultDistrictName = `${state.name} District`;
+        const district = await District.create({
+          state_id: state.id,
+          name: defaultDistrictName
+        });
+
+        // Link any orphan cities belonging to this state to the new district
+        await City.update(
+          { district_id: district.id },
+          { where: { state_id: state.id, district_id: null } }
+        );
+      }
+    }
+
+    logger.info('✅ States, Districts, and Cities fully seeded across all Indian states and UTs');
   } catch (error) {
     logger.error('❌ Failed to seed locations:', error);
   }
 };
 
-module.exports = seedLocations;
+module.exports = seedLocations;
