@@ -1,17 +1,13 @@
-const NodeCache = require('node-cache');
+const redisClient = require('../config/redis');
 const logger = require('../utils/logger');
 
-// Initialize cache
-// stdTTL: default time to live in seconds.
-// checkperiod: period in seconds for the automatic delete check interval.
-const cache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false });
-
 /**
- * Middleware to cache HTTP responses
+ * Middleware to check cache before hitting the database.
+ * Use this on GET requests that benefit from caching.
  * @param {number} duration - Time to live in seconds
  */
 const cacheMiddleware = (duration = 300) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     // Only cache GET requests
     if (req.method !== 'GET') {
       return next();
@@ -20,48 +16,71 @@ const cacheMiddleware = (duration = 300) => {
     // Construct cache key based on URL, query params, and authorization header
     const authHeader = req.headers.authorization || '';
     const key = `__express__${req.originalUrl || req.url}__${authHeader}`;
-    const cachedResponse = cache.get(key);
 
-    if (cachedResponse) {
-      // logger.info(`Cache HIT for ${key}`); // Optional log
-      return res.setHeader('Content-Type', 'application/json').send(cachedResponse);
-    } else {
-      // logger.info(`Cache MISS for ${key}`); // Optional log
-      // Override res.json to capture the response body
-      const originalJson = res.json.bind(res);
-      res.json = (body) => {
-        // Cache the response body
-        // Ensure we don't cache error responses
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            const stringified = JSON.stringify(body);
-            cache.set(key, stringified, duration);
-          } catch (e) {
-            logger.error(`Cache serialization error: ${e.message}`);
+    try {
+      if (!redisClient.isOpen) {
+        // If Redis is not connected yet or down, bypass cache safely
+        return next();
+      }
+
+      const cachedResponse = await redisClient.get(key);
+
+      if (cachedResponse) {
+        // Cache HIT
+        return res.setHeader('Content-Type', 'application/json').send(cachedResponse);
+      } else {
+        // Cache MISS
+        // Override res.json to capture the response body
+        const originalJson = res.json.bind(res);
+        res.json = (body) => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              const stringified = JSON.stringify(body);
+              // Save to Redis with expiry (fire and forget)
+              redisClient.setEx(key, duration, stringified).catch(err => {
+                logger.error(`Redis cache set error: ${err.message}`);
+              });
+            } catch (e) {
+              logger.error(`Cache serialization error: ${e.message}`);
+            }
           }
-        }
-        return originalJson(body);
-      };
+          return originalJson(body);
+        };
+        next();
+      }
+    } catch (error) {
+      logger.error(`Redis error in cacheMiddleware: ${error.message}`);
+      // On error, just bypass cache
       next();
     }
   };
 };
 
 /**
- * Utility to manually clear cache by key prefix
+ * Utility to manually clear cache by key prefix.
  * @param {string} prefix 
  */
-const clearCache = (prefix) => {
-  const keys = cache.keys();
-  const keysToDelete = keys.filter(key => key.startsWith(`__express__${prefix}`));
-  if (keysToDelete.length > 0) {
-    cache.del(keysToDelete);
-    logger.info(`Cleared cache for keys starting with ${prefix}`);
+const clearCache = async (prefix) => {
+  try {
+    if (!redisClient.isOpen) return;
+
+    // In Redis, we can use KEYS to find all matching keys.
+    // For larger production datasets, SCAN is preferred over KEYS.
+    const pattern = `__express__${prefix}*`;
+    const keys = await redisClient.keys(pattern);
+    
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+      logger.info(`Cleared cache for pattern: ${pattern} (${keys.length} keys removed)`);
+    } else {
+      logger.info(`No cache keys found for pattern: ${pattern}`);
+    }
+  } catch (error) {
+    logger.error(`Failed to clear cache: ${error.message}`);
   }
 };
 
 module.exports = {
   cacheMiddleware,
-  clearCache,
-  cache
+  clearCache
 };
