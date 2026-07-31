@@ -176,13 +176,12 @@ const locationTree = {
   }
 };
 
-const seedLocations = async () => {
+const seedLocations = async (force = false) => {
   try {
-    const stateCount = await State.count();
     const districtCount = await District.count();
 
-    // If districts are already seeded, skip
-    if (districtCount > 0) {
+    // If districts are already seeded and force is not true, skip
+    if (districtCount > 0 && !force) {
       logger.info('📍 Districts and locations already fully seeded');
       return;
     }

@@ -48,3 +48,13 @@ exports.getAllCities = catchAsync(async (req, res) => {
     data: cities,
   });
 });
+
+// Force seed location data (States, Districts, Cities)
+exports.seedLocations = catchAsync(async (req, res) => {
+  const seedLocationsUtil = require('../utils/seedLocations');
+  await seedLocationsUtil(true);
+  res.status(200).json({
+    status: 'success',
+    message: 'Locations seeded successfully (States, Districts, Cities)',
+  });
+});
