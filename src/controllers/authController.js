@@ -14,7 +14,7 @@ exports.register = catchAsync(async (req, res) => {
     ? `✅ Registration successful. OTP sent (dev mode): ${result.otp}`
     : 'Registration successful. OTP sent to your registered phone/email.';
 
-  res.status(201).json({
+  res.status(200).json({
     status: 'success',
     message,
     data: {

@@ -1,86 +1,75 @@
 const Joi = require('joi');
 
-// ─── Canonical Value Sets (single source of truth) ──────────────────────────
-// These values MUST match the MySQL ENUM definitions in Car.js exactly.
-// MySQL ENUMs are case-sensitive – these are the stored DB values.
-
-const CAR_TYPES = [
-  'suv',
-  'sedan',
-  'hatchback',
-  'muv',
-  'coupe',
-  'convertible',
-  'pickup',
-  'van',
-];
-
-// Note: fuel_type, transmission, ownership are stored as mixed-case in MySQL ENUM.
-// The service layer (createCar / updateCar) maps incoming lowercase → DB mixed-case.
-const FUEL_TYPES_IN       = ['petrol', 'diesel', 'electric', 'hybrid', 'cng'];
+const FUEL_TYPES_IN         = ['petrol', 'diesel', 'electric', 'hybrid', 'cng'];
 const TRANSMISSION_TYPES_IN = ['manual', 'automatic', 'cvt', 'dct'];
-const OWNERSHIP_TYPES_IN  = ['1st owner', '2nd owner', '3rd owner', '4th+ owner'];
+const OWNERSHIP_TYPES_IN    = ['1st owner', '2nd owner', '3rd owner', '4th+ owner'];
+const INSURANCE_TYPE_IN     = ['comprehensive', 'third party', 'not insured'];
 
-const NUMBER_PLATE_COLOR_IN = ['own board', 't-board', 'ev'];
-const INSURANCE_TYPE_IN = ['comprehensive', 'third party', 'not insured'];
-
-// ─── Reusable Helpers ────────────────────────────────────────────────────────
-// Accepts any casing from client, trims whitespace, lowercases, then validates.
 const enumString = (values) =>
   Joi.string().trim().lowercase().valid(...values);
 
-// ─── Create Car Schema ───────────────────────────────────────────────────────
+/**
+ * Create Car Joi Schema
+ */
 const createCarSchema = Joi.object({
   brand:            Joi.string().trim().max(50).required(),
   model:            Joi.string().trim().max(50).required(),
   variant:          Joi.string().trim().max(50).required(),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).required(),
-  purchasedate:     Joi.date().iso().required(),
-  numplate:         Joi.string().trim().max(20).required(),
   price:            Joi.number().positive().required(),
   price_negotiable: Joi.boolean().default(false),
-  exteriorColour:   Joi.string().trim().max(30).required(),
-  interiorColour:   Joi.string().trim().max(30).required(),
-  kmdriven:         Joi.number().integer().min(0).required(),
-  fueltype:         enumString(FUEL_TYPES_IN).required(),
+  km_driven:        Joi.number().integer().min(0).optional(),
+  kmdriven:         Joi.number().integer().min(0).optional(),
+  fuel_type:        enumString(FUEL_TYPES_IN).optional(),
+  fueltype:         enumString(FUEL_TYPES_IN).optional(),
   transmission:     enumString(TRANSMISSION_TYPES_IN).required(),
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
-  state:            Joi.string().trim().max(100).required(),
-  city:             Joi.string().trim().max(100).required(),
-  car_type:         enumString(CAR_TYPES).required(),
-  description:      Joi.string().trim().allow('', null).optional(),
-  number_plate_color: enumString(NUMBER_PLATE_COLOR_IN).allow('', null).optional(),
+  body_type:        Joi.string().trim().max(50).optional(),
+  car_type:         Joi.string().trim().max(50).optional(),
+  board_type:       Joi.string().trim().max(50).optional(),
+  numplate:         Joi.string().trim().max(50).optional(),
+  insurance_expiry_date: Joi.date().iso().allow('', null).optional(),
+  insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
-  appointmentRequired: Joi.boolean().allow('', null, 'true', 'false').optional(),
-}).unknown(false);
+  b2b_listing:      Joi.boolean().default(false),
+  engine_cc:        Joi.number().integer().min(0).allow('', null).optional(),
+  description:      Joi.string().trim().allow('', null).optional(),
+}).or('km_driven', 'kmdriven')
+  .or('fuel_type', 'fueltype')
+  .or('body_type', 'car_type')
+  .or('board_type', 'numplate')
+  .unknown(true);
 
-// ─── Update Car Schema (all fields optional, but at least one required) ──────
+/**
+ * Update Car Joi Schema
+ */
 const updateCarSchema = Joi.object({
   brand:            Joi.string().trim().max(50),
   model:            Joi.string().trim().max(50),
   variant:          Joi.string().trim().max(50),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1),
-  purchasedate:     Joi.date().iso(),
-  numplate:         Joi.string().trim().max(20),
   price:            Joi.number().positive(),
   price_negotiable: Joi.boolean(),
-  exteriorColour:   Joi.string().trim().max(30),
-  interiorColour:   Joi.string().trim().max(30),
+  km_driven:        Joi.number().integer().min(0),
   kmdriven:         Joi.number().integer().min(0),
+  fuel_type:        enumString(FUEL_TYPES_IN),
   fueltype:         enumString(FUEL_TYPES_IN),
   transmission:     enumString(TRANSMISSION_TYPES_IN),
   ownership:        enumString(OWNERSHIP_TYPES_IN),
-  state:            Joi.string().trim().max(100),
-  city:             Joi.string().trim().max(100),
-  car_type:         enumString(CAR_TYPES),
-  description:      Joi.string().trim().allow('', null).optional(),
-  number_plate_color: enumString(NUMBER_PLATE_COLOR_IN).allow('', null).optional(),
-  insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
-  appointmentRequired: Joi.boolean().allow('', null, 'true', 'false').optional(),
-}).unknown(false).min(1);
+  body_type:        Joi.string().trim().max(50),
+  car_type:         Joi.string().trim().max(50),
+  board_type:       Joi.string().trim().max(50),
+  numplate:         Joi.string().trim().max(50),
+  insurance_expiry_date: Joi.date().iso().allow('', null),
+  insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null),
+  insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null),
+  b2b_listing:      Joi.boolean(),
+  is_available:     Joi.boolean(),
+  engine_cc:        Joi.number().integer().min(0).allow('', null),
+  description:      Joi.string().trim().allow('', null),
+}).unknown(true).min(1);
 
-// ─── DB Mapping Helpers (use in service layer) ───────────────────────────────
-// Maps validated lowercase Joi output → MySQL ENUM values stored in the DB.
+// DB Mapping Helpers
 const FUEL_TYPE_MAP = {
   petrol:   'Petrol',
   diesel:   'Diesel',
@@ -103,23 +92,6 @@ const OWNERSHIP_MAP = {
   '4th+ owner': '4th+ Owner',
 };
 
-const CAR_TYPE_MAP = {
-  suv:         'SUV',
-  sedan:       'Sedan',
-  hatchback:   'Hatchback',
-  muv:         'MUV',
-  coupe:       'Coupe',
-  convertible: 'Convertible',
-  pickup:      'Pickup',
-  van:         'Van',
-};
-
-const NUMBER_PLATE_COLOR_MAP = {
-  'own board': 'Own Board',
-  't-board': 'T-Board',
-  ev: 'EV',
-};
-
 const INSURANCE_TYPE_MAP = {
   comprehensive: 'Comprehensive',
   'third party': 'Third Party',
@@ -127,21 +99,37 @@ const INSURANCE_TYPE_MAP = {
 };
 
 /**
- * Maps a validated (lowercase) car data object to DB-compatible mixed-case enum values.
- * Call this in the service before Car.create() / car.update().
- *
- * @param {object} data - Validated carData from Joi
- * @returns {object} - data with enum fields mapped to DB values
+ * Maps validated car data to DB fields
  */
 const mapToDbValues = (data) => {
   if (!data) return {};
   const mapped = { ...data };
-  if (data.fueltype)     mapped.fueltype     = FUEL_TYPE_MAP[data.fueltype]     ?? data.fueltype;
-  if (data.transmission) mapped.transmission = TRANSMISSION_MAP[data.transmission] ?? data.transmission;
-  if (data.ownership)    mapped.ownership    = OWNERSHIP_MAP[data.ownership]    ?? data.ownership;
-  if (data.car_type)     mapped.car_type     = CAR_TYPE_MAP[data.car_type]      ?? data.car_type;
-  if (data.number_plate_color) mapped.number_plate_color = NUMBER_PLATE_COLOR_MAP[data.number_plate_color] ?? data.number_plate_color;
-  if (data.insuranceType) mapped.insuranceType = INSURANCE_TYPE_MAP[data.insuranceType] ?? data.insuranceType;
+
+  if (data.kmdriven !== undefined && mapped.km_driven === undefined) {
+    mapped.km_driven = data.kmdriven;
+  }
+  if (data.fueltype !== undefined && mapped.fuel_type === undefined) {
+    mapped.fuel_type = data.fueltype;
+  }
+  if (data.car_type !== undefined && mapped.body_type === undefined) {
+    mapped.body_type = data.car_type;
+  }
+  if (data.numplate !== undefined && mapped.board_type === undefined) {
+    mapped.board_type = data.numplate;
+  }
+
+  const rawFuel = (mapped.fuel_type || '').toString().toLowerCase();
+  if (rawFuel && FUEL_TYPE_MAP[rawFuel]) mapped.fuel_type = FUEL_TYPE_MAP[rawFuel];
+
+  const rawTrans = (mapped.transmission || '').toString().toLowerCase();
+  if (rawTrans && TRANSMISSION_MAP[rawTrans]) mapped.transmission = TRANSMISSION_MAP[rawTrans];
+
+  const rawOwn = (mapped.ownership || '').toString().toLowerCase();
+  if (rawOwn && OWNERSHIP_MAP[rawOwn]) mapped.ownership = OWNERSHIP_MAP[rawOwn];
+
+  const rawIns = (mapped.insurance_type || mapped.insuranceType || '').toString().toLowerCase();
+  if (rawIns && INSURANCE_TYPE_MAP[rawIns]) mapped.insurance_type = INSURANCE_TYPE_MAP[rawIns];
+
   return mapped;
 };
 
@@ -149,10 +137,4 @@ module.exports = {
   createCarSchema,
   updateCarSchema,
   mapToDbValues,
-  FUEL_TYPE_MAP,
-  TRANSMISSION_MAP,
-  OWNERSHIP_MAP,
-  CAR_TYPE_MAP,
-  NUMBER_PLATE_COLOR_MAP,
-  INSURANCE_TYPE_MAP,
 };

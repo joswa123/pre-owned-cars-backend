@@ -4,7 +4,8 @@ const sequelize = require('../config/database');
 /**
  * Core User Model
  * Stores identity, credentials, verification status, and location references.
- * Linked to CustomerProfile or DealerProfile via 1-to-1 relationships.
+ * Role is strictly enforced as 'customer' or 'dealer' (with internal 'admin').
+ * Detailed profiles are offloaded to CustomerProfile and DealerProfile models.
  */
 const User = sequelize.define('User', {
   id: {
@@ -34,7 +35,7 @@ const User = sequelize.define('User', {
     allowNull: false,
   },
   role: {
-    type: DataTypes.ENUM('customer', 'dealer', 'buyer', 'seller', 'company_seller', 'admin'),
+    type: DataTypes.ENUM('customer', 'dealer', 'admin'),
     defaultValue: 'customer',
     allowNull: false,
   },
@@ -45,10 +46,6 @@ const User = sequelize.define('User', {
   },
   last_login: {
     type: DataTypes.DATE,
-  },
-  address: {
-    type: DataTypes.TEXT,
-    allowNull: true,
   },
   // Location Hierarchy References
   state_id: {
@@ -75,7 +72,7 @@ const User = sequelize.define('User', {
       key: 'id',
     },
   },
-  // Cached/Denormalized text fields for convenience
+  // Cached text names for location
   city: {
     type: DataTypes.STRING(100),
     allowNull: true,
@@ -84,23 +81,9 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(100),
     allowNull: true,
   },
-  pincode: {
-    type: DataTypes.STRING(6),
-    allowNull: true,
-    validate: { len: [6, 6] },
-  },
-  aadhaar: {
-    type: DataTypes.STRING(12),
-    allowNull: true,
-    validate: { len: [12, 12] },
-  },
   status: {
     type: DataTypes.ENUM('approved', 'pending', 'rejected'),
-    defaultValue: 'pending',
-  },
-  seller_type: {
-    type: DataTypes.ENUM('individual', 'company'),
-    allowNull: true,
+    defaultValue: 'approved',
   },
   profile_picture: {
     type: DataTypes.STRING(255),

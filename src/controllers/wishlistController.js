@@ -7,7 +7,7 @@ exports.addToWishlist = catchAsync(async (req, res) => {
   const finalCarId = car_id || carId;
   const userId = req.user.id;
   const wishlist = await wishlistService.addToWishlist(userId, finalCarId);
-  res.status(201).json({ success: true, message: 'Added to wishlist', data: wishlist });
+  res.status(200).json({ success: true, message: 'Added to wishlist', data: wishlist });
 });
 
 exports.removeFromWishlist = catchAsync(async (req, res) => {

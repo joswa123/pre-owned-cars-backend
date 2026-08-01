@@ -19,7 +19,7 @@ exports.getVariant = catchAsync(async (req, res) => {
 exports.createVariant = catchAsync(async (req, res) => {
   const { name, model_id } = req.body;
   const newVariant = await variantService.createVariant({ name, model_id });
-  res.status(201).json({ success: true, data: newVariant });
+  res.status(200).json({ success: true, data: newVariant });
 });
 
 /**
@@ -37,7 +37,7 @@ exports.bulkCreateVariants = catchAsync(async (req, res) => {
 
   const result = await variantService.bulkCreateVariants(modelId, variants);
 
-  res.status(201).json({
+  res.status(200).json({
     success: true,
     message: `${result.created.length} variant(s) created, ${result.skipped.length} skipped (already existed)`,
     data: result,

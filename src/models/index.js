@@ -55,10 +55,10 @@ Otp.belongsTo(User, {
 });
 
 // ==========================================
-// CAR & DEALER / BUYER RELATIONSHIPS
+// CAR & USER / BUYER RELATIONSHIPS
 // ==========================================
-User.hasMany(Car, { foreignKey: 'dealer_id', as: 'postedCars' });
-Car.belongsTo(User, { foreignKey: 'dealer_id', as: 'dealer' });
+User.hasMany(Car, { foreignKey: 'user_id', as: 'postedCars' });
+Car.belongsTo(User, { foreignKey: 'user_id', as: 'seller' });
 
 User.hasMany(Car, { foreignKey: 'buyer_id', as: 'boughtCars' });
 Car.belongsTo(User, { foreignKey: 'buyer_id', as: 'buyer' });
