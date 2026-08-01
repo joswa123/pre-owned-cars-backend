@@ -2,6 +2,7 @@
   "brands": [
     {
       "name": "Maruti Suzuki",
+      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/maruti_suzuki.png",
       "models": [
         {
           "name": "Swift",
@@ -41,6 +42,7 @@
     },
     {
       "name": "Hyundai",
+      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/hyundai.png",
       "models": [
         {
           "name": "Creta",
@@ -77,6 +79,7 @@
     },
     {
       "name": "Tata Motors",
+      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/tata.png",
       "models": [
         {
           "name": "Nexon",
@@ -113,6 +116,7 @@
     },
     {
       "name": "Mahindra",
+      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/mahindra.png",
       "models": [
         {
           "name": "Thar",
@@ -147,6 +151,7 @@
     },
     {
       "name": "Toyota",
+      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/toyota.png",
       "models": [
         {
           "name": "Fortuner",
@@ -172,6 +177,7 @@
     },
     {
       "name": "Honda",
+      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/honda.png",
       "models": [
         {
           "name": "City",
@@ -196,6 +202,7 @@
     },
     {
       "name": "Kia",
+      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/kia.png",
       "models": [
         {
           "name": "Seltos",

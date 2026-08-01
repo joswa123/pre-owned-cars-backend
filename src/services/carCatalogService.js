@@ -37,13 +37,20 @@ exports.getAllBrands = async () => {
   if (cached) return cached;
 
   const brands = await Brand.findAll({
-    where: { is_active: true },
-    attributes: ['id', 'name', 'logo', 'logoUrl', 'created_at'],
+    attributes: ['id', 'name', 'logo', 'created_at'],
     order: [['name', 'ASC']],
   });
 
-  await setCache(cacheKey, brands, 900); // 15 mins
-  return brands;
+  const formattedBrands = brands.map((b) => ({
+    id: b.id,
+    name: b.name,
+    logo: b.logo,
+    logoUrl: b.logoUrl,
+    created_at: b.created_at,
+  }));
+
+  await setCache(cacheKey, formattedBrands, 900); // 15 mins
+  return formattedBrands;
 };
 
 /**
@@ -200,11 +207,17 @@ exports.syncCatalogData = async (brandsList) => {
   let updatedCount = 0;
 
   for (const bData of brandsList) {
+    const brandLogo = bData.logo || bData.logo_url || null;
     const [brand, brandCreated] = await Brand.findOrCreate({
       where: { name: bData.name },
-      defaults: { is_active: true },
+      defaults: { logo: brandLogo, is_active: true },
     });
-    if (brandCreated) createdCount++;
+    if (brandCreated) {
+      createdCount++;
+    } else if (brandLogo && brand.logo !== brandLogo) {
+      await brand.update({ logo: brandLogo });
+      updatedCount++;
+    }
 
     const modelsList = bData.models || [];
     for (const mData of modelsList) {
