@@ -1,19 +1,25 @@
 {
   "name": "pre-owned-cars-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
+  "description": "AutoDeal4U - Pre-Owned Cars Backend API",
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "db:init": "node scripts/db-init.js",
-    "vercel-build": "npm ci --omit=dev"
+    "db:migrate": "npx sequelize-cli db:migrate",
+    "catalog:seed": "node scripts/seed-car-catalog.js",
+    "vercel-build": "npm ci --omit=dev",
+    "render-build": "npm install --legacy-peer-deps && npx sequelize-cli db:migrate --env production && node scripts/seed-car-catalog.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.10.0",
@@ -29,10 +35,11 @@
     "multer": "^2.2.0",
     "multer-storage-cloudinary": "^4.0.0",
     "mysql": "^2.18.1",
-    "mysql2": "^3.22.6",
+    "mysql2": "^3.23.2",
     "node-cache": "^5.1.2",
     "nodemailer": "^9.0.3",
     "razorpay": "^2.9.8",
+    "redis": "^6.1.0",
     "sequelize": "^3.30.0",
     "winston": "^3.19.0"
   },

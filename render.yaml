@@ -1,0 +1,112 @@
+# render.yaml — Render Deployment Blueprint
+# ─────────────────────────────────────────────────────────────────────────────
+# This file tells Render how to deploy the AutoDeal4U backend.
+# Commit this file to your repo. Render reads it automatically.
+#
+# 📖 Docs: https://render.com/docs/blueprint-spec
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  - type: web                          # A web service (HTTP server)
+    name: autodeal4u-backend
+    runtime: node                      # Render uses Node.js directly (no Docker needed)
+    region: singapore                  # Choose the region closest to your users
+    plan: free                         # Use 'free' for now; upgrade to 'starter' for production
+
+    # ── Build & Start ────────────────────────────────────────────────────────
+    buildCommand: npm run render-build             # Installs deps & runs DB migrations automatically
+    startCommand: node src/server.js               # Explicit path — avoids Render path confusion
+
+    # ── Health Check ─────────────────────────────────────────────────────────
+    # Render pings this endpoint to know if your service is healthy.
+    # We added GET /health in server.js that returns 200 OK.
+    healthCheckPath: /health
+
+    # ── Auto-Deploy ──────────────────────────────────────────────────────────
+    # Render will auto-deploy every time you push to your main branch.
+    autoDeploy: true
+
+    # ── Environment Variables ─────────────────────────────────────────────────
+    # ⚠️  IMPORTANT: These are DEFAULTS only for non-secret values.
+    # For secrets (DB_PASSWORD, JWT_SECRET, etc.), set them manually in the
+    # Render Dashboard under: Environment → Add Environment Variable
+    # NEVER put real secrets in this file — it is committed to Git!
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 10000               # Render assigns port 10000 by default
+
+      # ── Database (Clever Cloud MySQL) ──────────────────────────────────────
+      # Set these in the Render Dashboard with your Clever Cloud credentials:
+      - key: DB_HOST
+        sync: false                # 'sync: false' means: prompt user to fill this in Render UI
+      - key: DB_PORT
+        value: 3306
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_DIALECT
+        value: mysql
+      - key: DB_SSL
+        value: "false"             # Set to "true" if your DB provider requires SSL
+
+      # ── JWT ───────────────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 20d
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+
+      # ── Redis (Upstash) ───────────────────────────────────────────────────
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: 6379
+      - key: REDIS_PASSWORD
+        sync: false
+
+      # ── Cloudinary (Image Uploads) ────────────────────────────────────────
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # ── Email (Mailjet SMTP) ──────────────────────────────────────────────
+      - key: SMTP_HOST
+        value: in-v3.mailjet.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+
+      # ── Razorpay ──────────────────────────────────────────────────────────
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+
+      # ── File Upload ───────────────────────────────────────────────────────
+      - key: MAX_FILE_SIZE
+        value: 5242880
+      - key: UPLOAD_DIR
+        value: uploads/
+
+      # ── Rate Limiting ─────────────────────────────────────────────────────
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX
+        value: 100

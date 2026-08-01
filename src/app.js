@@ -83,9 +83,26 @@ app.get('/api/debug/uploads', (req, res) => {
   });
 });
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
+// ─── Diagnostic Routes ───────────────────────────────────────────────────────
+// GET /health — Used by Render and Nginx to check if this instance is alive.
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date() });
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+  });
+});
+
+// GET /server-id — Shows which instance handled this request.
+// Hit this endpoint multiple times to verify load-balancing is working:
+// each replica will return a different pid / hostname.
+app.get('/server-id', (req, res) => {
+  res.status(200).json({
+    pid:      process.pid,          // unique per Node.js process
+    hostname: os.hostname(),        // unique per container / Render instance
+    env:      process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
@@ -102,6 +119,7 @@ app.use('/api/v1/transmissions', cacheMiddleware(300), require('./routes/v1/tran
 app.use('/api/v1/models', cacheMiddleware(300), require('./routes/v1/modelRoutes'));
 app.use('/api/v1/variants', cacheMiddleware(300), require('./routes/v1/variantRoutes'));
 app.use('/api/v1/car-types', cacheMiddleware(300), require('./routes/v1/carTypeRoutes'));
+app.use('/api/v1/catalog', require('./routes/v1/catalogRoutes'));
 app.use('/api/v1/wishlist', require('./routes/v1/wishlistRoutes'));
 app.use('/api/v1/leads', require('./routes/v1/leadRoutes'));
 app.use('/api/v1/subscriptions', require('./routes/v1/subscriptionRoutes'));

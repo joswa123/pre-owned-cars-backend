@@ -4,54 +4,76 @@ const jwt = require('jsonwebtoken');
 const { RefreshToken, User } = require('../models');
 
 /**
- * Register – returns OTP (in dev) and proceeds to OTP step
+ * Register User or Dealer with Profile and Location Resolution
  */
 exports.register = catchAsync(async (req, res) => {
   const result = await authService.registerUser(req.body);
 
   const isDev = process.env.NODE_ENV === 'development';
   const message = isDev
-    ? `✅ OTP sent (dev mode). Your OTP: ${result.otp}`
-    : 'OTP sent to your phone. Please verify.';
+    ? `✅ Registration successful. OTP sent (dev mode): ${result.otp}`
+    : 'Registration successful. OTP sent to your registered phone/email.';
 
-  res.status(200).json({ // ✅ 201 Created
+  res.status(200).json({
     status: 'success',
     message,
     data: {
       userId: result.userId,
       phone: result.phone,
+      email: result.email,
+      role: result.role,
+      profile: result.profile,
       ...(isDev && { otp: result.otp }),
     },
   });
 });
 
 /**
- * Verify OTP – marks user as verified and auto‑logs in
+ * Verify Endpoint (POST /api/v1/auth/verify)
+ * Verifies email/phone OTP code, activates user, returns JWT tokens and profile data.
+ */
+exports.verify = catchAsync(async (req, res) => {
+  const { user, accessToken, refreshToken } = await authService.verifyUser(req.body);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Account verified successfully. You are now logged in.',
+    data: {
+      user,
+      accessToken,
+      refreshToken,
+    },
+  });
+});
+
+/**
+ * Verify OTP Endpoint (POST /api/v1/auth/verify-otp)
+ * Kept for backward compatibility
  */
 exports.verifyOtp = catchAsync(async (req, res) => {
-  const { phone, otp } = req.body;
-
-  // ✅ All logic is in the service
-  const { user, token } = await authService.verifyOtp(phone, otp);
+  const { user, accessToken, refreshToken } = await authService.verifyUser(req.body);
 
   res.status(200).json({
     status: 'success',
     message: 'Phone verified successfully. You are now logged in.',
-    data: { user },
+    data: {
+      user,
+      accessToken,
+      refreshToken,
+    },
   });
 });
 
 /**
- * Resend OTP – for registration only
+ * Resend OTP Endpoint
  */
 exports.resendOtp = catchAsync(async (req, res) => {
-  const { phone } = req.body;
-  const result = await authService.resendOtp(phone);
+  const result = await authService.resendOtp(req.body);
 
   const isDev = process.env.NODE_ENV === 'development';
   const message = isDev
     ? `✅ OTP resent (dev mode). Your OTP: ${result.otp}`
-    : 'OTP resent successfully.';
+    : 'Verification code resent successfully.';
 
   res.status(200).json({
     status: 'success',
@@ -59,17 +81,18 @@ exports.resendOtp = catchAsync(async (req, res) => {
     data: {
       userId: result.userId,
       phone: result.phone,
+      email: result.email,
       ...(isDev && { otp: result.otp }),
     },
   });
 });
 
 /**
- * Login
+ * Login User or Dealer
  */
 exports.login = catchAsync(async (req, res) => {
-  const { phone, password } = req.body;
-  const result = await authService.loginUser(phone, password);
+  const { phone, email, password } = req.body;
+  const result = await authService.loginUser({ phone, email }, password);
 
   res.status(200).json({
     status: 'success',
@@ -83,16 +106,15 @@ exports.login = catchAsync(async (req, res) => {
 });
 
 /**
- * Forgot Password – Send OTP
+ * Forgot Password - Request OTP
  */
 exports.forgotPassword = catchAsync(async (req, res) => {
-  const { phone } = req.body;
-  const result = await authService.forgotPassword(phone);
+  const result = await authService.forgotPassword(req.body);
 
   const isDev = process.env.NODE_ENV === 'development';
   const message = isDev
     ? `✅ OTP sent (dev mode). Your OTP: ${result.otp}`
-    : 'OTP sent to your phone. Please check your SMS.';
+    : 'Reset code sent to your registered phone/email.';
 
   res.status(200).json({
     status: 'success',
@@ -100,44 +122,33 @@ exports.forgotPassword = catchAsync(async (req, res) => {
     data: {
       userId: result.userId,
       phone: result.phone,
+      email: result.email,
       ...(isDev && { otp: result.otp }),
     },
   });
 });
 
 /**
- * Reset Password – Verify OTP & Update Password
+ * Reset Password with OTP
  */
 exports.resetPassword = catchAsync(async (req, res) => {
-  const { phone, otp, newPassword } = req.body;
-  const result = await authService.resetPassword(phone, otp, newPassword);
+  const { phone, email, otp, newPassword } = req.body;
+  const result = await authService.resetPassword({ phone, email }, otp, newPassword);
+
   res.status(200).json({
     status: 'success',
     message: 'Password reset successfully. You can now login with your new password.',
     data: { userId: result.userId },
   });
 });
+
 /**
  * Refresh Access Token using Refresh Token
- *
- * Flow:
- * 1. Client sends refresh token
- * 2. Verify JWT signature
- * 3. Check token exists in DB and is not revoked
- * 4. Check token expiry
- * 5. Find user
- * 6. Revoke current refresh token (rotation)
- * 7. Generate new access token
- * 8. Generate new refresh token
- * 9. Save new refresh token in DB
- * 10. Return new token pair
  */
 exports.refreshToken = async (req, res, next) => {
   try {
-    // Extract refresh token from request body
     const { refreshToken } = req.body;
 
-    // Validate request
     if (!refreshToken) {
       return res.status(401).json({
         success: false,
@@ -146,19 +157,8 @@ exports.refreshToken = async (req, res, next) => {
     }
 
     let decoded;
-
     try {
-      /**
-       * Verify refresh token signature and expiry.
-       * Throws error if:
-       * - token is invalid
-       * - token is tampered
-       * - token is expired
-       */
-      decoded = jwt.verify(
-        refreshToken,
-        process.env.JWT_REFRESH_SECRET
-      );
+      decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     } catch (err) {
       return res.status(401).json({
         success: false,
@@ -166,15 +166,6 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    /**
-     * Check if refresh token exists in database
-     * and has not been revoked previously.
-     *
-     * This protects against:
-     * - token reuse attacks
-     * - logout tokens
-     * - stolen old tokens
-     */
     const storedToken = await RefreshToken.findOne({
       where: {
         token: refreshToken,
@@ -190,10 +181,6 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    /**
-     * Double-check database expiry.
-     * Useful even though JWT already contains expiry.
-     */
     if (new Date() > new Date(storedToken.expires_at)) {
       return res.status(401).json({
         success: false,
@@ -201,12 +188,7 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    /**
-     * Fetch current user.
-     * User may have been deleted or disabled.
-     */
     const user = await User.findByPk(decoded.id);
-
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -214,66 +196,25 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    /**
-     * Refresh Token Rotation
-     *
-     * Mark current refresh token as revoked.
-     * It can never be used again.
-     */
-    await storedToken.update({
-      is_revoked: true,
-    });
+    await storedToken.update({ is_revoked: true });
 
-    /**
-     * Generate new Access Token
-     *
-     * Used for API authorization.
-     * Usually short-lived.
-     */
     const newAccessToken = jwt.sign(
-      {
-        id: user.id,
-        role: user.role,
-      },
+      { id: user.id, role: user.role },
       process.env.JWT_SECRET,
-      {
-        expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-      }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
-    /**
-     * Generate new Refresh Token
-     *
-     * Used to obtain future access tokens.
-     * Usually longer-lived.
-     */
     const newRefreshToken = jwt.sign(
-      {
-        id: user.id,
-      },
+      { id: user.id },
       process.env.JWT_REFRESH_SECRET,
-      {
-        expiresIn:
-          process.env.JWT_REFRESH_EXPIRES_IN || '90d',
-      }
+      { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '90d' }
     );
 
-    /**
-     * Calculate refresh token expiry date
-     * for database storage.
-     */
     const expiresAt = new Date();
-
     expiresAt.setDate(
-      expiresAt.getDate() +
-        parseInt(
-          process.env.JWT_REFRESH_EXPIRES_IN || '90'
-        )
+      expiresAt.getDate() + parseInt(process.env.JWT_REFRESH_EXPIRES_IN || '90')
     );
 
-    /**
-     * Store newly generated refresh token.
-     */
     await RefreshToken.create({
       user_id: user.id,
       token: newRefreshToken,
@@ -281,19 +222,11 @@ exports.refreshToken = async (req, res, next) => {
       is_revoked: false,
     });
 
-    /**
-     * Return fresh token pair.
-     *
-     * Client should:
-     * - Replace old access token
-     * - Replace old refresh token
-     */
     return res.status(200).json({
       success: true,
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
     });
-
   } catch (error) {
     next(error);
   }

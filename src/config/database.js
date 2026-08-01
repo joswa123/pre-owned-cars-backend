@@ -1,5 +1,5 @@
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 // ─── POLYFILL Sequelize.Op for v3 compatibility ─────────────────────────────
 Sequelize.Op = {

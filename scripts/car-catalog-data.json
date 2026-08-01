@@ -1,0 +1,222 @@
+{
+  "brands": [
+    {
+      "name": "Maruti Suzuki",
+      "models": [
+        {
+          "name": "Swift",
+          "body_type": "Hatchback",
+          "start_year": 2005,
+          "variants": [
+            { "name": "LXi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "VXi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "ZXi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "ZXi Plus AMT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1197 },
+            { "name": "VXi CNG", "fuel_type": "CNG", "transmission": "Manual", "engine_cc": 1197 }
+          ]
+        },
+        {
+          "name": "Brezza",
+          "body_type": "SUV",
+          "start_year": 2016,
+          "variants": [
+            { "name": "LXi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1462 },
+            { "name": "VXi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1462 },
+            { "name": "ZXi AT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1462 },
+            { "name": "ZXi Plus Dual Tone", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1462 }
+          ]
+        },
+        {
+          "name": "Baleno",
+          "body_type": "Hatchback",
+          "start_year": 2015,
+          "variants": [
+            { "name": "Sigma", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "Delta", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "Zeta AMT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1197 },
+            { "name": "Alpha", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Hyundai",
+      "models": [
+        {
+          "name": "Creta",
+          "body_type": "SUV",
+          "start_year": 2015,
+          "variants": [
+            { "name": "EX 1.5 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1497 },
+            { "name": "S(O) 1.5 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1497 },
+            { "name": "SX Tech iVT", "fuel_type": "Petrol", "transmission": "CVT", "engine_cc": 1497 },
+            { "name": "SX(O) 1.5 Diesel AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1493 }
+          ]
+        },
+        {
+          "name": "i20",
+          "body_type": "Hatchback",
+          "start_year": 2008,
+          "variants": [
+            { "name": "Magna", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "Sportz", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "Asta (O) IVT", "fuel_type": "Petrol", "transmission": "CVT", "engine_cc": 1197 }
+          ]
+        },
+        {
+          "name": "Venue",
+          "body_type": "SUV",
+          "start_year": 2019,
+          "variants": [
+            { "name": "E 1.2 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "S Plus 1.2 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "SX 1.5 CRDi", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 1493 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tata Motors",
+      "models": [
+        {
+          "name": "Nexon",
+          "body_type": "SUV",
+          "start_year": 2017,
+          "variants": [
+            { "name": "Smart 1.2 Revotron", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1199 },
+            { "name": "Creative Plus AMT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1199 },
+            { "name": "Fearless Plus S Diesel", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 1497 },
+            { "name": "EV Empowered Plus", "fuel_type": "Electric", "transmission": "Automatic", "engine_cc": 0 }
+          ]
+        },
+        {
+          "name": "Punch",
+          "body_type": "SUV",
+          "start_year": 2021,
+          "variants": [
+            { "name": "Pure", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1199 },
+            { "name": "Adventure AMT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1199 },
+            { "name": "Accomplished Dazzle", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1199 }
+          ]
+        },
+        {
+          "name": "Harrier",
+          "body_type": "SUV",
+          "start_year": 2019,
+          "variants": [
+            { "name": "Smart", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 1956 },
+            { "name": "Pure Plus AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1956 },
+            { "name": "Fearless Dark Edition AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1956 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Mahindra",
+      "models": [
+        {
+          "name": "Thar",
+          "body_type": "SUV",
+          "start_year": 2010,
+          "variants": [
+            { "name": "LX Hard Top Diesel MT 4WD", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 2184 },
+            { "name": "LX Hard Top Petrol AT 4WD", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1997 },
+            { "name": "RWD Diesel MT", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 1497 }
+          ]
+        },
+        {
+          "name": "XUV700",
+          "body_type": "SUV",
+          "start_year": 2021,
+          "variants": [
+            { "name": "MX Petrol 5 STR", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1997 },
+            { "name": "AX5 Diesel 7 STR AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 2184 },
+            { "name": "AX7 Luxury Pack AWD AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 2184 }
+          ]
+        },
+        {
+          "name": "Scorpio-N",
+          "body_type": "SUV",
+          "start_year": 2022,
+          "variants": [
+            { "name": "Z4 Diesel MT 7 STR", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 2184 },
+            { "name": "Z8L Petrol AT 6 STR", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1997 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Toyota",
+      "models": [
+        {
+          "name": "Fortuner",
+          "body_type": "SUV",
+          "start_year": 2009,
+          "variants": [
+            { "name": "4x2 Petrol MT", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 2694 },
+            { "name": "4x4 Diesel AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 2755 },
+            { "name": "Legender 4x4 AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 2755 }
+          ]
+        },
+        {
+          "name": "Innova Crysta",
+          "body_type": "MUV",
+          "start_year": 2016,
+          "variants": [
+            { "name": "2.4 GX 7 STR", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 2393 },
+            { "name": "2.4 VX 7 STR", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 2393 },
+            { "name": "2.4 ZX 7 STR", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 2393 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Honda",
+      "models": [
+        {
+          "name": "City",
+          "body_type": "Sedan",
+          "start_year": 1998,
+          "variants": [
+            { "name": "V 1.5 i-VTEC", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1498 },
+            { "name": "VX CVT", "fuel_type": "Petrol", "transmission": "CVT", "engine_cc": 1498 },
+            { "name": "ZX e:HEV Hybrid", "fuel_type": "Hybrid", "transmission": "Automatic", "engine_cc": 1498 }
+          ]
+        },
+        {
+          "name": "Amaze",
+          "body_type": "Sedan",
+          "start_year": 2013,
+          "variants": [
+            { "name": "E 1.2 i-VTEC", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1199 },
+            { "name": "VX CVT", "fuel_type": "Petrol", "transmission": "CVT", "engine_cc": 1199 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Kia",
+      "models": [
+        {
+          "name": "Seltos",
+          "body_type": "SUV",
+          "start_year": 2019,
+          "variants": [
+            { "name": "HTE 1.5 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1497 },
+            { "name": "HTX 1.5 CRDi AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1493 },
+            { "name": "GTX Plus 1.5 Turbo DCT", "fuel_type": "Petrol", "transmission": "DCT", "engine_cc": 1482 }
+          ]
+        },
+        {
+          "name": "Sonet",
+          "body_type": "SUV",
+          "start_year": 2020,
+          "variants": [
+            { "name": "HTE 1.2 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "HTX 1.5 Diesel iMT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1493 }
+          ]
+        }
+      ]
+    }
+  ]
+}

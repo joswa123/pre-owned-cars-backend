@@ -1,76 +1,132 @@
-  const { DataTypes } = require('sequelize');
-  const sequelize = require('../config/database');
-  const User = require('./User');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
 
-  const Car = sequelize.define('Car', {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    dealer_id: {
-      type: DataTypes.UUID,
-      allowNull: false,
-      references: { model: User, key: 'id' },
-    },
-    brand: { type: DataTypes.STRING(50), allowNull: false },
-    model: { type: DataTypes.STRING(50), allowNull: false },
-    variant: { type: DataTypes.STRING(50), allowNull: false },
-    year: { type: DataTypes.INTEGER, allowNull: false, validate: { min: 1900, max: new Date().getFullYear() + 1 } },
-    purchase_date: { type: DataTypes.DATEONLY, allowNull: false },
-    number_plate: { type: DataTypes.STRING(20), allowNull: false },
-    price: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
-    exterior_colour: { type: DataTypes.STRING(30), allowNull: false },
-    interior_colour: { type: DataTypes.STRING(30), allowNull: false },
-    km_driven: { type: DataTypes.INTEGER, allowNull: false, validate: { min: 0 } },
-    fuel_type: { type: DataTypes.ENUM('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG'), allowNull: false },
-    transmission: { type: DataTypes.ENUM('Manual', 'Automatic', 'CVT', 'DCT'), allowNull: false },
-    ownership: { type: DataTypes.ENUM('1st Owner', '2nd Owner', '3rd Owner', '4th+ Owner'), allowNull: false },
-    price_negotiable: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    car_type: { type: DataTypes.STRING(50), allowNull: false },
-    state: { type: DataTypes.STRING(50), allowNull: false },
-    city: { type: DataTypes.STRING(50), allowNull: false },
-    description: { type: DataTypes.TEXT, allowNull: true },
-    status: {
-      type: DataTypes.ENUM('pending', 'active', 'inactive', 'sold'),
-      defaultValue: 'pending',
-      allowNull: false,
-    },
-    is_featured: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-      allowNull: false,
-    },
-    views: { type: DataTypes.INTEGER, defaultValue: 0 },
-    number_plate_color: {
-      type: DataTypes.ENUM('Own Board', 'T-Board', 'EV'),
-      allowNull: false,
-      defaultValue: 'Own Board',
-    },
-    insurance_type: {
-      type: DataTypes.ENUM('Comprehensive', 'Third Party', 'Not Insured'),
-      allowNull: false,
-      defaultValue: 'Not Insured',
-    },
-    appointment_required: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-  }, {
-    tableName: 'cars',
-    timestamps: true,
-    indexes: [
-      { fields: ['km_driven'] },
-      { fields: ['price'] },
-      { fields: ['status'] },
-      { fields: ['brand'] },
-      { fields: ['state', 'city'] }
-    ]
-  });
+/**
+ * Car Model
+ * Represents pre-owned car listings posted by customers or dealers.
+ * Includes posted_by_type (customer | dealer), b2b_listing flag, body_type, and board_type.
+ */
+const Car = sequelize.define('Car', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  user_id: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: { model: 'users', key: 'id' },
+    onDelete: 'CASCADE',
+    comment: 'ID of the user (customer or dealer) who posted this car listing',
+  },
+  buyer_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: { model: 'users', key: 'id' },
+    onDelete: 'SET NULL',
+    comment: 'Customer user ID who purchased this car',
+  },
+  brand: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+  },
+  model: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+  },
+  variant: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+  },
+  year: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: { min: 1900, max: new Date().getFullYear() + 1 },
+  },
+  price: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+  },
+  price_negotiable: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  km_driven: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: { min: 0 },
+  },
+  fuel_type: {
+    type: DataTypes.ENUM('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG'),
+    allowNull: false,
+  },
+  transmission: {
+    type: DataTypes.ENUM('Manual', 'Automatic', 'CVT', 'DCT'),
+    allowNull: false,
+  },
+  ownership: {
+    type: DataTypes.ENUM('1st Owner', '2nd Owner', '3rd Owner', '4th+ Owner'),
+    allowNull: false,
+  },
+  body_type: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    comment: 'Car body type: SUV, Sedan, Hatchback, MUV, Coupe, etc.',
+  },
+  board_type: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    comment: 'Board / registration type: White, Yellow, Green, etc.',
+  },
+  insurance_expiry_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  insurance_type: {
+    type: DataTypes.ENUM('Comprehensive', 'Third Party', 'Not Insured'),
+    allowNull: false,
+    defaultValue: 'Not Insured',
+  },
+  b2b_listing: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'True if listing is dealer-to-dealer (B2B)',
+  },
+  posted_by_type: {
+    type: DataTypes.ENUM('customer', 'dealer'),
+    allowNull: false,
+    comment: 'Role of the seller who posted the car (customer or dealer)',
+  },
+  is_available: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+  },
+  engine_cc: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+}, {
+  tableName: 'cars',
+  timestamps: true,
+  underscored: true,
+  indexes: [
+    { fields: ['user_id'] },
+    { fields: ['buyer_id'] },
+    { fields: ['posted_by_type'] },
+    { fields: ['b2b_listing'] },
+    { fields: ['is_available'] },
+    { fields: ['brand'] },
+    { fields: ['price'] },
+    { fields: ['km_driven'] },
+    { fields: ['body_type'] },
+  ],
+});
 
-  module.exports = Car;
+module.exports = Car;

@@ -1,5 +1,5 @@
 const dotenv = require('dotenv');
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = require('./app');
 const sequelize = require('./config/database');
@@ -16,11 +16,15 @@ const PORT = process.env.PORT || 5000;
 
     // 2. Sync schema — never alter/force in production
     logger.info('⏳ Syncing database schema...');
-    const isDev = process.env.NODE_ENV === 'development';
-    await sequelize.sync(isDev ? { alter: true } : {});
-    logger.info('✅ Database schema synced');
+    try {
+      const isDev = process.env.NODE_ENV === 'development';
+      await sequelize.sync(isDev ? { alter: true } : {});
+      logger.info('✅ Database schema synced');
+    } catch (syncErr) {
+      logger.warn('⚠️  Database sync warning (safe to ignore in clustered setup):', syncErr.message);
+    }
 
-    // 3. Seed data — only in development; skipped on Render/production
+    // 3. Seed data
     if (process.env.NODE_ENV === 'development') {
       try {
         const seedAdmin = require('./utils/admin');
@@ -28,18 +32,34 @@ const PORT = process.env.PORT || 5000;
       } catch (seedErr) {
         logger.warn('⚠️  Admin seed failed (non-fatal):', seedErr.message);
       }
-
-      try {
-        const seedLocations = require('./utils/seedLocations');
-        await seedLocations();
-      } catch (seedErr) {
-        logger.warn('⚠️  Location seed failed (non-fatal):', seedErr.message);
-      }
     }
 
+    // Seed location reference data (states, districts, cities) if empty
+    try {
+      const seedLocations = require('./utils/seedLocations');
+      await seedLocations();
+    } catch (seedErr) {
+      logger.warn('⚠️  Location seed failed (non-fatal):', seedErr.message);
+    }
+
+    // Seed vehicle catalog reference data (brands, models, variants)
+    try {
+      const carCatalogService = require('./services/carCatalogService');
+      const carData = require('../scripts/car-catalog-data.json');
+      await carCatalogService.syncCatalogData(carData.brands);
+      logger.info('✅ Vehicle catalog reference data (brands, models, variants) verified and seeded');
+    } catch (catalogErr) {
+      logger.warn('⚠️  Vehicle catalog seed failed (non-fatal):', catalogErr.message);
+    }
+    // 3.5 Connect to Redis
+    const redisClient = require('./config/redis');
+    await redisClient.connect();
+
     // 4. Start HTTP server
-    app.listen(PORT, () => {
+    // Bind to 0.0.0.0 to accept connections from Docker network / Render
+    app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+      logger.info(`🆔 Process ID: ${process.pid}`);
     });
 
   } catch (err) {
