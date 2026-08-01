@@ -47,7 +47,7 @@ const registerSchema = Joi.object({
   license_no: Joi.string().max(100).optional().allow('', null),
   contact_person: Joi.string().max(100).optional().allow('', null),
   seller_type: Joi.string().valid('individual', 'company', 'private', 'dealer').optional().allow('', null),
-});
+}).unknown(true);
 
 /**
  * Validation schema for email/phone verification endpoint

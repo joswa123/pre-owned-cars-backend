@@ -1,5 +1,5 @@
 const dotenv = require('dotenv');
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = require('./app');
 const sequelize = require('./config/database');
