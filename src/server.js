@@ -41,6 +41,16 @@ const PORT = process.env.PORT || 5000;
     } catch (seedErr) {
       logger.warn('⚠️  Location seed failed (non-fatal):', seedErr.message);
     }
+
+    // Seed vehicle catalog reference data (brands, models, variants)
+    try {
+      const carCatalogService = require('./services/carCatalogService');
+      const carData = require('../scripts/car-catalog-data.json');
+      await carCatalogService.syncCatalogData(carData.brands);
+      logger.info('✅ Vehicle catalog reference data (brands, models, variants) verified and seeded');
+    } catch (catalogErr) {
+      logger.warn('⚠️  Vehicle catalog seed failed (non-fatal):', catalogErr.message);
+    }
     // 3.5 Connect to Redis
     const redisClient = require('./config/redis');
     await redisClient.connect();
