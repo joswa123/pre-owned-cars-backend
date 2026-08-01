@@ -32,7 +32,7 @@ const setCache = async (key, data, ttlSeconds = 600) => {
  * Get all active vehicle brands (cached 15 mins)
  */
 exports.getAllBrands = async () => {
-  const cacheKey = 'catalog:brands:all';
+  const cacheKey = 'catalog:brands:v3';
   const cached = await getCache(cacheKey);
   if (cached) return cached;
 
@@ -267,6 +267,18 @@ exports.syncCatalogData = async (brandsList) => {
         }
       }
     }
+  }
+
+  // Invalidate Redis brand and catalog caches after sync
+  try {
+    const { clearCache } = require('../middlewares/cacheMiddleware');
+    await clearCache('/api/v1/brands');
+    await clearCache('/api/v1/catalog');
+    if (redisClient && redisClient.isOpen) {
+      await redisClient.del('catalog:brands:all');
+    }
+  } catch (err) {
+    console.warn(`[Redis Cache Del Warning] ${err.message}`);
   }
 
   return { createdCount, updatedCount };

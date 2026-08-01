@@ -2,7 +2,7 @@
   "brands": [
     {
       "name": "Maruti Suzuki",
-      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/maruti_suzuki.png",
+      "logo": "https://www.carlogos.org/car-logos/suzuki-logo.png",
       "models": [
         {
           "name": "Swift",
@@ -42,7 +42,7 @@
     },
     {
       "name": "Hyundai",
-      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/hyundai.png",
+      "logo": "https://www.carlogos.org/car-logos/hyundai-logo.png",
       "models": [
         {
           "name": "Creta",
@@ -79,7 +79,7 @@
     },
     {
       "name": "Tata Motors",
-      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/tata.png",
+      "logo": "https://www.carlogos.org/car-logos/tata-logo.png",
       "models": [
         {
           "name": "Nexon",
@@ -116,7 +116,7 @@
     },
     {
       "name": "Mahindra",
-      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/mahindra.png",
+      "logo": "https://www.carlogos.org/car-logos/mahindra-logo.png",
       "models": [
         {
           "name": "Thar",
@@ -151,7 +151,7 @@
     },
     {
       "name": "Toyota",
-      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/toyota.png",
+      "logo": "https://www.carlogos.org/car-logos/toyota-logo.png",
       "models": [
         {
           "name": "Fortuner",
@@ -177,7 +177,7 @@
     },
     {
       "name": "Honda",
-      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/honda.png",
+      "logo": "https://www.carlogos.org/car-logos/honda-logo.png",
       "models": [
         {
           "name": "City",
@@ -202,7 +202,7 @@
     },
     {
       "name": "Kia",
-      "logo": "https://res.cloudinary.com/fub1whjx/image/upload/v1710000000/brands/kia.png",
+      "logo": "https://www.carlogos.org/car-logos/kia-logo.png",
       "models": [
         {
           "name": "Seltos",
@@ -224,6 +224,22 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Audi",
+      "logo": "https://www.carlogos.org/car-logos/audi-logo.png"
+    },
+    {
+      "name": "BMW",
+      "logo": "https://www.carlogos.org/car-logos/bmw-logo.png"
+    },
+    {
+      "name": "jaguar",
+      "logo": "https://www.carlogos.org/car-logos/jaguar-logo.png"
+    },
+    {
+      "name": "Volkswagen",
+      "logo": "https://www.carlogos.org/car-logos/volkswagen-logo.png"
     }
   ]
 }

@@ -46,8 +46,8 @@ const PORT = process.env.PORT || 5000;
     try {
       const carCatalogService = require('./services/carCatalogService');
       const carData = require('../scripts/car-catalog-data.json');
-      await carCatalogService.syncCatalogData(carData.brands);
-      logger.info('✅ Vehicle catalog reference data (brands, models, variants) verified and seeded');
+      const syncResult = await carCatalogService.syncCatalogData(carData.brands);
+      logger.info(`✅ Vehicle catalog reference data verified and seeded (${syncResult.createdCount} created, ${syncResult.updatedCount} updated)`);
     } catch (catalogErr) {
       logger.warn('⚠️  Vehicle catalog seed failed (non-fatal):', catalogErr.message);
     }
