@@ -1,14 +1,24 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Otp,RefreshToken } = require('../models');
+const {
+  User,
+  CustomerProfile,
+  DealerProfile,
+  Otp,
+  RefreshToken,
+  State,
+  District,
+  City,
+  Car,
+} = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { generateOtp, sendOtpViaSms } = require('../utils/otpgenerator');
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const sequelize = require('../config/database');
 
-
-// Helper: generate tokens
-
+/**
+ * Helper: Generate Access and Refresh JWT Tokens
+ */
 const generateTokens = async (user) => {
   const accessToken = jwt.sign(
     { id: user.id, role: user.role },
@@ -22,13 +32,12 @@ const generateTokens = async (user) => {
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '90d' }
   );
 
-  // Calculate expiry date for DB
   const expiresAt = new Date();
   expiresAt.setDate(
     expiresAt.getDate() + parseInt(process.env.JWT_REFRESH_EXPIRES_IN || '90')
   );
 
-  // Store refresh token in DB (revoke any old ones later)
+  // Store active refresh token in database
   await RefreshToken.create({
     user_id: user.id,
     token: refreshToken,
@@ -39,111 +48,301 @@ const generateTokens = async (user) => {
 };
 
 /**
- * Register a new user, send OTP for verification
+ * Helper: Resolve Location Hierarchy (State -> District -> City)
+ * Accepts either IDs or case-insensitive Names.
+ * Throws 400 error if a requested location is not found.
+ */
+const resolveLocation = async ({ state_id, district_id, city_id, state, district, city }) => {
+  let resolvedState = null;
+  let resolvedDistrict = null;
+  let resolvedCity = null;
+
+  // 1. Resolve City (by ID or Name)
+  if (city_id) {
+    resolvedCity = await City.findByPk(city_id, {
+      include: [
+        { model: District, as: 'district' },
+        { model: State, as: 'state' },
+      ],
+    });
+    if (!resolvedCity) {
+      throw new AppError(`City with ID '${city_id}' not found.`, 400);
+    }
+  } else if (city) {
+    // Case-insensitive lookup using LOWER(name)
+    resolvedCity = await City.findOne({
+      where: sequelize.where(fn('LOWER', col('City.name')), city.trim().toLowerCase()),
+      include: [
+        { model: District, as: 'district' },
+        { model: State, as: 'state' },
+      ],
+    });
+    if (!resolvedCity) {
+      throw new AppError(`City '${city}' not found in database.`, 400);
+    }
+  }
+
+  // If City was resolved, extract its District and State parent links
+  if (resolvedCity) {
+    city_id = resolvedCity.id;
+    district_id = district_id || resolvedCity.district_id;
+    state_id = state_id || resolvedCity.state_id;
+  }
+
+  // 2. Resolve District if not set by city
+  if (!district_id && district) {
+    resolvedDistrict = await District.findOne({
+      where: sequelize.where(fn('LOWER', col('District.name')), district.trim().toLowerCase()),
+    });
+    if (resolvedDistrict) {
+      district_id = resolvedDistrict.id;
+      state_id = state_id || resolvedDistrict.state_id;
+    }
+  }
+
+  // 3. Resolve State if not set
+  if (!state_id && state) {
+    resolvedState = await State.findOne({
+      where: sequelize.where(fn('LOWER', col('State.name')), state.trim().toLowerCase()),
+    });
+    if (resolvedState) {
+      state_id = resolvedState.id;
+    }
+  }
+
+  return {
+    state_id: state_id || null,
+    district_id: district_id || null,
+    city_id: city_id || null,
+    cityName: resolvedCity ? resolvedCity.name : city || null,
+    stateName: resolvedState ? resolvedState.name : state || null,
+  };
+};
+
+/**
+ * Register User or Dealer using Managed Database Transaction
  */
 exports.registerUser = async (userData) => {
-  const { full_name, phone, password, role } = userData;
+  const {
+    full_name,
+    phone,
+    email,
+    password,
+    role = 'customer',
+    pincode,
+    address,
+    // Dealer-specific fields
+    company_name,
+    door_no,
+    building_name,
+    street_name,
+    gst_no,
+    license_no,
+    contact_person,
+  } = userData;
 
-  // Check if phone already registered
-  const existingUser = await User.findOne({ where: { phone } });
-   if (existingUser) {
-    throw new AppError('Phone number already registered. Please login.', 200);
+  // Check phone uniqueness
+  const existingPhone = await User.findOne({ where: { phone } });
+  if (existingPhone) {
+    throw new AppError('Phone number already registered. Please login.', 400);
   }
-  // Hash password
+
+  // Check email uniqueness if email provided
+  if (email) {
+    const existingEmail = await User.findOne({ where: { email } });
+    if (existingEmail) {
+      throw new AppError('Email address already registered. Please login.', 400);
+    }
+  }
+
+  // Resolve location IDs and names
+  const location = await resolveLocation(userData);
+
+  // Hash password using bcrypt salt 12
   const saltRounds = 12;
   const passwordHash = await bcrypt.hash(password, saltRounds);
 
-  // Create user (unverified)
-  const user = await User.create({
-    full_name,
-    phone,
-    password_hash: passwordHash,
-    role: role || 'buyer',
-    is_verified: false,
-  });
+  // Execute User and Profile creation within an Atomic Database Transaction
+  const transaction = await sequelize.transaction();
 
-  // Generate and store OTP
-  const otp = generateOtp();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+  try {
+    // 1. Create Core User
+    const user = await User.create(
+      {
+        full_name,
+        phone,
+        email: email || null,
+        password_hash: passwordHash,
+        role,
+        is_verified: false,
+        state_id: location.state_id,
+        district_id: location.district_id,
+        city_id: location.city_id,
+        city: location.cityName,
+        state: location.stateName,
+        pincode: pincode || (userData.role === 'dealer' ? userData.pincode : null),
+        address: address || null,
+        seller_type: role === 'dealer' ? 'company' : 'individual',
+      },
+      { transaction }
+    );
 
-  // Delete any existing OTP for this user
-  await Otp.destroy({ where: { user_id: user.id } });
+    // 2. Create Role-Specific Profile (CustomerProfile or DealerProfile)
+    let profileData = null;
+    if (role === 'dealer') {
+      const dealerProfile = await DealerProfile.create(
+        {
+          user_id: user.id,
+          company_name,
+          door_no,
+          building_name,
+          street_name,
+          pincode: pincode || userData.pincode,
+          gst_no: gst_no || null,
+          license_no: license_no || null,
+          contact_person: contact_person || null,
+          verified: false,
+        },
+        { transaction }
+      );
+      profileData = dealerProfile.toJSON();
+    } else {
+      const customerProfile = await CustomerProfile.create(
+        {
+          user_id: user.id,
+          preferences: null,
+        },
+        { transaction }
+      );
+      profileData = customerProfile.toJSON();
+    }
 
-  // Store OTP (only user_id, otp, expires_at – phone is not needed)
-  await Otp.create({
-    user_id: user.id,
-    phone: user.phone,
-    otp,
-    expires_at: expiresAt,
-  });
+    // 3. Generate and store OTP code
+    const otp = generateOtp();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes validity
 
-  // Send OTP via SMS (mock – logs to console in dev)
-  await sendOtpViaSms(phone, otp);
+    await Otp.destroy({ where: { user_id: user.id }, transaction });
+    await Otp.create(
+      {
+        user_id: user.id,
+        otp,
+        type: 'register',
+        expires_at: expiresAt,
+      },
+      { transaction }
+    );
 
-  // Prepare base response
-  const response = { userId: user.id, phone };
+    // Commit Transaction
+    await transaction.commit();
 
-  // ✅ In development, include the OTP so you can test without SMS
-  if (process.env.NODE_ENV === 'development') {
-    response.otp = otp;
+    // Send OTP via SMS
+    await sendOtpViaSms(phone, otp);
+
+    const response = {
+      userId: user.id,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      profile: profileData,
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+      response.otp = otp;
+    }
+
+    return response;
+  } catch (error) {
+    // Rollback Transaction on error
+    await transaction.rollback();
+    throw error;
+  }
+};
+
+/**
+ * Verify OTP / Code and Activate User with JWT Generation
+ */
+exports.verifyUser = async ({ phone, email, code, otp }) => {
+  const inputCode = code || otp;
+  if (!inputCode) {
+    throw new AppError('Verification code is required.', 400);
   }
 
-  return response;
-};
+  // Find user by phone or email
+  const whereClause = {};
+  if (phone) whereClause.phone = phone;
+  else if (email) whereClause.email = email;
 
-/**
- * Verify OTP and activate the user
- */
-/**
- * Verify OTP for registration and auto‑login
- */
-exports.verifyOtp = async (phone, otp) => {
-  // Find user with OTP relation
   const user = await User.findOne({
-    where: { phone },
-    include: [{ model: Otp, as: 'otpRecord' }],
+    where: whereClause,
+    include: [
+      { model: Otp, as: 'otpRecord' },
+      { model: CustomerProfile, as: 'customerProfile' },
+      { model: DealerProfile, as: 'dealerProfile' },
+    ],
   });
 
-  if (!user) throw new AppError('User not found.', 404);
-  if (user.is_verified) throw new AppError('User already verified.', 400);
+  if (!user) {
+    throw new AppError('User not found.', 404);
+  }
 
   const otpRecord = user.otpRecord;
-  if (!otpRecord) throw new AppError('No OTP requested. Please register again.', 400);
-  if (new Date() > new Date(otpRecord.expires_at))
-    throw new AppError('OTP has expired. Please request a new one.', 400);
-  if (otpRecord.otp !== otp) throw new AppError('Invalid OTP.', 400);
+  if (!otpRecord) {
+    throw new AppError('No verification code requested or already verified.', 400);
+  }
 
-  // Mark as verified
+  if (new Date() > new Date(otpRecord.expires_at)) {
+    throw new AppError('Verification code has expired. Please request a new one.', 400);
+  }
+
+  if (otpRecord.otp !== inputCode) {
+    throw new AppError('Invalid verification code.', 400);
+  }
+
+  // Mark user as verified
   await user.update({ is_verified: true });
 
-  // Delete used OTP
+  // Delete used OTP record
   await Otp.destroy({ where: { id: otpRecord.id } });
 
+  // Generate Access and Refresh JWT Tokens
+  const tokens = await generateTokens(user);
 
-  // Remove sensitive data
+  // Format user response data
   const userData = user.toJSON();
   delete userData.password_hash;
+  delete userData.otpRecord;
 
-  return { user: userData};
+  return { user: userData, ...tokens };
 };
 
 /**
- * Resend OTP to the user
+ * Resend Verification OTP
  */
-exports.resendOtp = async (phone) => {
-  const user = await User.findOne({ where: { phone } });
+exports.resendOtp = async ({ phone, email }) => {
+  const whereClause = {};
+  if (phone) whereClause.phone = phone;
+  else if (email) whereClause.email = email;
+
+  const user = await User.findOne({ where: whereClause });
   if (!user) throw new AppError('User not found.', 404);
-  if (user.is_verified) throw new AppError('User already verified.', 400);
+  if (user.is_verified) throw new AppError('User is already verified.', 400);
 
   const otp = generateOtp();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
   await Otp.destroy({ where: { user_id: user.id, type: 'register' } });
-  await Otp.create({ user_id: user.id, otp, type: 'register', expires_at: expiresAt });
+  await Otp.create({
+    user_id: user.id,
+    otp,
+    type: 'register',
+    expires_at: expiresAt,
+  });
 
-  await sendOtpViaSms(phone, otp);
+  if (user.phone) {
+    await sendOtpViaSms(user.phone, otp);
+  }
 
-  const response = { userId: user.id, phone };
+  const response = { userId: user.id, phone: user.phone, email: user.email };
   if (process.env.NODE_ENV === 'development') {
     response.otp = otp;
   }
@@ -151,65 +350,84 @@ exports.resendOtp = async (phone) => {
 };
 
 /**
- * Login user with phone and password
+ * Login User / Dealer with Phone or Email and Password
+ * Returns JWT tokens and eager-loaded Profile with Car activity metrics.
  */
-exports.loginUser = async (phone, password) => {
+exports.loginUser = async ({ phone, email }, password) => {
+  const whereClause = {};
+  if (phone) whereClause.phone = phone;
+  else if (email) whereClause.email = email;
+
   const user = await User.findOne({
-    where: { phone },
+    where: whereClause,
     attributes: { include: ['password_hash'] },
+    include: [
+      { model: CustomerProfile, as: 'customerProfile' },
+      { model: DealerProfile, as: 'dealerProfile' },
+      { model: City, as: 'cityDetail' },
+      { model: District, as: 'districtDetail' },
+      { model: State, as: 'stateDetail' },
+    ],
   });
 
   if (!user) {
-    throw new AppError('Invalid phone or password.', 401);
-  }
-
-  if (!user.is_verified) {
-    throw new AppError('Please verify your phone number first.', 401);
+    throw new AppError('Invalid credentials.', 401);
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.password_hash);
   if (!isPasswordValid) {
-    throw new AppError('Invalid phone or password.', 401);
+    throw new AppError('Invalid credentials.', 401);
   }
 
- // 4. Update last login
+  if (!user.is_verified) {
+    throw new AppError('Account is not verified. Please verify your phone/email first.', 401);
+  }
+
+  // Update last login timestamp
   await user.update({ last_login: new Date() });
 
-  // 5. Revoke all previous refresh tokens (rotation)
+  // Revoke old refresh tokens
   await RefreshToken.update(
     { is_revoked: true },
     { where: { user_id: user.id, is_revoked: false } }
   );
 
-  // 6. Generate new tokens
+  // Generate new token pair
   const tokens = await generateTokens(user);
 
-  // 7. Remove sensitive fields
+  // Fetch Car metrics for scalability
+  let activityMetrics = {};
+  if (user.role === 'dealer') {
+    const activeCarsCount = await Car.count({ where: { dealer_id: user.id, status: 'active' } });
+    const soldCarsCount = await Car.count({ where: { dealer_id: user.id, status: 'sold' } });
+    activityMetrics = { active_cars_count: activeCarsCount, sold_cars_count: soldCarsCount };
+  } else if (user.role === 'customer') {
+    const boughtCarsCount = await Car.count({ where: { buyer_id: user.id, status: 'sold' } });
+    activityMetrics = { bought_cars_count: boughtCarsCount };
+  }
+
   const userData = user.toJSON();
   delete userData.password_hash;
+  userData.activity_metrics = activityMetrics;
 
-  // 8. Return user + tokens
   return { user: userData, ...tokens };
 };
 
 /**
- * FORGOT PASSWORD – Send OTP to user's phone
- * @param {string} phone - 10-digit phone number
- * @returns {object} { userId, phone, otp (only in dev) }
+ * Forgot Password - Generate OTP
  */
-exports.forgotPassword = async (phone) => {
-  const user = await User.findOne({ where: { phone } });
-  if (!user) {
-    throw new AppError('User not found with this phone number.', 404);
-  }
+exports.forgotPassword = async ({ phone, email }) => {
+  const whereClause = {};
+  if (phone) whereClause.phone = phone;
+  else if (email) whereClause.email = email;
+
+  const user = await User.findOne({ where: whereClause });
+  if (!user) throw new AppError('User not found.', 404);
 
   const otp = generateOtp();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-  await Otp.destroy({
-    where: { user_id: user.id, type: 'reset_password' },
-  });
-
+  await Otp.destroy({ where: { user_id: user.id, type: 'reset_password' } });
   await Otp.create({
     user_id: user.id,
     otp,
@@ -217,31 +435,28 @@ exports.forgotPassword = async (phone) => {
     expires_at: expiresAt,
   });
 
-  await sendOtpViaSms(phone, otp);
+  if (user.phone) {
+    await sendOtpViaSms(user.phone, otp);
+  }
 
-  const response = { userId: user.id, phone };
+  const response = { userId: user.id, phone: user.phone, email: user.email };
   if (process.env.NODE_ENV === 'development') {
     response.otp = otp;
   }
   return response;
 };
 
-
 /**
- * RESET PASSWORD – Verify OTP and update password
- * @param {string} phone - 10-digit phone number
- * @param {string} otp - 6-digit OTP
- * @param {string} newPassword - new password (min 6 chars)
- * @returns {object} { userId }
+ * Reset Password with OTP
  */
-exports.resetPassword = async (phone, otp, newPassword) => {
-  // 1. Find user
-  const user = await User.findOne({ where: { phone } });
-  if (!user) {
-    throw new AppError('User not found.', 404);
-  }
+exports.resetPassword = async ({ phone, email }, otp, newPassword) => {
+  const whereClause = {};
+  if (phone) whereClause.phone = phone;
+  else if (email) whereClause.email = email;
 
-  // 2. Find the reset OTP record
+  const user = await User.findOne({ where: whereClause });
+  if (!user) throw new AppError('User not found.', 404);
+
   const otpRecord = await Otp.findOne({
     where: {
       user_id: user.id,
@@ -251,22 +466,17 @@ exports.resetPassword = async (phone, otp, newPassword) => {
   });
 
   if (!otpRecord) {
-    throw new AppError('Invalid or expired OTP.', 400);
+    throw new AppError('Invalid or expired reset code.', 400);
   }
 
-  // 3. Check expiry
   if (new Date() > new Date(otpRecord.expires_at)) {
-    throw new AppError('OTP has expired. Please request a new one.', 400);
+    throw new AppError('Reset code has expired. Please request a new one.', 400);
   }
 
-  // 4. Hash the new password
   const saltRounds = 12;
   const passwordHash = await bcrypt.hash(newPassword, saltRounds);
 
-  // 5. Update user password
   await user.update({ password_hash: passwordHash, is_verified: true });
-
-  // 6. Delete the used OTP
   await Otp.destroy({ where: { id: otpRecord.id } });
 
   return { userId: user.id };

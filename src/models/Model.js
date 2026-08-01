@@ -1,6 +1,10 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
+/**
+ * Model Model
+ * Stores vehicle models under a Brand (e.g. Swift, Creta, Nexon).
+ */
 const Model = sequelize.define('Model', {
   id: {
     type: DataTypes.UUID,
@@ -19,10 +23,36 @@ const Model = sequelize.define('Model', {
       model: 'brands',
       key: 'id',
     },
+    onDelete: 'CASCADE',
+  },
+  body_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    comment: 'SUV, Sedan, Hatchback, MUV, etc.',
+  },
+  start_year: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  end_year: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+    comment: 'Soft deletion / active status flag',
   },
 }, {
   tableName: 'models',
   timestamps: true,
+  underscored: true,
+  indexes: [
+    { unique: true, fields: ['brand_id', 'name'] },
+    { fields: ['name'] },
+    { fields: ['is_active'] },
+  ],
 });
 
 module.exports = Model;
