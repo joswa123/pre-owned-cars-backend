@@ -9,7 +9,7 @@ const { RefreshToken, User } = require('../models');
 exports.register = catchAsync(async (req, res) => {
   const result = await authService.registerUser(req.body);
 
-  const isDev = process.env.NODE_ENV === 'development';
+  const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
   const message = isDev
     ? `✅ Registration successful. OTP sent (dev mode): ${result.otp}`
     : 'Registration successful. OTP sent to your registered phone/email.';
@@ -70,7 +70,7 @@ exports.verifyOtp = catchAsync(async (req, res) => {
 exports.resendOtp = catchAsync(async (req, res) => {
   const result = await authService.resendOtp(req.body);
 
-  const isDev = process.env.NODE_ENV === 'development';
+  const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
   const message = isDev
     ? `✅ OTP resent (dev mode). Your OTP: ${result.otp}`
     : 'Verification code resent successfully.';

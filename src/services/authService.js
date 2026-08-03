@@ -246,7 +246,7 @@ exports.registerUser = async (userData) => {
       profile: profileData,
     };
 
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
       response.otp = otp;
     }
 

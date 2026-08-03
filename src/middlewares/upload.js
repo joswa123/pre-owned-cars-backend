@@ -33,17 +33,35 @@ const fileFilter = (req, file, cb) => {
  * @returns {multer.Multer}
  */
 function createUpload(folderName) {
-  const storage = new CloudinaryStorage({
-    cloudinary,
-    params: {
-      folder: folderName,
-      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-      public_id: (req, file) => {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        return `${folderName}-${unique}`;
-      },
-    },
-  });
+  const fs = require('fs');
+  const isTestOrNoSecret = process.env.NODE_ENV === 'test' || !process.env.CLOUDINARY_API_SECRET;
+
+  const storage = isTestOrNoSecret
+    ? multer.diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = path.join(__dirname, '..', '..', 'uploads', folderName);
+          if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = path.extname(file.originalname) || '.png';
+          cb(null, `${folderName}-${unique}${ext}`);
+        },
+      })
+    : new CloudinaryStorage({
+        cloudinary,
+        params: {
+          folder: folderName,
+          allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+          public_id: (req, file) => {
+            const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+            return `${folderName}-${unique}`;
+          },
+        },
+      });
 
   return multer({
     storage,

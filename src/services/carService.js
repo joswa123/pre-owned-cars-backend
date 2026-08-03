@@ -1,4 +1,4 @@
-const { Car, CarImage, User, Wishlist } = require('../models');
+const { Car, CarImage, User, Wishlist, Lead } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -82,11 +82,13 @@ exports.createCar = async (userId, carData, files) => {
 
     const car = await Car.create(carFields, { transaction });
 
+    const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
+
     const imageRecords = [];
     if (files && files.primary_image && files.primary_image[0]) {
       imageRecords.push({
         car_id: car.id,
-        image_url: files.primary_image[0].path,
+        image_url: getFileUrl(files.primary_image[0]),
         is_primary: true,
       });
     }
@@ -95,7 +97,7 @@ exports.createCar = async (userId, carData, files) => {
     secondaryFiles.forEach((file) => {
       imageRecords.push({
         car_id: car.id,
-        image_url: file.path,
+        image_url: getFileUrl(file),
         is_primary: false,
       });
     });
@@ -115,6 +117,7 @@ exports.createCar = async (userId, carData, files) => {
 
     return createdCar;
   } catch (error) {
+    console.error('❌ CREATE CAR SERVICE ERROR:', error);
     await transaction.rollback();
     throw error;
   }

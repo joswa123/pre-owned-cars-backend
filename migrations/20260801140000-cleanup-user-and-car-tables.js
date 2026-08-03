@@ -16,6 +16,9 @@ module.exports = {
 
     // Modify role ENUM to strictly ['customer', 'dealer', 'admin']
     if (userTableDescription.role) {
+      await queryInterface.sequelize.query(
+        `UPDATE users SET role = 'customer' WHERE role NOT IN ('customer', 'dealer', 'admin') OR role IS NULL;`
+      );
       await queryInterface.changeColumn('users', 'role', {
         type: Sequelize.ENUM('customer', 'dealer', 'admin'),
         defaultValue: 'customer',
@@ -36,11 +39,22 @@ module.exports = {
         onUpdate: 'CASCADE',
       });
 
-      // Migrate existing dealer_id values to user_id
+      // Migrate existing dealer_id values to user_id and make dealer_id nullable
       if (carTableDescription.dealer_id) {
         await queryInterface.sequelize.query(
           `UPDATE cars SET user_id = dealer_id WHERE user_id IS NULL AND dealer_id IS NOT NULL;`
         );
+        try {
+          await queryInterface.changeColumn('cars', 'dealer_id', {
+            type: Sequelize.UUID,
+            allowNull: true,
+          });
+        } catch (e) {
+          // If foreign key prevents changeColumn, alter directly via raw query
+          await queryInterface.sequelize.query(
+            `ALTER TABLE cars MODIFY COLUMN dealer_id VARCHAR(36) NULL;`
+          );
+        }
       }
     }
 

@@ -104,10 +104,6 @@ const Car = sequelize.define('Car', {
     allowNull: false,
     defaultValue: true,
   },
-  engine_cc: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
   description: {
     type: DataTypes.TEXT,
     allowNull: true,

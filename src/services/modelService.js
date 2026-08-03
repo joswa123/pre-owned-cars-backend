@@ -5,7 +5,20 @@ const sequelize= require('../config/database')
 exports.getAllModels = async (brandId = null) => {
   const where = {};
   if (brandId) {
-    where.brandId = brandId;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brandId);
+    let targetBrandId = brandId;
+    if (!isUuid) {
+      const searchName = brandId.replace(/-/g, ' ').trim().toLowerCase();
+      const brand = await Brand.findOne({
+        where: sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), searchName),
+      });
+      if (brand) {
+        targetBrandId = brand.id;
+      } else {
+        return [];
+      }
+    }
+    where.brandId = targetBrandId;
   }
   return await Model.findAll({
     where,
