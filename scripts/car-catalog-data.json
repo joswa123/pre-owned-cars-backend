@@ -37,6 +37,26 @@
             { "name": "Zeta AMT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1197 },
             { "name": "Alpha", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 }
           ]
+        },
+        {
+          "name": "Dzire",
+          "body_type": "Sedan",
+          "start_year": 2008,
+          "variants": [
+            { "name": "LXi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "VXi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "ZXi AMT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1197 }
+          ]
+        },
+        {
+          "name": "Ertiga",
+          "body_type": "MUV",
+          "start_year": 2012,
+          "variants": [
+            { "name": "LXi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1462 },
+            { "name": "VXi CNG", "fuel_type": "CNG", "transmission": "Manual", "engine_cc": 1462 },
+            { "name": "ZXi AT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1462 }
+          ]
         }
       ]
     },
@@ -74,6 +94,15 @@
             { "name": "S Plus 1.2 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
             { "name": "SX 1.5 CRDi", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 1493 }
           ]
+        },
+        {
+          "name": "Verna",
+          "body_type": "Sedan",
+          "start_year": 2006,
+          "variants": [
+            { "name": "EX 1.5 MPi", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1497 },
+            { "name": "SX 1.5 Turbo DCT", "fuel_type": "Petrol", "transmission": "DCT", "engine_cc": 1482 }
+          ]
         }
       ]
     },
@@ -110,6 +139,15 @@
             { "name": "Smart", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 1956 },
             { "name": "Pure Plus AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1956 },
             { "name": "Fearless Dark Edition AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1956 }
+          ]
+        },
+        {
+          "name": "Tiago",
+          "body_type": "Hatchback",
+          "start_year": 2016,
+          "variants": [
+            { "name": "XE", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1199 },
+            { "name": "XZ Plus iCNG", "fuel_type": "CNG", "transmission": "Manual", "engine_cc": 1199 }
           ]
         }
       ]
@@ -172,6 +210,15 @@
             { "name": "2.4 VX 7 STR", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 2393 },
             { "name": "2.4 ZX 7 STR", "fuel_type": "Diesel", "transmission": "Manual", "engine_cc": 2393 }
           ]
+        },
+        {
+          "name": "Glanza",
+          "body_type": "Hatchback",
+          "start_year": 2019,
+          "variants": [
+            { "name": "S", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
+            { "name": "V AMT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1197 }
+          ]
         }
       ]
     },
@@ -196,6 +243,15 @@
           "variants": [
             { "name": "E 1.2 i-VTEC", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1199 },
             { "name": "VX CVT", "fuel_type": "Petrol", "transmission": "CVT", "engine_cc": 1199 }
+          ]
+        },
+        {
+          "name": "Elevate",
+          "body_type": "SUV",
+          "start_year": 2023,
+          "variants": [
+            { "name": "V", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1498 },
+            { "name": "ZX CVT", "fuel_type": "Petrol", "transmission": "CVT", "engine_cc": 1498 }
           ]
         }
       ]
@@ -222,24 +278,135 @@
             { "name": "HTE 1.2 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1197 },
             { "name": "HTX 1.5 Diesel iMT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1493 }
           ]
+        },
+        {
+          "name": "Carens",
+          "body_type": "MUV",
+          "start_year": 2022,
+          "variants": [
+            { "name": "Premium 1.5 Petrol", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 1497 },
+            { "name": "Luxury Plus 1.5 Diesel AT", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1493 }
+          ]
         }
       ]
     },
     {
       "name": "Audi",
-      "logo": "https://www.carlogos.org/car-logos/audi-logo.png"
+      "logo": "https://www.carlogos.org/car-logos/audi-logo.png",
+      "models": [
+        {
+          "name": "A4",
+          "body_type": "Sedan",
+          "start_year": 2008,
+          "variants": [
+            { "name": "40 TFSI Premium", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1984 },
+            { "name": "40 TFSI Technology", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1984 }
+          ]
+        },
+        {
+          "name": "Q3",
+          "body_type": "SUV",
+          "start_year": 2012,
+          "variants": [
+            { "name": "40 TFSI Premium Plus", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1984 }
+          ]
+        },
+        {
+          "name": "Q5",
+          "body_type": "SUV",
+          "start_year": 2011,
+          "variants": [
+            { "name": "45 TFSI Technology", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1984 }
+          ]
+        }
+      ]
     },
     {
       "name": "BMW",
-      "logo": "https://www.carlogos.org/car-logos/bmw-logo.png"
+      "logo": "https://www.carlogos.org/car-logos/bmw-logo.png",
+      "models": [
+        {
+          "name": "3 Series",
+          "body_type": "Sedan",
+          "start_year": 2005,
+          "variants": [
+            { "name": "320d Luxury Line", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1995 },
+            { "name": "330i M Sport", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1998 }
+          ]
+        },
+        {
+          "name": "5 Series",
+          "body_type": "Sedan",
+          "start_year": 2007,
+          "variants": [
+            { "name": "520d Luxury Line", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1995 }
+          ]
+        },
+        {
+          "name": "X1",
+          "body_type": "SUV",
+          "start_year": 2010,
+          "variants": [
+            { "name": "sDrive20i M Sport", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1499 },
+            { "name": "sDrive20d xLine", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1995 }
+          ]
+        }
+      ]
     },
     {
-      "name": "jaguar",
-      "logo": "https://www.carlogos.org/car-logos/jaguar-logo.png"
+      "name": "Jaguar",
+      "logo": "https://www.carlogos.org/car-logos/jaguar-logo.png",
+      "models": [
+        {
+          "name": "XE",
+          "body_type": "Sedan",
+          "start_year": 2016,
+          "variants": [
+            { "name": "2.0 Turbo Petrol SE", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1997 }
+          ]
+        },
+        {
+          "name": "F-Pace",
+          "body_type": "SUV",
+          "start_year": 2016,
+          "variants": [
+            { "name": "2.0 R-Dynamic S", "fuel_type": "Diesel", "transmission": "Automatic", "engine_cc": 1997 }
+          ]
+        }
+      ]
     },
     {
       "name": "Volkswagen",
-      "logo": "https://www.carlogos.org/car-logos/volkswagen-logo.png"
+      "logo": "https://www.carlogos.org/car-logos/volkswagen-logo.png",
+      "models": [
+        {
+          "name": "Virtus",
+          "body_type": "Sedan",
+          "start_year": 2022,
+          "variants": [
+            { "name": "1.0 TSI Comfortline", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 999 },
+            { "name": "1.5 TSI GT Plus DSG", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1498 }
+          ]
+        },
+        {
+          "name": "Taigun",
+          "body_type": "SUV",
+          "start_year": 2021,
+          "variants": [
+            { "name": "1.0 TSI Highline", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 999 },
+            { "name": "1.5 TSI GT Edge DSG", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 1498 }
+          ]
+        },
+        {
+          "name": "Polo",
+          "body_type": "Hatchback",
+          "start_year": 2010,
+          "variants": [
+            { "name": "1.0 MPI Trendline", "fuel_type": "Petrol", "transmission": "Manual", "engine_cc": 999 },
+            { "name": "1.0 TSI GT", "fuel_type": "Petrol", "transmission": "Automatic", "engine_cc": 999 }
+          ]
+        }
+      ]
     }
   ]
 }

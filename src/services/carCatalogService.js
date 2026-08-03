@@ -329,12 +329,19 @@ exports.syncCatalogData = async (brandsList) => {
   let updatedCount = 0;
 
   for (const bData of brandsList) {
+    if (!bData || !bData.name) continue;
     const brandLogo = bData.logo || bData.logo_url || null;
-    const [brand, brandCreated] = await Brand.findOrCreate({
-      where: { name: bData.name },
-      defaults: { logo: brandLogo, is_active: true },
+
+    let brand = await Brand.findOne({
+      where: sequelize.where(fn('LOWER', col('name')), bData.name.trim().toLowerCase()),
     });
-    if (brandCreated) {
+
+    if (!brand) {
+      brand = await Brand.create({
+        name: bData.name.trim(),
+        logo: brandLogo,
+        is_active: true,
+      });
       createdCount++;
     } else if (brandLogo && brand.logo !== brandLogo) {
       await brand.update({ logo: brandLogo });
@@ -343,16 +350,23 @@ exports.syncCatalogData = async (brandsList) => {
 
     const modelsList = bData.models || [];
     for (const mData of modelsList) {
-      const [model, modelCreated] = await Model.findOrCreate({
-        where: { brandId: brand.id, name: mData.name },
-        defaults: {
-          body_type: mData.body_type || null,
-          start_year: mData.start_year || null,
-          is_active: true,
+      if (!mData || !mData.name) continue;
+
+      let model = await Model.findOne({
+        where: {
+          brandId: brand.id,
+          [Op.and]: [sequelize.where(fn('LOWER', col('name')), mData.name.trim().toLowerCase())],
         },
       });
 
-      if (modelCreated) {
+      if (!model) {
+        model = await Model.create({
+          brandId: brand.id,
+          name: mData.name.trim(),
+          body_type: mData.body_type || null,
+          start_year: mData.start_year || null,
+          is_active: true,
+        });
         createdCount++;
       } else if (mData.body_type && model.body_type !== mData.body_type) {
         await model.update({ body_type: mData.body_type });
@@ -361,21 +375,27 @@ exports.syncCatalogData = async (brandsList) => {
 
       const variantsList = mData.variants || [];
       for (const vData of variantsList) {
-        const [variant, variantCreated] = await Variant.findOrCreate({
-          where: { model_id: model.id, name: vData.name },
-          defaults: {
+        if (!vData || !vData.name) continue;
+
+        let variant = await Variant.findOne({
+          where: {
+            model_id: model.id,
+            [Op.and]: [sequelize.where(fn('LOWER', col('name')), vData.name.trim().toLowerCase())],
+          },
+        });
+
+        if (!variant) {
+          await Variant.create({
+            model_id: model.id,
+            name: vData.name.trim(),
             fuel_type: vData.fuel_type || null,
             transmission: vData.transmission || null,
             engine_cc: vData.engine_cc || null,
             price: vData.price || null,
             is_active: true,
-          },
-        });
-
-        if (variantCreated) {
+          });
           createdCount++;
         } else {
-          // Idempotent update on existing variant details if changed
           const updates = {};
           if (vData.fuel_type && variant.fuel_type !== vData.fuel_type) updates.fuel_type = vData.fuel_type;
           if (vData.transmission && variant.transmission !== vData.transmission) updates.transmission = vData.transmission;
@@ -391,13 +411,13 @@ exports.syncCatalogData = async (brandsList) => {
     }
   }
 
-  // Invalidate Redis brand and catalog caches after sync
+  // Clear Redis catalog caches after sync
   try {
     const { clearCache } = require('../middlewares/cacheMiddleware');
     await clearCache('/api/v1/brands');
     await clearCache('/api/v1/catalog');
     if (redisClient && redisClient.isOpen) {
-      await redisClient.del('catalog:brands:all');
+      await redisClient.del('catalog:brands:v3');
     }
   } catch (err) {
     console.warn(`[Redis Cache Del Warning] ${err.message}`);
