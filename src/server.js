@@ -42,6 +42,14 @@ const PORT = process.env.PORT || 5000;
       logger.warn('⚠️  Location seed failed (non-fatal):', seedErr.message);
     }
 
+    // Seed body types, fuel types, and transmission reference data
+    try {
+      const seedReferenceData = require('./utils/seedReferenceData');
+      await seedReferenceData();
+    } catch (refErr) {
+      logger.warn('⚠️  Reference data seed failed (non-fatal):', refErr.message);
+    }
+
     // Seed vehicle catalog reference data (brands, models, variants)
     try {
       const carCatalogService = require('./services/carCatalogService');

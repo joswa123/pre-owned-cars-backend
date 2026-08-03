@@ -19,7 +19,7 @@ const FuelType = sequelize.define('FuelType', {
   },
   user_id: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true,
     references: {
       model: 'users', // table name
       key: 'id',

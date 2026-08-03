@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
-const FUEL_TYPES_IN         = ['petrol', 'diesel', 'electric', 'hybrid', 'cng'];
-const TRANSMISSION_TYPES_IN = ['manual', 'automatic', 'cvt', 'dct'];
+const FUEL_TYPES_IN         = ['petrol', 'diesel', 'electric', 'hybrid', 'cng', 'lpg'];
+const TRANSMISSION_TYPES_IN = ['manual', 'automatic', 'amt', 'cvt', 'dct'];
 const OWNERSHIP_TYPES_IN    = ['1st owner', '2nd owner', '3rd owner', '4th+ owner'];
 const INSURANCE_TYPE_IN     = ['comprehensive', 'third party', 'not insured'];
 
@@ -76,11 +76,13 @@ const FUEL_TYPE_MAP = {
   electric: 'Electric',
   hybrid:   'Hybrid',
   cng:      'CNG',
+  lpg:      'LPG',
 };
 
 const TRANSMISSION_MAP = {
   manual:    'Manual',
   automatic: 'Automatic',
+  amt:       'AMT',
   cvt:       'CVT',
   dct:       'DCT',
 };
@@ -96,6 +98,24 @@ const INSURANCE_TYPE_MAP = {
   comprehensive: 'Comprehensive',
   'third party': 'Third Party',
   'not insured': 'Not Insured',
+};
+
+const BODY_TYPE_MAP = {
+  'sedan':        'Sedan',
+  'hatchback':    'Hatchback',
+  'suv':          'SUV',
+  'muv':          'MUV',
+  'estate':       'Estate',
+  'crossover':    'Crossover',
+  'coupe':        'Coupe',
+  'convertible':  'Convertible',
+  'pickup':       'Pickup',
+  'van minivan':  'Van Minivan',
+  'wagon':        'Wagon',
+  'sports car':   'Sports Car',
+  'notchback':    'Notchback',
+  'sports sedan': 'Sports Sedan',
+  'others':       'Others',
 };
 
 /**
@@ -129,6 +149,9 @@ const mapToDbValues = (data) => {
 
   const rawIns = (mapped.insurance_type || mapped.insuranceType || '').toString().toLowerCase();
   if (rawIns && INSURANCE_TYPE_MAP[rawIns]) mapped.insurance_type = INSURANCE_TYPE_MAP[rawIns];
+
+  const rawBody = (mapped.body_type || '').toString().toLowerCase();
+  if (rawBody && BODY_TYPE_MAP[rawBody]) mapped.body_type = BODY_TYPE_MAP[rawBody];
 
   return mapped;
 };

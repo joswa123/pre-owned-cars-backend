@@ -76,6 +76,10 @@ async function init() {
     console.log('🔄 Checking / Seeding default location data...');
     await seedLocations();
 
+    console.log('🔄 Checking / Seeding reference metadata (Body types, Fuel types, Transmissions)...');
+    const seedReferenceData = require('../src/utils/seedReferenceData');
+    await seedReferenceData();
+
     console.log('🎉 Database initialization complete!');
     process.exit(0);
   } catch (error) {

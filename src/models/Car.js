@@ -58,11 +58,11 @@ const Car = sequelize.define('Car', {
     validate: { min: 0 },
   },
   fuel_type: {
-    type: DataTypes.ENUM('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG'),
+    type: DataTypes.ENUM('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG', 'LPG'),
     allowNull: false,
   },
   transmission: {
-    type: DataTypes.ENUM('Manual', 'Automatic', 'CVT', 'DCT'),
+    type: DataTypes.ENUM('Manual', 'Automatic', 'AMT', 'CVT', 'DCT'),
     allowNull: false,
   },
   ownership: {
@@ -72,7 +72,7 @@ const Car = sequelize.define('Car', {
   body_type: {
     type: DataTypes.STRING(50),
     allowNull: false,
-    comment: 'Car body type: SUV, Sedan, Hatchback, MUV, Coupe, etc.',
+    comment: 'Car body type: Sedan, Hatchback, SUV, MUV, Estate, Crossover, Coupe, Convertible, Pickup, Van Minivan, Wagon, Sports Car, Notchback, Sports sedan, Others',
   },
   board_type: {
     type: DataTypes.STRING(50),
