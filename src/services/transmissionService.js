@@ -29,14 +29,30 @@ exports.createTransmission = async (transmissionData) => {
 };
 
 exports.getTransmissions = async () => {
-    const transmissions = await Transmission.findAll({
+    let transmissions = await Transmission.findAll({
         include: [{
             model: User,
             as: 'creator',          // ✅ alias
-            attributes: ['id', 'full_name']
+            attributes: ['id', 'full_name'],
+            required: false,
         }],
         order: [['transmission_name', 'ASC']]
     });
+
+    if (transmissions.length === 0) {
+        const seedReferenceData = require('../utils/seedReferenceData');
+        await seedReferenceData();
+        transmissions = await Transmission.findAll({
+            include: [{
+                model: User,
+                as: 'creator',
+                attributes: ['id', 'full_name'],
+                required: false,
+            }],
+            order: [['transmission_name', 'ASC']]
+        });
+    }
+
     return transmissions;
 };
 

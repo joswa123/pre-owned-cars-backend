@@ -38,6 +38,16 @@ async function run() {
         "ALTER TABLE variants MODIFY COLUMN transmission ENUM('Manual', 'Automatic', 'AMT', 'CVT', 'DCT') NULL;"
       );
       console.log('  ✅ Updated variants.transmission ENUM (added AMT)');
+
+      await sequelize.query(
+        "ALTER TABLE fuel_types MODIFY COLUMN user_id CHAR(36) BINARY NULL DEFAULT NULL;"
+      );
+      console.log('  ✅ Updated fuel_types.user_id to NULL DEFAULT NULL');
+
+      await sequelize.query(
+        "ALTER TABLE transmissions MODIFY COLUMN user_id CHAR(36) BINARY NULL DEFAULT NULL;"
+      );
+      console.log('  ✅ Updated transmissions.user_id to NULL DEFAULT NULL');
     }
   } catch (e) {
     console.log('  ⚠️ Warning updating DB column ENUMs:', e.message);

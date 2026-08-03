@@ -76,14 +76,19 @@ const findBrandByIdentifier = async (brandId) => {
   let brand = null;
 
   if (isUuid) {
-    brand = await Brand.findOne({ where: { id: brandId, is_active: true } });
+    brand = await Brand.findOne({
+      where: {
+        id: brandId,
+        is_active: { [Op.ne]: false },
+      },
+    });
   }
 
   if (!brand) {
     const searchName = brandId.replace(/-/g, ' ').trim().toLowerCase();
     brand = await Brand.findOne({
       where: {
-        is_active: true,
+        is_active: { [Op.ne]: false },
         [Op.and]: [sequelize.where(fn('LOWER', col('name')), searchName)],
       },
     });
@@ -114,11 +119,30 @@ exports.getModelsByBrand = async (brandId) => {
 
   if (!brand) throw new AppError('Brand not found.', 404);
 
-  const models = await Model.findAll({
-    where: { brandId: brand.id, is_active: true },
+  let models = await Model.findAll({
+    where: {
+      brandId: brand.id,
+      is_active: { [Op.ne]: false },
+    },
     attributes: ['id', 'brandId', 'name', 'body_type', 'start_year', 'end_year'],
     order: [['name', 'ASC']],
   });
+
+  // If brand exists in DB but no models found, perform auto-sync for this brand
+  if (models.length === 0) {
+    const externalData = await externalCatalogApi.fetchExternalCatalogData(brand.name);
+    if (externalData && externalData.length > 0) {
+      await exports.syncCatalogData(externalData);
+      models = await Model.findAll({
+        where: {
+          brandId: brand.id,
+          is_active: { [Op.ne]: false },
+        },
+        attributes: ['id', 'brandId', 'name', 'body_type', 'start_year', 'end_year'],
+        order: [['name', 'ASC']],
+      });
+    }
+  }
 
   await setCache(cacheKey, models, 900);
   return models;
@@ -133,14 +157,19 @@ const findModelByIdentifier = async (modelId) => {
   let model = null;
 
   if (isUuid) {
-    model = await Model.findOne({ where: { id: modelId, is_active: true } });
+    model = await Model.findOne({
+      where: {
+        id: modelId,
+        is_active: { [Op.ne]: false },
+      },
+    });
   }
 
   if (!model) {
     const searchName = modelId.replace(/-/g, ' ').trim().toLowerCase();
     model = await Model.findOne({
       where: {
-        is_active: true,
+        is_active: { [Op.ne]: false },
         [Op.and]: [sequelize.where(fn('LOWER', col('name')), searchName)],
       },
     });
@@ -160,11 +189,29 @@ exports.getVariantsByModel = async (modelId) => {
   const model = await findModelByIdentifier(modelId);
   if (!model) throw new AppError('Model not found.', 404);
 
-  const variants = await Variant.findAll({
-    where: { model_id: model.id, is_active: true },
+  let variants = await Variant.findAll({
+    where: {
+      model_id: model.id,
+      is_active: { [Op.ne]: false },
+    },
     attributes: ['id', 'model_id', 'name', 'fuel_type', 'transmission', 'engine_cc', 'price'],
     order: [['name', 'ASC']],
   });
+
+  if (variants.length === 0) {
+    const externalData = await externalCatalogApi.fetchExternalCatalogData();
+    if (externalData && externalData.length > 0) {
+      await exports.syncCatalogData(externalData);
+      variants = await Variant.findAll({
+        where: {
+          model_id: model.id,
+          is_active: { [Op.ne]: false },
+        },
+        attributes: ['id', 'model_id', 'name', 'fuel_type', 'transmission', 'engine_cc', 'price'],
+        order: [['name', 'ASC']],
+      });
+    }
+  }
 
   await setCache(cacheKey, variants, 900);
   return variants;

@@ -1,4 +1,5 @@
 const { CarType, FuelType, Transmission } = require('../models');
+const sequelize = require('../config/database');
 const logger = require('./logger');
 
 const BODY_TYPES = [
@@ -41,16 +42,24 @@ async function seedReferenceData() {
   try {
     // 1. Seed Body Types (CarType)
     for (const typeName of BODY_TYPES) {
-      await CarType.findOrCreate({
-        where: { name: typeName },
-        defaults: { name: typeName },
+      const existing = await CarType.findOne({
+        where: sequelize.where(
+          sequelize.fn('LOWER', sequelize.col('name')),
+          typeName.toLowerCase()
+        ),
       });
+      if (!existing) {
+        await CarType.create({ name: typeName });
+      }
     }
 
     // 2. Seed Fuel Types (FuelType)
     for (const fuelName of FUEL_TYPES) {
       const existing = await FuelType.findOne({
-        where: { fuel_type_name: fuelName },
+        where: sequelize.where(
+          sequelize.fn('LOWER', sequelize.col('fuel_type_name')),
+          fuelName.toLowerCase()
+        ),
       });
       if (!existing) {
         await FuelType.create({
@@ -64,7 +73,10 @@ async function seedReferenceData() {
     // 3. Seed Transmissions (Transmission)
     for (const transName of TRANSMISSIONS) {
       const existing = await Transmission.findOne({
-        where: { transmission_name: transName },
+        where: sequelize.where(
+          sequelize.fn('LOWER', sequelize.col('transmission_name')),
+          transName.toLowerCase()
+        ),
       });
       if (!existing) {
         await Transmission.create({

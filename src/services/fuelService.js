@@ -32,13 +32,28 @@ exports.createFuelType = async (fuelTypeData) => {
 };
 
 exports.getFuelTypes = async () => {
-    const fuelTypes = await FuelType.findAll({
+    let fuelTypes = await FuelType.findAll({
         include: [{
             model: User,
             as: 'creator',              // ✅ add alias here
-            attributes: ['id', 'full_name']
+            attributes: ['id', 'full_name'],
+            required: false,
         }]
     });
+
+    if (fuelTypes.length === 0) {
+        const seedReferenceData = require('../utils/seedReferenceData');
+        await seedReferenceData();
+        fuelTypes = await FuelType.findAll({
+            include: [{
+                model: User,
+                as: 'creator',
+                attributes: ['id', 'full_name'],
+                required: false,
+            }]
+        });
+    }
+
     return fuelTypes;
 };
 
