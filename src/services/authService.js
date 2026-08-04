@@ -386,11 +386,13 @@ exports.loginUser = async ({ phone, email }, password) => {
   // Update last login timestamp
   await user.update({ last_login: new Date() });
 
-  // Revoke old refresh tokens
-  await RefreshToken.update(
-    { is_revoked: true },
-    { where: { user_id: user.id, is_revoked: false } }
-  );
+  // Clean up expired refresh tokens for this user
+  await RefreshToken.destroy({
+    where: {
+      user_id: user.id,
+      expires_at: { [Op.lt]: new Date() },
+    },
+  }).catch(() => {});
 
   // Generate new token pair
   const tokens = await generateTokens(user);

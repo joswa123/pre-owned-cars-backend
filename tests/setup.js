@@ -29,7 +29,7 @@ const seedLocations = async () => {
   });
 
   await City.findOrCreate({
-    where: { name: 'Gandhipuram', state_id: state.id },
+    where: { name: 'Gandhipuram', district_id: district.id, state_id: state.id },
     defaults: { name: 'Gandhipuram', state_id: state.id, district_id: district.id },
   });
 };
@@ -40,6 +40,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await seedLocations();
   await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
   const modelsToClean = [
     User,

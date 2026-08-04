@@ -151,6 +151,7 @@ exports.refreshToken = async (req, res, next) => {
 
     if (!refreshToken) {
       return res.status(401).json({
+        status: 'error',
         success: false,
         message: 'Refresh token required',
       });
@@ -161,6 +162,7 @@ exports.refreshToken = async (req, res, next) => {
       decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     } catch (err) {
       return res.status(401).json({
+        status: 'error',
         success: false,
         message: 'Invalid or expired refresh token',
       });
@@ -176,6 +178,7 @@ exports.refreshToken = async (req, res, next) => {
 
     if (!storedToken) {
       return res.status(401).json({
+        status: 'error',
         success: false,
         message: 'Refresh token not found or revoked',
       });
@@ -183,6 +186,7 @@ exports.refreshToken = async (req, res, next) => {
 
     if (new Date() > new Date(storedToken.expires_at)) {
       return res.status(401).json({
+        status: 'error',
         success: false,
         message: 'Refresh token expired',
       });
@@ -191,13 +195,16 @@ exports.refreshToken = async (req, res, next) => {
     const user = await User.findByPk(decoded.id);
     if (!user) {
       return res.status(401).json({
+        status: 'error',
         success: false,
-        message: 'User not found',
+        message: 'User no longer exists.',
       });
     }
 
+    // Atomically mark old token as revoked
     await storedToken.update({ is_revoked: true });
 
+    // Issue new token pair
     const newAccessToken = jwt.sign(
       { id: user.id, role: user.role },
       process.env.JWT_SECRET,
@@ -222,10 +229,24 @@ exports.refreshToken = async (req, res, next) => {
       is_revoked: false,
     });
 
+    // Return both top-level and data wrapper for complete client compatibility (Flutter, React, Postman)
     return res.status(200).json({
+      status: 'success',
       success: true,
+      message: 'Token refreshed successfully.',
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
+      data: {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          full_name: user.full_name,
+        },
+      },
     });
   } catch (error) {
     next(error);
