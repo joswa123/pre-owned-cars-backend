@@ -220,4 +220,39 @@ describe('Car API Integration Tests', () => {
     const deletedCar = await Car.findByPk(carId);
     expect(deletedCar).toBeNull();
   });
+  // ---------- 8. Get User Cars (My Cars) with Filters ----------
+  test('GET /api/v1/cars/me - should return my cars matching status filter', async () => {
+    const { token } = await setupUser('customer');
+    
+    // Post an active car
+    const activeCarRes = await postTestCar(token, { brand: 'Honda' });
+    const activeCarId = activeCarRes.body.data.car.id;
+    
+    // Post a car and update it to sold
+    const soldCarRes = await postTestCar(token, { brand: 'Hyundai' });
+    const soldCarId = soldCarRes.body.data.car.id;
+    await Car.update({ status: 'sold' }, { where: { id: soldCarId } });
+
+    // Filter active
+    const resActive = await request(app)
+      .get('/api/v1/cars/me')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ status: 'active' });
+
+    expect(resActive.statusCode).toBe(200);
+    expect(resActive.body.data.cars).toBeInstanceOf(Array);
+    expect(resActive.body.data.cars.length).toBe(1);
+    expect(resActive.body.data.cars[0].id).toBe(activeCarId);
+
+    // Filter sold
+    const resSold = await request(app)
+      .get('/api/v1/cars/me')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ status: 'sold' });
+
+    expect(resSold.statusCode).toBe(200);
+    expect(resSold.body.data.cars).toBeInstanceOf(Array);
+    expect(resSold.body.data.cars.length).toBe(1);
+    expect(resSold.body.data.cars[0].id).toBe(soldCarId);
+  });
 });

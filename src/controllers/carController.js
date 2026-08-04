@@ -61,7 +61,9 @@ exports.getFeaturedCars = catchAsync(async (req, res) => {
  */
 exports.getUserCars = catchAsync(async (req, res) => {
   const userId = req.user.id;
-  const cars = await carService.getUserCars(userId);
+  const { status } = req.query; // Allow filtering by status (e.g. ?status=active)
+  
+  const cars = await carService.getUserCars(userId, status);
 
   res.status(200).json({
     status: "success",

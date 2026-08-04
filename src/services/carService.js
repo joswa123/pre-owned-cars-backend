@@ -234,9 +234,14 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
 /**
  * Get listings belonging to logged-in user
  */
-exports.getUserCars = async (userId) => {
+exports.getUserCars = async (userId, status = null) => {
+  const whereClause = { user_id: userId };
+  if (status) {
+    whereClause.status = status;
+  }
+
   const cars = await Car.findAll({
-    where: { user_id: userId },
+    where: whereClause,
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
     ],
