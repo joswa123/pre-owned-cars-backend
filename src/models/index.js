@@ -60,8 +60,7 @@ Otp.belongsTo(User, {
 User.hasMany(Car, { foreignKey: 'user_id', as: 'postedCars' });
 Car.belongsTo(User, { foreignKey: 'user_id', as: 'seller' });
 
-User.hasMany(Car, { foreignKey: 'buyer_id', as: 'boughtCars' });
-Car.belongsTo(User, { foreignKey: 'buyer_id', as: 'buyer' });
+
 
 Car.hasMany(CarImage, { foreignKey: 'car_id', as: 'images' });
 CarImage.belongsTo(Car, { foreignKey: 'car_id' });

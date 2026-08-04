@@ -75,7 +75,7 @@ exports.createCar = async (userId, carData, files) => {
       insurance_type: mapped.insurance_type || 'Not Insured',
       b2b_listing,
       posted_by_type,
-      is_available: true,
+      status: mapped.status || 'active',
       description: mapped.description || null,
       color: mapped.color || '',
       number_plate: mapped.number_plate || '',
@@ -137,7 +137,7 @@ exports.getCars = async (
   userId = null
 ) => {
   const offset = (page - 1) * limit;
-  const where = { is_available: true };
+  const where = { status: 'active' };
 
   if (filters.posted_by_type) where.posted_by_type = filters.posted_by_type;
   if (filters.b2b_listing !== undefined) {
@@ -212,7 +212,7 @@ exports.getCarById = async (carId, userId = null) => {
  */
 exports.getFeaturedCars = async (limit = 10, userId = null) => {
   const cars = await Car.findAll({
-    where: { is_available: true },
+    where: { status: 'active' },
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'profile_picture'] },
@@ -272,7 +272,7 @@ exports.updateCar = async (carId, userId, updateData) => {
   if (mapped.insurance_expiry_date !== undefined) filteredData.insurance_expiry_date = mapped.insurance_expiry_date;
   if (mapped.insurance_type !== undefined) filteredData.insurance_type = mapped.insurance_type;
   if (mapped.b2b_listing !== undefined) filteredData.b2b_listing = mapped.b2b_listing;
-  if (mapped.is_available !== undefined) filteredData.is_available = mapped.is_available;
+  if (mapped.status !== undefined) filteredData.status = mapped.status;
   if (mapped.engine_cc !== undefined) filteredData.engine_cc = mapped.engine_cc;
   if (mapped.description !== undefined) filteredData.description = mapped.description;
 
@@ -306,8 +306,8 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
   if (filters.b2b_listing !== undefined) {
     where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
   }
-  if (filters.is_available !== undefined) {
-    where.is_available = filters.is_available === 'true' || filters.is_available === true;
+  if (filters.status !== undefined) {
+    where.status = filters.status;
   }
 
   const { count, rows } = await Car.findAndCountAll({
@@ -361,8 +361,7 @@ exports.updateCarStatus = async (carId, status, adminId) => {
   const car = await Car.findByPk(carId);
   if (!car) throw new AppError('Car not found.', 404);
 
-  const is_available = status === 'active' || status === 'available';
-  await car.update({ is_available });
+  await car.update({ status });
   return car;
 };
 
@@ -372,6 +371,7 @@ exports.updateCarStatus = async (carId, status, adminId) => {
 exports.toggleFeatured = async (carId, is_featured) => {
   const car = await Car.findByPk(carId);
   if (!car) throw new AppError('Car not found.', 404);
-  await car.update({ is_available: Boolean(is_featured) });
+  const status = is_featured ? 'active' : 'deleted';
+  await car.update({ status });
   return car;
 };

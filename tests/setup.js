@@ -41,27 +41,28 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await seedLocations();
-  await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
-  const modelsToClean = [
-    User,
-    CustomerProfile,
-    DealerProfile,
-    Otp,
-    RefreshToken,
-    Car,
-    CarImage,
-    Wishlist,
-    Lead,
-    Subscription,
-  ];
-  const { Op } = require('sequelize');
-  for (const model of modelsToClean) {
-    if (model) {
-      const whereClause = model === User ? { role: { [Op.ne]: 'admin' } } : {};
-      await model.destroy({ where: whereClause, force: true });
+  
+  // ⚠️ CRITICAL SAFEGUARD: Do not wipe database unless explicitly configured for testing
+  // To avoid accidentally deleting data on the development or production database
+  if (process.env.NODE_ENV === 'test' && process.env.DB_NAME && process.env.DB_NAME.endsWith('_test')) {
+    await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
+    const modelsToClean = [
+      User, CustomerProfile, DealerProfile, Otp, RefreshToken, 
+      Car, CarImage, Wishlist, Lead, Subscription,
+    ];
+    const { Op } = require('sequelize');
+    for (const model of modelsToClean) {
+      if (model) {
+        const whereClause = model === User ? { role: { [Op.ne]: 'admin' } } : {};
+        await model.destroy({ where: whereClause, force: true });
+      }
     }
+    await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
+  } else {
+    // Tests are running against a non-test DB, skipping data deletion!
+    // Tests might fail if they expect an empty DB, but this prevents data loss.
+    console.warn('⚠️ Tests are NOT running against a dedicated test database (NODE_ENV=test and DB_NAME ending with _test). Skipping database cleanup to prevent data loss.');
   }
-  await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
 });
 
 afterAll(async () => {

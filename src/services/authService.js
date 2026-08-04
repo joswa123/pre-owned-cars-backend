@@ -400,11 +400,11 @@ exports.loginUser = async ({ phone, email }, password) => {
   // Fetch Car metrics for scalability
   let activityMetrics = {};
   if (user.role === 'dealer') {
-    const activeCarsCount = await Car.count({ where: { dealer_id: user.id, status: 'active' } });
-    const soldCarsCount = await Car.count({ where: { dealer_id: user.id, status: 'sold' } });
+    const activeCarsCount = await Car.count({ where: { user_id: user.id, status: 'active' } });
+    const soldCarsCount = await Car.count({ where: { user_id: user.id, status: 'sold' } });
     activityMetrics = { active_cars_count: activeCarsCount, sold_cars_count: soldCarsCount };
   } else if (user.role === 'customer') {
-    const boughtCarsCount = await Car.count({ where: { buyer_id: user.id, status: 'sold' } });
+    const boughtCarsCount = 0; // buyer_id removed from Car model
     activityMetrics = { bought_cars_count: boughtCarsCount };
   }
 

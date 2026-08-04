@@ -8,6 +8,8 @@ const INSURANCE_TYPE_IN     = ['comprehensive', 'third party', 'not insured'];
 const enumString = (values) =>
   Joi.string().trim().lowercase().valid(...values);
 
+const STATUS_TYPES_IN = ['sold', 'active', 'deleted', 'expired'];
+
 /**
  * Create Car Joi Schema
  */
@@ -38,6 +40,7 @@ const createCarSchema = Joi.object({
   numberplate:      Joi.string().trim().max(50).allow('', null).optional(),
   prior_appointments: Joi.boolean().default(false),
   prior_appointemnts: Joi.boolean().default(false),
+  status:           enumString(STATUS_TYPES_IN).optional(),
 }).or('km_driven', 'kmdriven')
   .or('fuel_type', 'fueltype')
   .or('body_type', 'car_type')
@@ -68,7 +71,7 @@ const updateCarSchema = Joi.object({
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null),
   insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null),
   b2b_listing:      Joi.boolean(),
-  is_available:     Joi.boolean(),
+  status:           enumString(STATUS_TYPES_IN),
   description:      Joi.string().trim().allow('', null),
   color:            Joi.string().trim().max(50).allow('', null),
   number_plate:     Joi.string().trim().max(50).allow('', null),

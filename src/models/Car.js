@@ -19,13 +19,7 @@ const Car = sequelize.define('Car', {
     onDelete: 'CASCADE',
     comment: 'ID of the user (customer or dealer) who posted this car listing',
   },
-  buyer_id: {
-    type: DataTypes.UUID,
-    allowNull: true,
-    references: { model: 'users', key: 'id' },
-    onDelete: 'SET NULL',
-    comment: 'Customer user ID who purchased this car',
-  },
+
   brand: {
     type: DataTypes.STRING(50),
     allowNull: false,
@@ -99,10 +93,10 @@ const Car = sequelize.define('Car', {
     allowNull: false,
     comment: 'Role of the seller who posted the car (customer or dealer)',
   },
-  is_available: {
-    type: DataTypes.BOOLEAN,
+  status: {
+    type: DataTypes.ENUM('sold', 'active', 'deleted', 'expired'),
     allowNull: false,
-    defaultValue: true,
+    defaultValue: 'active',
   },
   description: {
     type: DataTypes.TEXT,
@@ -142,10 +136,9 @@ const Car = sequelize.define('Car', {
   underscored: true,
   indexes: [
     { fields: ['user_id'] },
-    { fields: ['buyer_id'] },
     { fields: ['posted_by_type'] },
     { fields: ['b2b_listing'] },
-    { fields: ['is_available'] },
+    { fields: ['status'] },
     { fields: ['brand'] },
     { fields: ['price'] },
     { fields: ['km_driven'] },
