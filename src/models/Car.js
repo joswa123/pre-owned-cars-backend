@@ -109,11 +109,10 @@ const Car = sequelize.define('Car', {
     allowNull: true,
   },
   prior_appointemnts: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BOOLEAN,
     allowNull: false,
-    defaultValue: 0,
-    validate: { min: 0 },
-    comment: 'Number of prior appointments for this car',
+    defaultValue: false,
+    comment: 'Flag indicating whether prior appointment is required for this car',
   },
   color: {
     type: DataTypes.STRING(50),

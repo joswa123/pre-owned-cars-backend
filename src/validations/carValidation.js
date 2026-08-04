@@ -36,8 +36,8 @@ const createCarSchema = Joi.object({
   color:            Joi.string().trim().max(50).allow('', null).optional(),
   number_plate:     Joi.string().trim().max(50).allow('', null).optional(),
   numberplate:      Joi.string().trim().max(50).allow('', null).optional(),
-  prior_appointments: Joi.number().integer().min(0).optional(),
-  prior_appointemnts: Joi.number().integer().min(0).optional(),
+  prior_appointments: Joi.boolean().default(false),
+  prior_appointemnts: Joi.boolean().default(false),
 }).or('km_driven', 'kmdriven')
   .or('fuel_type', 'fueltype')
   .or('body_type', 'car_type')
@@ -73,8 +73,8 @@ const updateCarSchema = Joi.object({
   color:            Joi.string().trim().max(50).allow('', null),
   number_plate:     Joi.string().trim().max(50).allow('', null),
   numberplate:      Joi.string().trim().max(50).allow('', null),
-  prior_appointments: Joi.number().integer().min(0),
-  prior_appointemnts: Joi.number().integer().min(0),
+  prior_appointments: Joi.boolean(),
+  prior_appointemnts: Joi.boolean(),
 }).unknown(true).min(1);
 
 // DB Mapping Helpers

@@ -79,7 +79,7 @@ describe('Car API Integration Tests', () => {
       .field('description', overrides.description || 'Well maintained family car')
       .field('color', overrides.color || 'White')
       .field('number_plate', overrides.number_plate || 'TN01AB1234')
-      .field('prior_appointments', overrides.prior_appointments || '0');
+      .field('prior_appointments', overrides.prior_appointments || 'false');
 
     if (overrides.b2b_listing !== undefined) {
       reqObj.field('b2b_listing', overrides.b2b_listing);
@@ -111,6 +111,7 @@ describe('Car API Integration Tests', () => {
     expect(res.body.data.car.description).toBe('Well maintained family car');
     expect(res.body.data.car.color).toBe('White');
     expect(res.body.data.car.number_plate).toBe('TN01AB1234');
+    expect(res.body.data.car.prior_appointments).toBe(false);
     expect(res.body.data.car.user_id).toBe(userId);
   });
 
