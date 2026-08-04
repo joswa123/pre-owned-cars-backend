@@ -4,7 +4,7 @@ const sequelize = require('../config/database');
 /**
  * Car Model
  * Represents pre-owned car listings posted by customers or dealers.
- * Includes posted_by_type (customer | dealer), b2b_listing flag, body_type, and board_type.
+ * Includes posted_by_type (customer | dealer), b2b_listing flag, body_type, board_type, color, number_plate, and prior_appointments.
  */
 const Car = sequelize.define('Car', {
   id: {
@@ -108,6 +108,35 @@ const Car = sequelize.define('Car', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  prior_appointemnts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    validate: { min: 0 },
+    comment: 'Number of prior appointments for this car',
+  },
+  color: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: '',
+    comment: 'Color of the car',
+  },
+  number_plate: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: '',
+    comment: 'Registration number plate of the car (e.g. TN01AB1234)',
+  },
+  prior_appointments: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('prior_appointemnts');
+    },
+    set(value) {
+      this.setDataValue('prior_appointemnts', value);
+    },
+    comment: 'Virtual alias for prior_appointemnts for standard naming compatibility',
+  },
 }, {
   tableName: 'cars',
   timestamps: true,
@@ -122,6 +151,9 @@ const Car = sequelize.define('Car', {
     { fields: ['price'] },
     { fields: ['km_driven'] },
     { fields: ['body_type'] },
+    { fields: ['fuel_type'] },
+    { fields: ['transmission'] },
+    { fields: ['color'] },
   ],
 });
 

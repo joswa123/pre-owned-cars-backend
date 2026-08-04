@@ -34,6 +34,11 @@ const createCarSchema = Joi.object({
   b2b_listing:      Joi.boolean().default(false),
   engine_cc:        Joi.number().integer().min(0).allow('', null).optional(),
   description:      Joi.string().trim().allow('', null).optional(),
+  color:            Joi.string().trim().max(50).allow('', null).optional(),
+  number_plate:     Joi.string().trim().max(50).allow('', null).optional(),
+  numberplate:      Joi.string().trim().max(50).allow('', null).optional(),
+  prior_appointments: Joi.number().integer().min(0).optional(),
+  prior_appointemnts: Joi.number().integer().min(0).optional(),
 }).or('km_driven', 'kmdriven')
   .or('fuel_type', 'fueltype')
   .or('body_type', 'car_type')
@@ -67,6 +72,11 @@ const updateCarSchema = Joi.object({
   is_available:     Joi.boolean(),
   engine_cc:        Joi.number().integer().min(0).allow('', null),
   description:      Joi.string().trim().allow('', null),
+  color:            Joi.string().trim().max(50).allow('', null),
+  number_plate:     Joi.string().trim().max(50).allow('', null),
+  numberplate:      Joi.string().trim().max(50).allow('', null),
+  prior_appointments: Joi.number().integer().min(0),
+  prior_appointemnts: Joi.number().integer().min(0),
 }).unknown(true).min(1);
 
 // DB Mapping Helpers
@@ -136,6 +146,12 @@ const mapToDbValues = (data) => {
   }
   if (data.numplate !== undefined && mapped.board_type === undefined) {
     mapped.board_type = data.numplate;
+  }
+  if (data.numberplate !== undefined && mapped.number_plate === undefined) {
+    mapped.number_plate = data.numberplate;
+  }
+  if (data.prior_appointments !== undefined && mapped.prior_appointemnts === undefined) {
+    mapped.prior_appointemnts = data.prior_appointments;
   }
 
   const rawFuel = (mapped.fuel_type || '').toString().toLowerCase();

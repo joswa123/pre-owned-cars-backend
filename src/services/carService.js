@@ -78,6 +78,9 @@ exports.createCar = async (userId, carData, files) => {
       is_available: true,
       engine_cc: mapped.engine_cc || null,
       description: mapped.description || null,
+      color: mapped.color || '',
+      number_plate: mapped.number_plate || '',
+      prior_appointemnts: mapped.prior_appointemnts || 0,
     };
 
     const car = await Car.create(carFields, { transaction });

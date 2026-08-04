@@ -37,12 +37,18 @@ describe('Car API Integration Tests', () => {
   const setupUser = async (role = 'customer') => {
     const userData = getRandomUser(role);
     const regRes = await request(app).post('/api/v1/auth/register').send(userData);
+    if (!regRes.body || !regRes.body.data) {
+      throw new Error(`Registration failed in setupUser (${regRes.status}): ${JSON.stringify(regRes.body)}`);
+    }
     const otp = regRes.body.data.otp;
     await request(app).post('/api/v1/auth/verify').send({ email: userData.email, code: otp });
     const loginRes = await request(app).post('/api/v1/auth/login').send({
       email: userData.email,
       password: userData.password,
     });
+    if (!loginRes.body || !loginRes.body.data) {
+      throw new Error(`Login failed in setupUser (${loginRes.status}): ${JSON.stringify(loginRes.body)}`);
+    }
     return {
       token: loginRes.body.data.accessToken,
       userId: loginRes.body.data.user.id,
@@ -70,7 +76,10 @@ describe('Car API Integration Tests', () => {
       .field('board_type', overrides.board_type || 'White')
       .field('insurance_expiry_date', overrides.insurance_expiry_date || '2025-12-31')
       .field('insurance_type', overrides.insurance_type || 'comprehensive')
-      .field('description', overrides.description || 'Well maintained family car');
+      .field('description', overrides.description || 'Well maintained family car')
+      .field('color', overrides.color || 'White')
+      .field('number_plate', overrides.number_plate || 'TN01AB1234')
+      .field('prior_appointments', overrides.prior_appointments || '0');
 
     if (overrides.b2b_listing !== undefined) {
       reqObj.field('b2b_listing', overrides.b2b_listing);
@@ -97,6 +106,11 @@ describe('Car API Integration Tests', () => {
     expect(res.body.data.car).toHaveProperty('id');
     expect(res.body.data.car.posted_by_type).toBe('customer');
     expect(res.body.data.car.b2b_listing).toBe(false); // Forced false for customer
+    expect(res.body.data.car.price_negotiable).toBe(true);
+    expect(res.body.data.car.insurance_type).toBe('Comprehensive');
+    expect(res.body.data.car.description).toBe('Well maintained family car');
+    expect(res.body.data.car.color).toBe('White');
+    expect(res.body.data.car.number_plate).toBe('TN01AB1234');
     expect(res.body.data.car.user_id).toBe(userId);
   });
 
@@ -109,6 +123,9 @@ describe('Car API Integration Tests', () => {
     expect(res.body.status).toBe('success');
     expect(res.body.data.car.posted_by_type).toBe('dealer');
     expect(res.body.data.car.b2b_listing).toBe(true);
+    expect(res.body.data.car.price_negotiable).toBe(true);
+    expect(res.body.data.car.insurance_type).toBe('Comprehensive');
+    expect(res.body.data.car.description).toBe('Well maintained family car');
     expect(res.body.data.car.user_id).toBe(userId);
   });
 
@@ -139,6 +156,11 @@ describe('Car API Integration Tests', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.status).toBe('success');
     expect(res.body.data.car).toHaveProperty('id', carId);
+    expect(res.body.data.car.posted_by_type).toBe('customer');
+    expect(res.body.data.car.b2b_listing).toBe(false);
+    expect(res.body.data.car.price_negotiable).toBe(true);
+    expect(res.body.data.car.insurance_type).toBe('Comprehensive');
+    expect(res.body.data.car.description).toBe('Well maintained family car');
     expect(res.body.data.car.seller).toHaveProperty('email', email);
     expect(res.body.data.car.images).toBeInstanceOf(Array);
   });
