@@ -1,6 +1,6 @@
 const { State, District, City } = require('../models');
 const { AppError } = require('../utils/errorHandler');
-const sequelize = require('../config/database'); 
+const sequelize = require('../config/database');
 
 // Get all states
 exports.getStates = async () => {

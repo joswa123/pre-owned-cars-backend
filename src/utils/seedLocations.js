@@ -377,10 +377,19 @@ const seedLocations = async (force = false) => {
         });
 
         // Link any orphan cities belonging to this state to the new district
-        await City.update(
+        const [updatedRows] = await City.update(
           { district_id: district.id },
           { where: { state_id: state.id, district_id: null } }
         );
+
+        if (updatedRows === 0) {
+          logger.info(`📍 Generating fallback city for district: ${district.name}`);
+          await City.create({
+            state_id: state.id,
+            district_id: district.id,
+            name: `${state.name} City`
+          });
+        }
       }
     }
 
