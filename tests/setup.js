@@ -54,9 +54,11 @@ beforeEach(async () => {
     Lead,
     Subscription,
   ];
+  const { Op } = require('sequelize');
   for (const model of modelsToClean) {
     if (model) {
-      await model.destroy({ where: {}, force: true });
+      const whereClause = model === User ? { role: { [Op.ne]: 'admin' } } : {};
+      await model.destroy({ where: whereClause, force: true });
     }
   }
   await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');

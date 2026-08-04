@@ -17,7 +17,7 @@ exports.protect = async (req, res, next) => {
     const user = await User.findByPk(decoded.id);  // ✅ now User is defined
 
     if (!user) {
-      throw new AppError('User no longer exists.', 401);
+      throw new AppError('User account no longer exists. Please log in or register.', 401);
     }
 
     req.user = user;
