@@ -41,8 +41,17 @@ app.use('/api', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ─── Compression ──────────────────────────────────────────────────────────────
-app.use(compression());
+// ─── Compression (Gzip/Brotli for Flutter & Web) ──────────────────────────────
+app.use(compression({
+  threshold: 256, // Compress responses larger than 256 bytes
+  level: 6,       // Optimal balance between CPU usage and compression size
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+}));
 
 // ─── Static Uploads ──────────────────────────────────────────────────────────
 // Render has a persistent disk if configured, otherwise use local uploads folder.

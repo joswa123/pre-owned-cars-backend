@@ -201,9 +201,11 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    // Mark current refresh token as revoked
-    storedToken.is_revoked = true;
-    await storedToken.save();
+    // Mark current refresh token as revoked in DB
+    await RefreshToken.update(
+      { is_revoked: true },
+      { where: { token: refreshToken } }
+    );
 
     // Issue new token pair
     const newAccessToken = jwt.sign(
