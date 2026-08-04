@@ -76,7 +76,6 @@ exports.createCar = async (userId, carData, files) => {
       b2b_listing,
       posted_by_type,
       is_available: true,
-      engine_cc: mapped.engine_cc || null,
       description: mapped.description || null,
       color: mapped.color || '',
       number_plate: mapped.number_plate || '',
