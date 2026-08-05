@@ -78,8 +78,9 @@ exports.updateCar = catchAsync(async (req, res) => {
   const { id } = req.params;
   const userId = req.user.id;
   const updateData = req.body;
+  const files = req.files;
 
-  const car = await carService.updateCar(id, userId, updateData);
+  const car = await carService.updateCar(id, userId, updateData, files);
 
   const { clearCache } = require('../middlewares/cacheMiddleware');
   clearCache('/api/v1/cars');

@@ -273,34 +273,72 @@ exports.getUserCars = async (userId, status = null) => {
 /**
  * Update car listing
  */
-exports.updateCar = async (carId, userId, updateData) => {
-  const car = await Car.findOne({ where: { id: carId, user_id: userId } });
-  if (!car) throw new AppError('Car not found or unauthorized.', 404);
+exports.updateCar = async (carId, userId, updateData, files) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const car = await Car.findOne({ where: { id: carId, user_id: userId }, transaction });
+    if (!car) throw new AppError('Car not found or unauthorized.', 404);
 
-  const mapped = mapToDbValues(updateData || {});
+    const mapped = mapToDbValues(updateData || {});
 
-  const filteredData = {};
-  if (mapped.brand !== undefined) filteredData.brand = mapped.brand;
-  if (mapped.model !== undefined) filteredData.model = mapped.model;
-  if (mapped.variant !== undefined) filteredData.variant = mapped.variant;
-  if (mapped.year !== undefined) filteredData.year = mapped.year;
-  if (mapped.price !== undefined) filteredData.price = mapped.price;
-  if (mapped.price_negotiable !== undefined) filteredData.price_negotiable = mapped.price_negotiable;
-  if (mapped.km_driven !== undefined) filteredData.km_driven = mapped.km_driven;
-  if (mapped.fuel_type !== undefined) filteredData.fuel_type = mapped.fuel_type;
-  if (mapped.transmission !== undefined) filteredData.transmission = mapped.transmission;
-  if (mapped.ownership !== undefined) filteredData.ownership = mapped.ownership;
-  if (mapped.body_type !== undefined) filteredData.body_type = mapped.body_type;
-  if (mapped.board_type !== undefined) filteredData.board_type = mapped.board_type;
-  if (mapped.insurance_expiry_date !== undefined) filteredData.insurance_expiry_date = mapped.insurance_expiry_date;
-  if (mapped.insurance_type !== undefined) filteredData.insurance_type = mapped.insurance_type;
-  if (mapped.b2b_listing !== undefined) filteredData.b2b_listing = mapped.b2b_listing;
-  if (mapped.status !== undefined) filteredData.status = mapped.status;
-  if (mapped.engine_cc !== undefined) filteredData.engine_cc = mapped.engine_cc;
-  if (mapped.description !== undefined) filteredData.description = mapped.description;
+    const filteredData = {};
+    if (mapped.brand !== undefined) filteredData.brand = mapped.brand;
+    if (mapped.model !== undefined) filteredData.model = mapped.model;
+    if (mapped.variant !== undefined) filteredData.variant = mapped.variant;
+    if (mapped.year !== undefined) filteredData.year = mapped.year;
+    if (mapped.price !== undefined) filteredData.price = mapped.price;
+    if (mapped.price_negotiable !== undefined) filteredData.price_negotiable = mapped.price_negotiable;
+    if (mapped.km_driven !== undefined) filteredData.km_driven = mapped.km_driven;
+    if (mapped.fuel_type !== undefined) filteredData.fuel_type = mapped.fuel_type;
+    if (mapped.transmission !== undefined) filteredData.transmission = mapped.transmission;
+    if (mapped.ownership !== undefined) filteredData.ownership = mapped.ownership;
+    if (mapped.body_type !== undefined) filteredData.body_type = mapped.body_type;
+    if (mapped.board_type !== undefined) filteredData.board_type = mapped.board_type;
+    if (mapped.insurance_expiry_date !== undefined) filteredData.insurance_expiry_date = mapped.insurance_expiry_date;
+    if (mapped.insurance_type !== undefined) filteredData.insurance_type = mapped.insurance_type;
+    if (mapped.b2b_listing !== undefined) filteredData.b2b_listing = mapped.b2b_listing;
+    if (mapped.status !== undefined) filteredData.status = mapped.status;
+    if (mapped.engine_cc !== undefined) filteredData.engine_cc = mapped.engine_cc;
+    if (mapped.description !== undefined) filteredData.description = mapped.description;
 
-  await car.update(filteredData);
-  return car;
+    await car.update(filteredData, { transaction });
+
+    if (files) {
+      const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
+      
+      if (files.primary_image && files.primary_image[0]) {
+        await CarImage.destroy({ where: { car_id: car.id, is_primary: true }, transaction });
+        await CarImage.create({
+          car_id: car.id,
+          image_url: getFileUrl(files.primary_image[0]),
+          is_primary: true,
+        }, { transaction });
+      }
+
+      if (files.images && files.images.length > 0) {
+        const imageRecords = files.images.map(file => ({
+          car_id: car.id,
+          image_url: getFileUrl(file),
+          is_primary: false,
+        }));
+        await CarImage.bulkCreate(imageRecords, { transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    const updatedCar = await Car.findByPk(car.id, {
+      include: [
+        { model: CarImage, as: 'images' },
+        { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
+      ],
+    });
+
+    return updatedCar;
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
 };
 
 /**
