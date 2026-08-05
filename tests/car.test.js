@@ -209,7 +209,7 @@ describe('Car API Integration Tests', () => {
   });
 
   // ---------- 7. Delete Car (Owner Only) ----------
-  test('DELETE /api/v1/cars/:id - should delete car listing when requested by owner', async () => {
+  test('DELETE /api/v1/cars/:id - should soft delete car listing when requested by owner', async () => {
     const { token } = await setupUser('customer');
     const carRes = await postTestCar(token);
     const carId = carRes.body.data.car.id;
@@ -221,8 +221,20 @@ describe('Car API Integration Tests', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.status).toBe('success');
 
-    const deletedCar = await Car.findByPk(carId);
-    expect(deletedCar).toBeNull();
+    // Due to defaultScope, findByPk should return null
+    const deletedCarScoped = await Car.findByPk(carId);
+    expect(deletedCarScoped).toBeNull();
+
+    // Verify it still exists in DB as 'deleted'
+    const deletedCarUnscoped = await Car.unscoped().findByPk(carId);
+    expect(deletedCarUnscoped).not.toBeNull();
+    expect(deletedCarUnscoped.status).toBe('deleted');
+    expect(deletedCarUnscoped.deleted_at).not.toBeNull();
+
+    // Verify GET /api/v1/cars/:id returns 404
+    const getRes = await request(app)
+      .get(`/api/v1/cars/${carId}`);
+    expect(getRes.statusCode).toBe(404);
   });
   // ---------- 8. Get User Cars (My Cars) with Filters ----------
   test('GET /api/v1/cars/me - should return my cars matching status filter', async () => {
@@ -258,6 +270,18 @@ describe('Car API Integration Tests', () => {
     expect(resSold.body.data.cars).toBeInstanceOf(Array);
     expect(resSold.body.data.cars.length).toBe(1);
     expect(resSold.body.data.cars[0].id).toBe(soldCarId);
+
+    // Filter deleted
+    await request(app).delete(`/api/v1/cars/${activeCarId}`).set('Authorization', `Bearer ${token}`);
+    const resDeleted = await request(app)
+      .get('/api/v1/cars/me')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ status: 'deleted' });
+
+    expect(resDeleted.statusCode).toBe(200);
+    expect(resDeleted.body.data.cars).toBeInstanceOf(Array);
+    expect(resDeleted.body.data.cars.length).toBe(1);
+    expect(resDeleted.body.data.cars[0].id).toBe(activeCarId);
   });
 
   // ---------- 9. Get Cars with Location Filter ----------

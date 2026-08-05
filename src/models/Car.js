@@ -158,10 +158,21 @@ const Car = sequelize.define('Car', {
       return parts.length > 0 ? parts.join(', ') : null;
     }
   },
+  deleted_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
   tableName: 'cars',
   timestamps: true,
   underscored: true,
+  defaultScope: {
+    where: {
+      status: {
+        [require('sequelize').Op.ne]: 'deleted'
+      }
+    }
+  },
   indexes: [
     { fields: ['user_id'] },
     { fields: ['posted_by_type'] },

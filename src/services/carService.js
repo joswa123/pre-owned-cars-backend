@@ -251,11 +251,16 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
  */
 exports.getUserCars = async (userId, status = null) => {
   const whereClause = { user_id: userId };
+  let queryModel = Car;
+  
   if (status) {
     whereClause.status = status;
+    if (status === 'deleted') {
+      queryModel = Car.unscoped();
+    }
   }
 
-  const cars = await Car.findAll({
+  const cars = await queryModel.findAll({
     where: whereClause,
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
@@ -342,17 +347,15 @@ exports.updateCar = async (carId, userId, updateData, files) => {
 };
 
 /**
- * Delete car listing
+ * Delete car listing (Soft Delete)
  */
 exports.deleteCar = async (carId, userId) => {
   const car = await Car.findOne({ where: { id: carId, user_id: userId } });
   if (!car) throw new AppError('Car not found or unauthorized.', 404);
 
-  await CarImage.destroy({ where: { car_id: carId } });
-  if (Wishlist) await Wishlist.destroy({ where: { car_id: carId } });
-  if (Lead) await Lead.destroy({ where: { car_id: carId } });
-
-  await car.destroy();
+  // Soft delete: update status and set deleted_at
+  await car.update({ status: 'deleted', deleted_at: new Date() });
+  
   return { success: true };
 };
 
@@ -362,6 +365,7 @@ exports.deleteCar = async (carId, userId) => {
 exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'DESC') => {
   const offset = (page - 1) * limit;
   const where = {};
+  let queryModel = Car;
 
   if (filters.posted_by_type) where.posted_by_type = filters.posted_by_type;
   if (filters.b2b_listing !== undefined) {
@@ -369,12 +373,15 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
   }
   if (filters.status !== undefined) {
     where.status = filters.status;
+    if (filters.status === 'deleted') {
+      queryModel = Car.unscoped();
+    }
   }
   if (filters.state_id) where.state_id = filters.state_id;
   if (filters.district_id) where.district_id = filters.district_id;
   if (filters.city_id) where.city_id = filters.city_id;
 
-  const { count, rows } = await Car.findAndCountAll({
+  const { count, rows } = await queryModel.findAndCountAll({
     distinct: true,
     col: 'id',
     where,
