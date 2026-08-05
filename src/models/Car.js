@@ -19,6 +19,24 @@ const Car = sequelize.define('Car', {
     onDelete: 'CASCADE',
     comment: 'ID of the user (customer or dealer) who posted this car listing',
   },
+  state_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: { model: 'states', key: 'id' },
+    onDelete: 'SET NULL',
+  },
+  district_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: { model: 'districts', key: 'id' },
+    onDelete: 'SET NULL',
+  },
+  city_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: { model: 'cities', key: 'id' },
+    onDelete: 'SET NULL',
+  },
 
   brand: {
     type: DataTypes.STRING(50),
@@ -130,6 +148,16 @@ const Car = sequelize.define('Car', {
     },
     comment: 'Virtual alias for prior_appointemnts for standard naming compatibility',
   },
+  location_text: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      const parts = [];
+      if (this.city?.name) parts.push(this.city.name);
+      if (this.district?.name) parts.push(this.district.name);
+      if (this.state?.name) parts.push(this.state.name);
+      return parts.length > 0 ? parts.join(', ') : null;
+    }
+  },
 }, {
   tableName: 'cars',
   timestamps: true,
@@ -146,6 +174,9 @@ const Car = sequelize.define('Car', {
     { fields: ['fuel_type'] },
     { fields: ['transmission'] },
     { fields: ['color'] },
+    { fields: ['state_id'] },
+    { fields: ['district_id'] },
+    { fields: ['city_id'] },
   ],
 });
 

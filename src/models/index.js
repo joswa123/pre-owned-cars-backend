@@ -65,6 +65,15 @@ Car.belongsTo(User, { foreignKey: 'user_id', as: 'seller' });
 Car.hasMany(CarImage, { foreignKey: 'car_id', as: 'images' });
 CarImage.belongsTo(Car, { foreignKey: 'car_id' });
 
+Car.belongsTo(State, { foreignKey: 'state_id', as: 'state' });
+State.hasMany(Car, { foreignKey: 'state_id' });
+
+Car.belongsTo(District, { foreignKey: 'district_id', as: 'district' });
+District.hasMany(Car, { foreignKey: 'district_id' });
+
+Car.belongsTo(City, { foreignKey: 'city_id', as: 'city' });
+City.hasMany(Car, { foreignKey: 'city_id' });
+
 // ==========================================
 // LOCATION HIERARCHY (State → District → City)
 // ==========================================

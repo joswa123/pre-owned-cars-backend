@@ -113,6 +113,10 @@ describe('Car API Integration Tests', () => {
     expect(res.body.data.car.number_plate).toBe('TN01AB1234');
     expect(res.body.data.car.prior_appointments).toBe(false);
     expect(res.body.data.car.user_id).toBe(userId);
+    expect(res.body.data.car).toHaveProperty('state_id');
+    expect(res.body.data.car).toHaveProperty('district_id');
+    expect(res.body.data.car).toHaveProperty('city_id');
+    expect(res.body.data.car.state_id).not.toBeNull();
   });
 
   // ---------- 2. Create Car as Dealer (with b2b_listing = true) ----------
@@ -254,5 +258,25 @@ describe('Car API Integration Tests', () => {
     expect(resSold.body.data.cars).toBeInstanceOf(Array);
     expect(resSold.body.data.cars.length).toBe(1);
     expect(resSold.body.data.cars[0].id).toBe(soldCarId);
+  });
+
+  // ---------- 9. Get Cars with Location Filter ----------
+  test('GET /api/v1/cars - should return list of cars matching city_id filter', async () => {
+    const { token, userId } = await setupUser('customer');
+    const userInDb = await require('../src/models/User').findByPk(userId);
+    const userCityId = userInDb.city_id;
+    
+    await postTestCar(token, { brand: 'Toyota' });
+
+    const res = await request(app)
+      .get('/api/v1/cars')
+      .query({ city_id: userCityId });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.data.cars).toBeInstanceOf(Array);
+    expect(res.body.data.cars.length).toBeGreaterThan(0);
+    expect(res.body.data.cars[0].city_id).toBe(userCityId);
+    expect(res.body.data.cars[0].city).toHaveProperty('name', 'Gandhipuram');
   });
 });

@@ -1,4 +1,4 @@
-const { Car, CarImage, User, Wishlist, Lead } = require('../models');
+const { Car, CarImage, User, Wishlist, Lead, State, District, City } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -80,6 +80,9 @@ exports.createCar = async (userId, carData, files) => {
       color: mapped.color || '',
       number_plate: mapped.number_plate || '',
       prior_appointemnts: mapped.prior_appointemnts === true || mapped.prior_appointemnts === 'true',
+      state_id: user.state_id || null,
+      district_id: user.district_id || null,
+      city_id: user.city_id || null,
     };
 
     const car = await Car.create(carFields, { transaction });
@@ -153,6 +156,9 @@ exports.getCars = async (
   if (filters.model) where.model = { [Op.like]: `%${filters.model}%` };
   if (filters.fuel_type) where.fuel_type = filters.fuel_type;
   if (filters.transmission) where.transmission = filters.transmission;
+  if (filters.state_id) where.state_id = filters.state_id;
+  if (filters.district_id) where.district_id = filters.district_id;
+  if (filters.city_id) where.city_id = filters.city_id;
 
   const { count, rows } = await Car.findAndCountAll({
     distinct: true,
@@ -161,6 +167,9 @@ exports.getCars = async (
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city', 'profile_picture'] },
+      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
     ],
     limit,
     offset,
@@ -193,6 +202,9 @@ exports.getCarById = async (carId, userId = null) => {
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role', 'city', 'state', 'profile_picture'] },
+      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
     ],
   });
   if (!car) throw new AppError('Car not found.', 404);
@@ -216,6 +228,9 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'profile_picture'] },
+      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
     ],
     order: [['created_at', 'DESC']],
     limit,
@@ -244,6 +259,9 @@ exports.getUserCars = async (userId, status = null) => {
     where: whereClause,
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
     ],
     order: [['created_at', 'DESC']],
   });
@@ -314,6 +332,9 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
   if (filters.status !== undefined) {
     where.status = filters.status;
   }
+  if (filters.state_id) where.state_id = filters.state_id;
+  if (filters.district_id) where.district_id = filters.district_id;
+  if (filters.city_id) where.city_id = filters.city_id;
 
   const { count, rows } = await Car.findAndCountAll({
     distinct: true,
@@ -322,6 +343,9 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'profile_picture'] },
+      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
     ],
     limit,
     offset,
