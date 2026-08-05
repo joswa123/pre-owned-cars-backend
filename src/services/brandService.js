@@ -1,6 +1,43 @@
-const { Brand } = require('../models');
+const { Brand, Car } = require('../models');
 const { Op } = require('sequelize');
-const sequelize = require('../config/database'); 
+const sequelize = require('../config/database');
+const redisClient = require('../config/redis');
+
+exports.getBrandsWithCarCounts = async () => {
+  const cacheKey = 'brands:with_counts';
+  try {
+    const cached = await redisClient.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {
+    console.error('Redis get error', e);
+  }
+
+  const brands = await Brand.findAll({ where: { is_active: true }, order: [['name', 'ASC']] });
+  const counts = await Car.findAll({
+    attributes: [
+      'brand_id',
+      [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+    ],
+    where: { status: 'active' },
+    group: ['brand_id']
+  });
+
+  const countMap = {};
+  counts.forEach(c => { countMap[c.brand_id] = parseInt(c.get('count')); });
+
+  const result = brands.map(b => ({
+    ...b.toJSON(),
+    car_count: countMap[b.id] || 0
+  }));
+
+  try {
+    await redisClient.setEx(cacheKey, 60, JSON.stringify(result));
+  } catch (e) {
+    console.error('Redis setEx error', e);
+  }
+  
+  return result;
+};
 
 exports.getAllBrands = async () => {
   return await Brand.findAll({ order: [['name', 'ASC']] });

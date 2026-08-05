@@ -1,7 +1,16 @@
-const { Car, CarImage, User, Wishlist, Lead, State, District, City } = require('../models');
+const { Car, CarImage, User, Wishlist, Lead, State, District, City, Brand } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
+const redisClient = require('../config/redis');
+
+const clearCache = async (key) => {
+  try {
+    await redisClient.del(key);
+  } catch (err) {
+    console.error('Redis clear cache error:', err);
+  }
+};
 const { mapToDbValues } = require('../validations/carValidation');
 
 /**
@@ -53,13 +62,21 @@ exports.createCar = async (userId, carData, files) => {
 
     const mapped = mapToDbValues(carData);
 
+    let brandId = mapped.brand_id;
+    if (!brandId && mapped.brand) {
+      const brandObj = await Brand.findOne({ where: { name: mapped.brand } });
+      if (!brandObj) throw new AppError(`Brand "${mapped.brand}" not found.`, 400);
+      brandId = brandObj.id;
+    }
+    if (!brandId) throw new AppError('Brand ID or brand name is required.', 400);
+
     const posted_by_type = user.role === 'dealer' ? 'dealer' : 'customer';
     const b2b_listing =
       user.role === 'dealer' && (mapped.b2b_listing === true || mapped.b2b_listing === 'true');
 
     const carFields = {
       user_id: userId,
-      brand: mapped.brand,
+      brand_id: brandId,
       model: mapped.model,
       variant: mapped.variant,
       year: mapped.year,
@@ -117,9 +134,11 @@ exports.createCar = async (userId, carData, files) => {
       include: [
         { model: CarImage, as: 'images' },
         { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       ],
     });
 
+    await clearCache('brands:with_counts');
     return createdCar;
   } catch (error) {
     console.error('❌ CREATE CAR SERVICE ERROR:', error);
@@ -152,7 +171,11 @@ exports.getCars = async (
   if (filters.max_price) {
     where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
   }
-  if (filters.brand) where.brand = filters.brand;
+  if (filters.brand_id) where.brand_id = filters.brand_id;
+  if (filters.brand) {
+    const brand = await Brand.findOne({ where: { name: filters.brand } });
+    if (brand) where.brand_id = brand.id;
+  }
   if (filters.model) where.model = { [Op.like]: `%${filters.model}%` };
   if (filters.fuel_type) where.fuel_type = filters.fuel_type;
   if (filters.transmission) where.transmission = filters.transmission;
@@ -167,6 +190,7 @@ exports.getCars = async (
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city', 'profile_picture'] },
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -202,6 +226,7 @@ exports.getCarById = async (carId, userId = null) => {
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role', 'city', 'state', 'profile_picture'] },
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -228,6 +253,7 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'profile_picture'] },
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -264,6 +290,7 @@ exports.getUserCars = async (userId, status = null) => {
     where: whereClause,
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -286,8 +313,14 @@ exports.updateCar = async (carId, userId, updateData, files) => {
 
     const mapped = mapToDbValues(updateData || {});
 
+    let brandId = mapped.brand_id;
+    if (!brandId && mapped.brand) {
+      const brandObj = await Brand.findOne({ where: { name: mapped.brand } });
+      if (brandObj) brandId = brandObj.id;
+    }
+
     const filteredData = {};
-    if (mapped.brand !== undefined) filteredData.brand = mapped.brand;
+    if (brandId) filteredData.brand_id = brandId;
     if (mapped.model !== undefined) filteredData.model = mapped.model;
     if (mapped.variant !== undefined) filteredData.variant = mapped.variant;
     if (mapped.year !== undefined) filteredData.year = mapped.year;
@@ -336,9 +369,11 @@ exports.updateCar = async (carId, userId, updateData, files) => {
       include: [
         { model: CarImage, as: 'images' },
         { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       ],
     });
 
+    await clearCache('brands:with_counts');
     return updatedCar;
   } catch (error) {
     await transaction.rollback();
@@ -356,6 +391,7 @@ exports.deleteCar = async (carId, userId) => {
   // Soft delete: update status and set deleted_at
   await car.update({ status: 'deleted', deleted_at: new Date() });
   
+  await clearCache('brands:with_counts');
   return { success: true };
 };
 
@@ -388,6 +424,7 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'profile_picture'] },
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -436,6 +473,7 @@ exports.updateCarStatus = async (carId, status, adminId) => {
   if (!car) throw new AppError('Car not found.', 404);
 
   await car.update({ status });
+  await clearCache('brands:with_counts');
   return car;
 };
 
@@ -447,5 +485,6 @@ exports.toggleFeatured = async (carId, is_featured) => {
   if (!car) throw new AppError('Car not found.', 404);
   const status = is_featured ? 'active' : 'deleted';
   await car.update({ status });
+  await clearCache('brands:with_counts');
   return car;
 };

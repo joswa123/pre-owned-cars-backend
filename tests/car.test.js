@@ -147,7 +147,7 @@ describe('Car API Integration Tests', () => {
     expect(res.body.status).toBe('success');
     expect(res.body.data.cars).toBeInstanceOf(Array);
     expect(res.body.data.cars.length).toBeGreaterThan(0);
-    expect(res.body.data.cars[0].brand).toBe('Toyota');
+    expect(res.body.data.cars[0].brand.name).toBe('Toyota');
   });
 
   // ---------- 4. Get Single Car Details ----------

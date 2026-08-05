@@ -14,7 +14,8 @@ const STATUS_TYPES_IN = ['sold', 'active', 'deleted', 'expired'];
  * Create Car Joi Schema
  */
 const createCarSchema = Joi.object({
-  brand:            Joi.string().trim().max(50).required(),
+  brand_id:         Joi.string().uuid().optional(),
+  brand:            Joi.string().trim().max(50).optional(),
   model:            Joi.string().trim().max(50).required(),
   variant:          Joi.string().trim().max(50).required(),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).required(),
@@ -45,12 +46,14 @@ const createCarSchema = Joi.object({
   .or('fuel_type', 'fueltype')
   .or('body_type', 'car_type')
   .or('board_type', 'numplate')
+  .or('brand_id', 'brand')
   .unknown(true);
 
 /**
  * Update Car Joi Schema
  */
 const updateCarSchema = Joi.object({
+  brand_id:         Joi.string().uuid().optional(),
   brand:            Joi.string().trim().max(50),
   model:            Joi.string().trim().max(50),
   variant:          Joi.string().trim().max(50),

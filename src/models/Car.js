@@ -38,9 +38,18 @@ const Car = sequelize.define('Car', {
     onDelete: 'SET NULL',
   },
 
-  brand: {
-    type: DataTypes.STRING(50),
+  brand_id: {
+    type: DataTypes.UUID,
     allowNull: false,
+    references: { model: 'brands', key: 'id' },
+    onDelete: 'RESTRICT',
+  },
+  brandName: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      // NOTE: Only populated if `brand` association is eager-loaded!
+      return this.brand?.name || null;
+    }
   },
   model: {
     type: DataTypes.STRING(50),

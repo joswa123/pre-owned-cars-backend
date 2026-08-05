@@ -7,7 +7,16 @@ const { catchAsync } = require('../utils/errorHandler');
  * Get list of all active car brands
  */
 exports.getBrands = catchAsync(async (req, res) => {
-  const brands = await carCatalogService.getAllBrands();
+  const { with_counts } = req.query;
+  let brands;
+  
+  if (with_counts === 'true' || with_counts === true) {
+    const brandService = require('../services/brandService');
+    brands = await brandService.getBrandsWithCarCounts();
+  } else {
+    brands = await carCatalogService.getAllBrands();
+  }
+  
   res.status(200).json({
     status: 'success',
     data: { brands },
