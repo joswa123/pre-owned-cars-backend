@@ -33,19 +33,31 @@ const transformCarImages = (car, baseUrl = null) => {
   const secondary = images.filter((img) => img.is_primary !== true);
   const base = baseUrl || process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
 
-  const toAbsolute = (url) => {
+  const getOptimizedImageUrl = (url) => {
     if (!url) return null;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+    
+    let absUrl = url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      absUrl = `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+
+    // Apply delivery transformations for Cloudinary URLs (WebP/AVIF auto-format, quality, size)
+    if (absUrl.includes('res.cloudinary.com') && absUrl.includes('/upload/')) {
+      if (!absUrl.includes('/upload/f_auto')) {
+        absUrl = absUrl.replace('/upload/', '/upload/f_auto,q_auto,w_800,c_limit/');
+      }
+    }
+    
+    return absUrl;
   };
 
   return {
     ...car.toJSON(),
-    primary_image: primary ? toAbsolute(primary.image_url) : null,
-    secondary_images: secondary.map((img) => toAbsolute(img.image_url)),
+    primary_image: primary ? getOptimizedImageUrl(primary.image_url) : null,
+    secondary_images: secondary.map((img) => getOptimizedImageUrl(img.image_url)),
     images: images.map((img) => ({
       ...img.toJSON(),
-      image_url: toAbsolute(img.image_url),
+      image_url: getOptimizedImageUrl(img.image_url),
     })),
   };
 };
