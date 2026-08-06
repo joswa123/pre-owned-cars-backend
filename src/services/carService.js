@@ -11,6 +11,17 @@ const clearCache = async (key) => {
     console.error('Redis clear cache error:', err);
   }
 };
+
+const clearCachePattern = async (pattern) => {
+  try {
+    const keys = await redisClient.keys(pattern);
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
+  } catch (err) {
+    console.error('Redis clear pattern error:', err);
+  }
+};
 const { mapToDbValues } = require('../validations/carValidation');
 
 /**
@@ -140,6 +151,7 @@ exports.createCar = async (userId, carData, files) => {
 
     await clearCache('brands:with_counts');
     await clearCache('board_type_stats');
+    await clearCachePattern('cars:list:*');
     return createdCar;
   } catch (error) {
     console.error('❌ CREATE CAR SERVICE ERROR:', error);
@@ -148,9 +160,6 @@ exports.createCar = async (userId, carData, files) => {
   }
 };
 
-/**
- * Get public car listings with filters
- */
 exports.getCars = async (
   filters = {},
   page = 1,
@@ -159,50 +168,85 @@ exports.getCars = async (
   sortOrder = 'DESC',
   userId = null
 ) => {
-  const offset = (page - 1) * limit;
-  const where = { status: 'active' };
-
-  if (filters.posted_by_type) where.posted_by_type = filters.posted_by_type;
-  if (filters.b2b_listing !== undefined) {
-    where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
+  const cacheKey = `cars:list:${Buffer.from(JSON.stringify({ filters, page, limit, sortBy, sortOrder })).toString('base64')}`;
+  
+  let cachedData;
+  try {
+    const cached = await redisClient.get(cacheKey);
+    if (cached) cachedData = JSON.parse(cached);
+  } catch (err) {
+    console.error('Redis cache error in getCars:', err);
   }
-  if (filters.body_type) where.body_type = filters.body_type;
-  if (filters.board_type) where.board_type = filters.board_type;
-  if (filters.min_price) where.price = { [Op.gte]: parseFloat(filters.min_price) };
-  if (filters.max_price) {
-    where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
-  }
-  if (filters.brand_id) where.brand_id = filters.brand_id;
-  if (filters.brand) {
-    const brand = await Brand.findOne({ where: { name: filters.brand } });
-    if (brand) where.brand_id = brand.id;
-  }
-  if (filters.model) where.model = { [Op.like]: `%${filters.model}%` };
-  if (filters.fuel_type) where.fuel_type = filters.fuel_type;
-  if (filters.transmission) where.transmission = filters.transmission;
-  if (filters.state_id) where.state_id = filters.state_id;
-  if (filters.district_id) where.district_id = filters.district_id;
-  if (filters.city_id) where.city_id = filters.city_id;
 
-  const { count, rows } = await Car.findAndCountAll({
-    distinct: true,
-    col: 'id',
-    where,
-    include: [
-      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-      { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city', 'profile_picture'] },
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name'] },
-      { model: District, as: 'district', attributes: ['id', 'name'] },
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-    ],
-    limit,
-    offset,
-    order: [[sortBy, sortOrder.toUpperCase()]],
-  });
+  let count, transformedCars;
 
-  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-  const transformedCars = rows.map((car) => transformCarImages(car, baseUrl));
+  if (cachedData) {
+    count = cachedData.count;
+    transformedCars = cachedData.transformedCars;
+  } else {
+    const offset = (page - 1) * limit;
+    const where = { status: 'active' };
+
+    if (filters.posted_by_type) where.posted_by_type = filters.posted_by_type;
+    if (filters.b2b_listing !== undefined) {
+      where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
+    }
+    if (filters.body_type) where.body_type = filters.body_type;
+    if (filters.board_type) where.board_type = filters.board_type;
+    if (filters.min_price) where.price = { [Op.gte]: parseFloat(filters.min_price) };
+    if (filters.max_price) {
+      where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
+    }
+    if (filters.brand_id) where.brand_id = filters.brand_id;
+    if (filters.brand) {
+      const brand = await Brand.findOne({ where: { name: filters.brand } });
+      if (brand) where.brand_id = brand.id;
+    }
+    if (filters.model) where.model = { [Op.like]: `%${filters.model}%` };
+    if (filters.fuel_type) where.fuel_type = filters.fuel_type;
+    if (filters.transmission) where.transmission = filters.transmission;
+    if (filters.state_id) where.state_id = filters.state_id;
+    if (filters.district_id) where.district_id = filters.district_id;
+    if (filters.city_id) where.city_id = filters.city_id;
+
+    const queryResult = await Car.findAndCountAll({
+      attributes: { include: ['created_at', 'deleted_at'] },
+      distinct: true,
+      col: 'id',
+      where,
+      include: [
+        { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+        { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city', 'profile_picture'] },
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+      ],
+      limit,
+      offset,
+      order: [[sortBy, sortOrder.toUpperCase()]],
+    });
+
+    count = queryResult.count;
+    
+    // Limit images to 6 per car
+    queryResult.rows.forEach(car => {
+      if (car.images && car.images.length > 6) {
+        const primary = car.images.find(img => img.is_primary) || car.images[0];
+        const secondary = car.images.filter(img => img.id !== primary.id).slice(0, 5);
+        car.images = [primary, ...secondary];
+      }
+    });
+
+    const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+    transformedCars = queryResult.rows.map((car) => transformCarImages(car, baseUrl));
+
+    try {
+      await redisClient.setEx(cacheKey, 60, JSON.stringify({ count, transformedCars }));
+    } catch (err) {
+      console.error('Redis set cache error in getCars:', err);
+    }
+  }
 
   const wishlistSet = await getWishlistSet(userId);
   const carsWithWishlist = transformedCars.map((car) => ({
@@ -223,25 +267,53 @@ exports.getCars = async (
  * Get single car details by ID
  */
 exports.getCarById = async (carId, userId = null) => {
-  const car = await Car.findByPk(carId, {
-    include: [
-      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-      { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role', 'city', 'state', 'profile_picture'] },
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name'] },
-      { model: District, as: 'district', attributes: ['id', 'name'] },
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-    ],
-  });
-  if (!car) throw new AppError('Car not found.', 404);
+  const cacheKey = `car:${carId}`;
+  
+  let transformedCar;
+  try {
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      transformedCar = JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis cache error in getCarById:', err);
+  }
 
-  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-  const transformedCar = transformCarImages(car, baseUrl);
+  if (!transformedCar) {
+    const car = await Car.findByPk(carId, {
+      attributes: { include: ['created_at', 'deleted_at'] },
+      include: [
+        { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+        { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role', 'city', 'state', 'profile_picture'] },
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+      ],
+    });
+    if (!car) throw new AppError('Car not found.', 404);
+    
+    // Limit images to 6 (1 primary + 5 secondary)
+    if (car.images && car.images.length > 6) {
+      const primary = car.images.find(img => img.is_primary) || car.images[0];
+      const secondary = car.images.filter(img => img.id !== primary.id).slice(0, 5);
+      car.images = [primary, ...secondary];
+    }
+
+    const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+    transformedCar = transformCarImages(car, baseUrl);
+
+    try {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(transformedCar));
+    } catch (err) {
+      console.error('Redis set cache error in getCarById:', err);
+    }
+  }
 
   const wishlistSet = await getWishlistSet(userId);
   return {
     ...transformedCar,
-    isWishlist: wishlistSet.has(car.id),
+    isWishlist: wishlistSet.has(carId),
   };
 };
 
@@ -376,6 +448,8 @@ exports.updateCar = async (carId, userId, updateData, files) => {
 
     await clearCache('brands:with_counts');
     await clearCache('board_type_stats');
+    await clearCache(`car:${carId}`);
+    await clearCachePattern('cars:list:*');
     return updatedCar;
   } catch (error) {
     await transaction.rollback();
@@ -395,6 +469,8 @@ exports.deleteCar = async (carId, userId) => {
   
   await clearCache('brands:with_counts');
   await clearCache('board_type_stats');
+  await clearCache(`car:${carId}`);
+  await clearCachePattern('cars:list:*');
   return { success: true };
 };
 
@@ -478,6 +554,8 @@ exports.updateCarStatus = async (carId, status, adminId) => {
   await car.update({ status });
   await clearCache('brands:with_counts');
   await clearCache('board_type_stats');
+  await clearCache(`car:${carId}`);
+  await clearCachePattern('cars:list:*');
   return car;
 };
 
@@ -491,6 +569,8 @@ exports.toggleFeatured = async (carId, is_featured) => {
   await car.update({ status });
   await clearCache('brands:with_counts');
   await clearCache('board_type_stats');
+  await clearCache(`car:${carId}`);
+  await clearCachePattern('cars:list:*');
   return car;
 };
 

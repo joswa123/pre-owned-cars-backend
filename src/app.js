@@ -9,8 +9,14 @@ const fs = require('fs');
 const { globalErrorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
 const { cacheMiddleware } = require('./middlewares/cacheMiddleware');
+const morgan = require('morgan');
 
 const app = express();
+
+// ─── Logging ─────────────────────────────────────────────────────────────────
+app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
+  stream: { write: message => logger.info(message.trim()) }
+}));
 
 // ─── Trust Proxy (required for Render/Heroku) ────────────────────────────────
 app.set('trust proxy', 1);

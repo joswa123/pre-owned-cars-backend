@@ -187,7 +187,7 @@ const Car = sequelize.define('Car', {
     { fields: ['posted_by_type'] },
     { fields: ['b2b_listing'] },
     { fields: ['status'] },
-    { fields: ['brand'] },
+    { fields: ['brand_id'] },
     { fields: ['price'] },
     { fields: ['km_driven'] },
     { fields: ['body_type'] },
@@ -197,6 +197,10 @@ const Car = sequelize.define('Car', {
     { fields: ['state_id'] },
     { fields: ['district_id'] },
     { fields: ['city_id'] },
+    // Composite indexes for fast filtering
+    { fields: ['status', 'board_type'] },
+    { fields: ['status', 'b2b_listing'] },
+    { fields: ['status', 'brand_id'] },
   ],
 });
 
