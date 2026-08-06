@@ -437,22 +437,14 @@ exports.updateCar = async (carId, userId, updateData, files) => {
 
     await car.update(filteredData, { transaction });
 
-    if (files && (files.primary_image || files.images)) {
+    if (files) {
       const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
       
-      // Default to replacing all images if new ones are uploaded, unless images_to_keep is provided
-      // or replace_images is explicitly set to false.
-      const shouldReplaceAll = updateData.replace_images !== false && updateData.replace_images !== 'false' && updateData.images_to_keep === undefined;
-
-      if (shouldReplaceAll) {
-        await CarImage.destroy({ where: { car_id: car.id }, transaction });
-      } else if (files.primary_image && files.primary_image[0]) {
-        // Only replace primary if not replacing all
-        await CarImage.destroy({ where: { car_id: car.id, is_primary: true }, transaction });
-      }
-
       const imageRecords = [];
+
       if (files.primary_image && files.primary_image[0]) {
+        // Only replace primary image
+        await CarImage.destroy({ where: { car_id: car.id, is_primary: true }, transaction });
         imageRecords.push({
           car_id: car.id,
           image_url: getFileUrl(files.primary_image[0]),
@@ -461,6 +453,11 @@ exports.updateCar = async (carId, userId, updateData, files) => {
       }
 
       if (files.images && files.images.length > 0) {
+        // If new secondary images are uploaded, and no granular flags were passed, replace old secondary images
+        if (updateData.images_to_keep === undefined && updateData.replace_images === undefined) {
+          await CarImage.destroy({ where: { car_id: car.id, is_primary: false }, transaction });
+        }
+        
         files.images.forEach(file => {
           imageRecords.push({
             car_id: car.id,
@@ -654,8 +651,14 @@ exports.toggleFeatured = async (carId, is_featured) => {
  */
 exports.getBoardTypeStats = async () => {
   const cacheKey = 'board_type_stats';
-  const cached = await redisClient.get(cacheKey);
-  if (cached) return JSON.parse(cached);
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get cache error in getBoardTypeStats:', err);
+  }
 
   const [results, b2bCount] = await Promise.all([
     Car.findAll({
@@ -673,11 +676,20 @@ exports.getBoardTypeStats = async () => {
 
   const stats = { 'OWN BOARD': 0, 'T-BOARD': 0, 'COMMERCIAL': 0, 'B2B': b2bCount };
   results.forEach(r => {
-    if (r.board_type && stats[r.board_type] !== undefined) {
-      stats[r.board_type] = parseInt(r.get('count'));
+    if (r.board_type) {
+      const key = r.board_type.toUpperCase();
+      if (stats[key] !== undefined) {
+        stats[key] = parseInt(r.get('count'));
+      }
     }
   });
 
-  await redisClient.setEx(cacheKey, 60, JSON.stringify(stats));
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 60, JSON.stringify(stats));
+    }
+  } catch (err) {
+    console.error('Redis set cache error in getBoardTypeStats:', err);
+  }
   return stats;
 };

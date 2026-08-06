@@ -388,4 +388,28 @@ describe('Car API Integration Tests', () => {
     // Because we didn't send new files in this test request, all images should be gone
     expect(remainingImages.length).toBe(0);
   });
+
+  // ---------- 14. Get Board Type Stats ----------
+  test('GET /api/v1/cars/stats/board-types - should return aggregated board type counts', async () => {
+    const { token } = await setupUser('customer');
+    
+    // Add an 'Own Board' car
+    await postTestCar(token, { board_type: 'Own Board' });
+    
+    // Add a 'T-Board' car
+    await postTestCar(token, { board_type: 'T-Board' });
+
+    const res = await request(app).get('/api/v1/cars/stats/board-types');
+    if (res.statusCode !== 200) {
+      console.log('Error Response:', res.body);
+    }
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.data).toHaveProperty('OWN BOARD');
+    expect(res.body.data).toHaveProperty('T-BOARD');
+    expect(res.body.data).toHaveProperty('COMMERCIAL');
+    expect(res.body.data).toHaveProperty('B2B');
+    expect(res.body.data['OWN BOARD']).toBeGreaterThanOrEqual(1);
+    expect(res.body.data['T-BOARD']).toBeGreaterThanOrEqual(1);
+  });
 });
