@@ -87,7 +87,7 @@ exports.createCar = async (userId, carData, files) => {
       transmission: mapped.transmission,
       ownership: mapped.ownership,
       body_type: mapped.body_type || 'SUV',
-      board_type: mapped.board_type || 'White',
+      board_type: mapped.board_type || 'OWN BOARD',
       insurance_expiry_date: mapped.insurance_expiry_date || null,
       insurance_type: mapped.insurance_type || 'Not Insured',
       b2b_listing,

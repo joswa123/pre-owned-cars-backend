@@ -76,9 +76,9 @@ module.exports = {
 
     if (!carTableDescription.board_type) {
       await queryInterface.addColumn('cars', 'board_type', {
-        type: Sequelize.STRING(50),
+        type: Sequelize.ENUM('OWN BOARD', 'T-BOARD', 'COMMERCIAL'),
         allowNull: false,
-        defaultValue: 'White',
+        defaultValue: 'OWN BOARD',
       });
 
       // Copy number_plate to board_type if number_plate existed
