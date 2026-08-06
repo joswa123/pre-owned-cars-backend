@@ -502,18 +502,23 @@ exports.getBoardTypeStats = async () => {
   const cached = await redisClient.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
-  const results = await Car.findAll({
-    attributes: [
-      'board_type',
-      [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
-    ],
-    where: { status: 'active' },
-    group: ['board_type']
-  });
+  const [results, b2bCount] = await Promise.all([
+    Car.findAll({
+      attributes: [
+        'board_type',
+        [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
+      ],
+      where: { status: 'active' },
+      group: ['board_type']
+    }),
+    Car.count({
+      where: { status: 'active', b2b_listing: true }
+    })
+  ]);
 
-  const stats = { 'OWN BOARD': 0, 'T-BOARD': 0, 'COMMERCIAL': 0 };
+  const stats = { 'OWN BOARD': 0, 'T-BOARD': 0, 'COMMERCIAL': 0, 'B2B': b2bCount };
   results.forEach(r => {
-    if (r.board_type) {
+    if (r.board_type && stats[r.board_type] !== undefined) {
       stats[r.board_type] = parseInt(r.get('count'));
     }
   });
