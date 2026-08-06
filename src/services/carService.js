@@ -437,24 +437,40 @@ exports.updateCar = async (carId, userId, updateData, files) => {
 
     await car.update(filteredData, { transaction });
 
-    if (files) {
+    if (files && (files.primary_image || files.images)) {
       const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
       
-      if (files.primary_image && files.primary_image[0]) {
+      // Default to replacing all images if new ones are uploaded, unless images_to_keep is provided
+      // or replace_images is explicitly set to false.
+      const shouldReplaceAll = updateData.replace_images !== false && updateData.replace_images !== 'false' && updateData.images_to_keep === undefined;
+
+      if (shouldReplaceAll) {
+        await CarImage.destroy({ where: { car_id: car.id }, transaction });
+      } else if (files.primary_image && files.primary_image[0]) {
+        // Only replace primary if not replacing all
         await CarImage.destroy({ where: { car_id: car.id, is_primary: true }, transaction });
-        await CarImage.create({
+      }
+
+      const imageRecords = [];
+      if (files.primary_image && files.primary_image[0]) {
+        imageRecords.push({
           car_id: car.id,
           image_url: getFileUrl(files.primary_image[0]),
           is_primary: true,
-        }, { transaction });
+        });
       }
 
       if (files.images && files.images.length > 0) {
-        const imageRecords = files.images.map(file => ({
-          car_id: car.id,
-          image_url: getFileUrl(file),
-          is_primary: false,
-        }));
+        files.images.forEach(file => {
+          imageRecords.push({
+            car_id: car.id,
+            image_url: getFileUrl(file),
+            is_primary: false,
+          });
+        });
+      }
+
+      if (imageRecords.length > 0) {
         await CarImage.bulkCreate(imageRecords, { transaction });
       }
     }
