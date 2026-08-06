@@ -73,7 +73,7 @@ describe('Car API Integration Tests', () => {
       .field('transmission', overrides.transmission || 'manual')
       .field('ownership', overrides.ownership || '1st owner')
       .field('body_type', overrides.body_type || 'SUV')
-      .field('board_type', overrides.board_type || 'White')
+      .field('board_type', overrides.board_type || 'OWN BOARD')
       .field('insurance_expiry_date', overrides.insurance_expiry_date || '2025-12-31')
       .field('insurance_type', overrides.insurance_type || 'comprehensive')
       .field('description', overrides.description || 'Well maintained family car')

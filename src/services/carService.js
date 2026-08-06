@@ -1,5 +1,5 @@
 const { Car, CarImage, User, Wishlist, Lead, State, District, City, Brand } = require('../models');
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
@@ -139,6 +139,7 @@ exports.createCar = async (userId, carData, files) => {
     });
 
     await clearCache('brands:with_counts');
+    await clearCache('board_type_stats');
     return createdCar;
   } catch (error) {
     console.error('❌ CREATE CAR SERVICE ERROR:', error);
@@ -374,6 +375,7 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     });
 
     await clearCache('brands:with_counts');
+    await clearCache('board_type_stats');
     return updatedCar;
   } catch (error) {
     await transaction.rollback();
@@ -392,6 +394,7 @@ exports.deleteCar = async (carId, userId) => {
   await car.update({ status: 'deleted', deleted_at: new Date() });
   
   await clearCache('brands:with_counts');
+  await clearCache('board_type_stats');
   return { success: true };
 };
 
@@ -474,6 +477,7 @@ exports.updateCarStatus = async (carId, status, adminId) => {
 
   await car.update({ status });
   await clearCache('brands:with_counts');
+  await clearCache('board_type_stats');
   return car;
 };
 
@@ -486,5 +490,34 @@ exports.toggleFeatured = async (carId, is_featured) => {
   const status = is_featured ? 'active' : 'deleted';
   await car.update({ status });
   await clearCache('brands:with_counts');
+  await clearCache('board_type_stats');
   return car;
+};
+
+/**
+ * Get active car counts grouped by board type
+ */
+exports.getBoardTypeStats = async () => {
+  const cacheKey = 'board_type_stats';
+  const cached = await redisClient.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  const results = await Car.findAll({
+    attributes: [
+      'board_type',
+      [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
+    ],
+    where: { status: 'active' },
+    group: ['board_type']
+  });
+
+  const stats = { 'OWN BOARD': 0, 'T-BOARD': 0, 'COMMERCIAL': 0 };
+  results.forEach(r => {
+    if (r.board_type) {
+      stats[r.board_type] = parseInt(r.get('count'));
+    }
+  });
+
+  await redisClient.setEx(cacheKey, 60, JSON.stringify(stats));
+  return stats;
 };

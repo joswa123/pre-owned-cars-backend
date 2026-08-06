@@ -158,3 +158,11 @@ exports.toggleFeatured = catchAsync(async (req, res) => {
     data: { car },
   });
 });
+
+/**
+ * Get Board Type Stats
+ */
+exports.getBoardTypeStats = catchAsync(async (req, res) => {
+  const stats = await carService.getBoardTypeStats();
+  res.status(200).json({ status: 'success', data: stats });
+});
