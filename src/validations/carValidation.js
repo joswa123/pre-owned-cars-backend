@@ -29,7 +29,7 @@ const createCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
   body_type:        Joi.string().trim().max(50).optional(),
   car_type:         Joi.string().trim().max(50).optional(),
-  board_type:       Joi.string().valid('OWN BOARD', 'T-BOARD', 'COMMERCIAL').required(),
+  board_type:       Joi.string().trim().uppercase().valid('OWN BOARD', 'T-BOARD', 'COMMERCIAL').required(),
   numplate:         Joi.string().trim().max(50).optional(),
   insurance_expiry_date: Joi.date().iso().allow('', null).optional(),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
@@ -68,7 +68,7 @@ const updateCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN),
   body_type:        Joi.string().trim().max(50),
   car_type:         Joi.string().trim().max(50),
-  board_type:       Joi.string().valid('OWN BOARD', 'T-BOARD', 'COMMERCIAL'),
+  board_type:       Joi.string().trim().uppercase().valid('OWN BOARD', 'T-BOARD', 'COMMERCIAL'),
   numplate:         Joi.string().trim().max(50),
   insurance_expiry_date: Joi.date().iso().allow('', null),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null),
@@ -172,6 +172,11 @@ const mapToDbValues = (data) => {
 
   const rawBody = (mapped.body_type || '').toString().toLowerCase();
   if (rawBody && BODY_TYPE_MAP[rawBody]) mapped.body_type = BODY_TYPE_MAP[rawBody];
+
+  const rawBoard = (mapped.board_type || '').toString().toUpperCase();
+  if (['OWN BOARD', 'T-BOARD', 'COMMERCIAL'].includes(rawBoard)) {
+    mapped.board_type = rawBoard;
+  }
 
   return mapped;
 };
