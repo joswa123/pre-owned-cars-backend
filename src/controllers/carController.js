@@ -93,6 +93,25 @@ exports.updateCar = catchAsync(async (req, res) => {
 });
 
 /**
+ * Delete Car Image
+ */
+exports.deleteCarImage = catchAsync(async (req, res) => {
+  const { id, imageId } = req.params;
+  const userId = req.user.id;
+  const userRole = req.user.role;
+
+  await carService.deleteCarImage(userId, id, imageId, userRole);
+
+  const { clearCache } = require('../middlewares/cacheMiddleware');
+  clearCache('/api/v1/cars');
+
+  res.status(200).json({
+    status: "success",
+    message: "Image deleted successfully",
+  });
+});
+
+/**
  * Delete Car Listing
  */
 exports.deleteCar = catchAsync(async (req, res) => {

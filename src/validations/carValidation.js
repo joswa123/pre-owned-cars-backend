@@ -81,6 +81,10 @@ const updateCarSchema = Joi.object({
   numberplate:      Joi.string().trim().max(50).allow('', null),
   prior_appointments: Joi.boolean(),
   prior_appointemnts: Joi.boolean(),
+  images_to_keep:   Joi.alternatives().try(
+    Joi.array().items(Joi.string().uuid()),
+    Joi.string()
+  ).optional(),
 }).unknown(true).min(1);
 
 // DB Mapping Helpers

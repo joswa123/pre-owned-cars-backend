@@ -412,6 +412,27 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (mapped.engine_cc !== undefined) filteredData.engine_cc = mapped.engine_cc;
     if (mapped.description !== undefined) filteredData.description = mapped.description;
 
+    if (updateData.images_to_keep !== undefined) {
+      let imagesToKeep = updateData.images_to_keep;
+      if (typeof imagesToKeep === 'string') {
+        try {
+          imagesToKeep = JSON.parse(imagesToKeep);
+        } catch (e) {
+          // If not valid JSON array, treat as single string (e.g. one ID) or empty
+          imagesToKeep = imagesToKeep ? [imagesToKeep] : [];
+        }
+      }
+      if (Array.isArray(imagesToKeep)) {
+        await CarImage.destroy({
+          where: {
+            car_id: car.id,
+            id: { [Op.notIn]: imagesToKeep }
+          },
+          transaction
+        });
+      }
+    }
+
     await car.update(filteredData, { transaction });
 
     if (files) {
@@ -451,6 +472,42 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     await clearCache(`car:${carId}`);
     await clearCachePattern('cars:list:*');
     return updatedCar;
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+};
+
+/**
+ * Delete a specific car image
+ */
+exports.deleteCarImage = async (userId, carId, imageId, userRole) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const carWhere = { id: carId };
+    if (userRole !== 'admin') {
+      carWhere.user_id = userId;
+    }
+    const car = await Car.findOne({ where: carWhere, transaction });
+    if (!car) throw new AppError('Car not found or unauthorized.', 404);
+
+    const image = await CarImage.findOne({ where: { id: imageId, car_id: car.id }, transaction });
+    if (!image) throw new AppError('Image not found.', 404);
+
+    const wasPrimary = image.is_primary;
+    await image.destroy({ transaction });
+
+    if (wasPrimary) {
+      const nextImage = await CarImage.findOne({ where: { car_id: car.id }, transaction });
+      if (nextImage) {
+        await nextImage.update({ is_primary: true }, { transaction });
+      }
+    }
+
+    await transaction.commit();
+    await clearCache(`car:${carId}`);
+    await clearCachePattern('cars:list:*');
+    return { success: true };
   } catch (error) {
     await transaction.rollback();
     throw error;

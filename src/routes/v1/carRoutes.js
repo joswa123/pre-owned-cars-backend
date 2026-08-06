@@ -44,6 +44,9 @@ router.put('/:id', protect, carUpload.fields([
 // ─── Delete Car ─────────────────────────────────────────────
 router.delete('/:id', protect, carController.deleteCar);
 
+// ─── Delete Car Image ───────────────────────────────────────
+router.delete('/:id/images/:imageId', protect, carController.deleteCarImage);
+
 // ─── Public Routes ──────────────────────────────────────────
 const { optionalAuth } = require('../../middlewares/auth');
 router.get('/', optionalAuth, cacheMiddleware(300), carController.getCars);

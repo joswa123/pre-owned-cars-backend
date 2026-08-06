@@ -303,4 +303,65 @@ describe('Car API Integration Tests', () => {
     expect(res.body.data.cars[0].city_id).toBe(userCityId);
     expect(res.body.data.cars[0].city).toHaveProperty('name', 'Gandhipuram');
   });
+  // ---------- 10. Delete Car Image ----------
+  test('DELETE /api/v1/cars/:id/images/:imageId - should delete a specific image', async () => {
+    const { token } = await setupUser('customer');
+    const carRes = await postTestCar(token);
+    const carId = carRes.body.data.car.id;
+    const images = carRes.body.data.car.images;
+    
+    expect(images.length).toBeGreaterThan(0);
+    const imageId = images[0].id;
+
+    const res = await request(app)
+      .delete(`/api/v1/cars/${carId}/images/${imageId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+
+    const CarImage = require('../src/models/CarImage');
+    const deletedImage = await CarImage.findByPk(imageId);
+    expect(deletedImage).toBeNull();
+  });
+
+  // ---------- 11. Unauthorized Car Image Deletion ----------
+  test('DELETE /api/v1/cars/:id/images/:imageId - should reject unauthorized delete', async () => {
+    const { token: ownerToken } = await setupUser('customer');
+    const { token: otherToken } = await setupUser('dealer');
+    const carRes = await postTestCar(ownerToken);
+    const carId = carRes.body.data.car.id;
+    const imageId = carRes.body.data.car.images[0].id;
+
+    const res = await request(app)
+      .delete(`/api/v1/cars/${carId}/images/${imageId}`)
+      .set('Authorization', `Bearer ${otherToken}`);
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  // ---------- 12. Update Car with images_to_keep ----------
+  test('PUT /api/v1/cars/:id - should remove images not in images_to_keep', async () => {
+    const { token } = await setupUser('customer');
+    const carRes = await postTestCar(token);
+    const carId = carRes.body.data.car.id;
+    const images = carRes.body.data.car.images;
+
+    // We will keep only the first image and drop the rest
+    const imagesToKeep = [images[0].id];
+
+    const res = await request(app)
+      .put(`/api/v1/cars/${carId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('price', 2500000) // need to send a field to update
+      .field('images_to_keep', JSON.stringify(imagesToKeep)); // Send as JSON string for multipart
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+
+    const CarImage = require('../src/models/CarImage');
+    const remainingImages = await CarImage.findAll({ where: { car_id: carId } });
+    expect(remainingImages.length).toBe(1);
+    expect(remainingImages[0].id).toBe(images[0].id);
+  });
 });
