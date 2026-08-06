@@ -412,7 +412,9 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (mapped.engine_cc !== undefined) filteredData.engine_cc = mapped.engine_cc;
     if (mapped.description !== undefined) filteredData.description = mapped.description;
 
-    if (updateData.images_to_keep !== undefined) {
+    if (updateData.replace_images === true || updateData.replace_images === 'true') {
+      await CarImage.destroy({ where: { car_id: car.id }, transaction });
+    } else if (updateData.images_to_keep !== undefined) {
       let imagesToKeep = updateData.images_to_keep;
       if (typeof imagesToKeep === 'string') {
         try {

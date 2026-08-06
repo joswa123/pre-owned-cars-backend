@@ -85,6 +85,7 @@ const updateCarSchema = Joi.object({
     Joi.array().items(Joi.string().uuid()),
     Joi.string()
   ).optional(),
+  replace_images:   Joi.boolean().optional(),
 }).unknown(true).min(1);
 
 // DB Mapping Helpers

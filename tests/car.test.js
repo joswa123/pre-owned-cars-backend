@@ -364,4 +364,28 @@ describe('Car API Integration Tests', () => {
     expect(remainingImages.length).toBe(1);
     expect(remainingImages[0].id).toBe(images[0].id);
   });
+  // ---------- 13. Update Car with replace_images ----------
+  test('PUT /api/v1/cars/:id - should remove all old images when replace_images is true', async () => {
+    const { token } = await setupUser('customer');
+    const carRes = await postTestCar(token);
+    const carId = carRes.body.data.car.id;
+    const images = carRes.body.data.car.images;
+    
+    expect(images.length).toBeGreaterThan(0);
+
+    const res = await request(app)
+      .put(`/api/v1/cars/${carId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('price', 2500000)
+      .field('replace_images', 'true'); // Simulate multipart form data
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+
+    const CarImage = require('../src/models/CarImage');
+    const remainingImages = await CarImage.findAll({ where: { car_id: carId } });
+    
+    // Because we didn't send new files in this test request, all images should be gone
+    expect(remainingImages.length).toBe(0);
+  });
 });
