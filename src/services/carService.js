@@ -204,7 +204,15 @@ exports.getCars = async (
       where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
     }
     if (filters.body_type) where.body_type = filters.body_type;
-    if (filters.board_type) where.board_type = filters.board_type;
+    
+    if (filters.board_type) {
+      if (filters.board_type.toUpperCase() === 'B2B') {
+        where.b2b_listing = true;
+      } else {
+        where.board_type = filters.board_type;
+      }
+    }
+    
     if (filters.min_price) where.price = { [Op.gte]: parseFloat(filters.min_price) };
     if (filters.max_price) {
       where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
