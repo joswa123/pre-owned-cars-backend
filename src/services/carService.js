@@ -222,7 +222,14 @@ exports.getCars = async (
     if (filters.city_id) where.city_id = filters.city_id;
 
     const queryResult = await Car.findAndCountAll({
-      attributes: { include: ['created_at', 'deleted_at'] },
+      attributes: [
+        'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven', 
+        'fuel_type', 'transmission', 'ownership', 'body_type', 'board_type', 
+        'insurance_expiry_date', 'insurance_type', 'b2b_listing', 'posted_by_type', 
+        'status', 'description', 'color', 'number_plate', 'prior_appointemnts', 
+        'state_id', 'district_id', 'city_id', 'brand_id', 'user_id', 
+        'created_at', 'updated_at', 'deleted_at'
+      ],
       distinct: true,
       col: 'id',
       where,
@@ -237,6 +244,7 @@ exports.getCars = async (
       limit,
       offset,
       order: [[sortBy, sortOrder.toUpperCase()]],
+      subQuery: false,
     });
 
     count = queryResult.count;

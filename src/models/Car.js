@@ -96,9 +96,9 @@ const Car = sequelize.define('Car', {
     comment: 'Car body type: Sedan, Hatchback, SUV, MUV, Estate, Crossover, Coupe, Convertible, Pickup, Van Minivan, Wagon, Sports Car, Notchback, Sports sedan, Others',
   },
   board_type: {
-    type: DataTypes.ENUM('Own Board', 'T-Board', 'Commercial'),
+    type: DataTypes.ENUM('OWN BOARD', 'T-BOARD', 'COMMERCIAL'),
     allowNull: false,
-    defaultValue: 'Own Board',
+    defaultValue: 'OWN BOARD',
   },
   insurance_expiry_date: {
     type: DataTypes.DATEONLY,

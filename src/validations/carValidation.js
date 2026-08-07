@@ -29,7 +29,7 @@ const createCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
   body_type:        Joi.string().trim().max(50).optional(),
   car_type:         Joi.string().trim().max(50).optional(),
-  board_type:       Joi.string().trim().valid('Own Board', 'T-Board', 'Commercial', 'OWN BOARD', 'T-BOARD', 'COMMERCIAL', 'own board', 't-board', 'commercial').required(),
+  board_type:       Joi.string().valid('OWN BOARD', 'T-BOARD', 'COMMERCIAL').required(),
   numplate:         Joi.string().trim().max(50).optional(),
   insurance_expiry_date: Joi.date().iso().allow('', null).optional(),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
@@ -68,7 +68,7 @@ const updateCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN),
   body_type:        Joi.string().trim().max(50),
   car_type:         Joi.string().trim().max(50),
-  board_type:       Joi.string().trim().valid('Own Board', 'T-Board', 'Commercial', 'OWN BOARD', 'T-BOARD', 'COMMERCIAL', 'own board', 't-board', 'commercial'),
+  board_type:       Joi.string().valid('OWN BOARD', 'T-BOARD', 'COMMERCIAL'),
   numplate:         Joi.string().trim().max(50),
   insurance_expiry_date: Joi.date().iso().allow('', null),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null),
@@ -138,9 +138,9 @@ const BODY_TYPE_MAP = {
 };
 
 const BOARD_TYPE_MAP = {
-  'own board':  'Own Board',
-  't-board':    'T-Board',
-  'commercial': 'Commercial',
+  'own board':  'OWN BOARD',
+  't-board':    'T-BOARD',
+  'commercial': 'COMMERCIAL',
 };
 
 /**
