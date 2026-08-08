@@ -56,8 +56,8 @@ describe('Location API (Public)', () => {
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
   });
 
-  test('GET /api/v1/location - returns full hierarchy', async () => { // Note: The route in app.js is /api/v1/location not /locations
-    const res = await request(app).get('/api/v1/location');
+  test('GET /api/v1/locations - returns full hierarchy', async () => { 
+    const res = await request(app).get('/api/v1/locations');
     expect(res.statusCode).toBe(200);
     expect(res.body.data).toBeInstanceOf(Array);
     // Find the test state in the returned array, in case DB has existing data
@@ -66,33 +66,36 @@ describe('Location API (Public)', () => {
     expect(testState.districts[0].cities[0].id).toBe(cityId);
   });
 
-  test('GET /api/v1/location/dealers?city_id=... - returns dealers in city', async () => {
-    const res = await request(app).get(`/api/v1/location/dealers?city_id=${cityId}`);
+  test('GET /api/v1/locations/dealers?city_id=... - returns dealers in city', async () => {
+    const res = await request(app).get(`/api/v1/locations/dealers?city_id=${cityId}`);
     expect(res.statusCode).toBe(200);
     expect(res.body.data.length).toBeGreaterThan(0);
     const testDealer = res.body.data.find(d => d.id === dealerId);
-    expect(testDealer.id).toBe(dealerId);
+    expect(testDealer).toBeDefined();
   });
 
-  test('GET /api/v1/location/dealers/:dealerId - returns dealer profile', async () => {
-    const res = await request(app).get(`/api/v1/location/dealers/${dealerId}`);
+  test('GET /api/v1/locations/dealers/:dealerId - returns dealer profile', async () => {
+    const res = await request(app).get(`/api/v1/locations/dealers/${dealerId}`);
     expect(res.statusCode).toBe(200);
     expect(res.body.data.id).toBe(dealerId);
     expect(res.body.data.dealerProfile.company_name).toBe('Test Company');
   });
 
-  test('GET /api/v1/location/dealers/:dealerId - 404 for non-dealer', async () => {
+  test('GET /api/v1/locations/dealers/:dealerId - 404 for non-dealer', async () => {
     const uniqueSuffix = Date.now().toString().slice(-6);
     // Create a non-dealer user
     const nonDealer = await User.create({
+      id: crypto.randomUUID(),
       full_name: `John Customer ${uniqueSuffix}`,
-      phone: `99${uniqueSuffix}11`,
       email: `customer${uniqueSuffix}@test.com`,
+      phone: `99${uniqueSuffix}11`,
       password_hash: 'password',
-      password: 'password',
       role: 'customer',
+      status: 'approved'
     });
-    const res = await request(app).get(`/api/v1/location/dealers/${nonDealer.id}`);
+    
+    const nonDealerId = nonDealer.id;
+    const res = await request(app).get(`/api/v1/locations/dealers/${nonDealerId}`);
     expect(res.statusCode).toBe(404);
   });
 });

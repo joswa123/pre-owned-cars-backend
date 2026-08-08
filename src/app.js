@@ -126,7 +126,7 @@ app.use('/api/v1/users', require('./routes/v1/userRoutes'));
 // Apply 60s cache for public car listings (GET only)
 app.use('/api/v1/cars', cacheMiddleware(60), require('./routes/v1/carRoutes'));
 // Apply 5m cache for location metadata
-app.use('/api/v1/location', cacheMiddleware(300), require('./routes/v1/locationRoutes'));
+app.use('/api/v1/locations', cacheMiddleware(300), require('./routes/v1/locationRoutes'));
 // Apply 5m cache for vehicle metadata
 app.use('/api/v1/fuel-types', cacheMiddleware(300), require('./routes/v1/fuelTypeRoutes'));
 app.use('/api/v1/transmissions', cacheMiddleware(300), require('./routes/v1/transmissionRoutes'));
