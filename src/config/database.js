@@ -50,8 +50,8 @@ const sequelize = new Sequelize(
       : false,
     dialectOptions,
     pool: {
-      max: parseInt(process.env.DB_POOL_MAX) || 3,
-      min: 0,
+      max: 20,
+      min: 2,
       acquire: 30000,
       idle: 10000,
     },

@@ -1,6 +1,7 @@
 const { User } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database'); 
+const redisClient = require('../config/redis');
 exports.updateProfile = async (userId, updateData) => {
   const user = await User.findByPk(userId);
   if (!user) throw new AppError('User not found.', 404);
@@ -33,6 +34,13 @@ exports.updateProfile = async (userId, updateData) => {
   }
 
   await user.update(updateObj);
+
+  // Cache Invalidation
+  if (user.role === 'dealer') {
+    await redisClient.del(`dealer:${userId}`);
+    // Optional: clear list cache if needed
+    // await redisClient.del('locations:hierarchy'); 
+  }
 
   const userData = user.toJSON();
   delete userData.password_hash;

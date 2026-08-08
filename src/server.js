@@ -34,31 +34,9 @@ const PORT = process.env.PORT || 5000;
       }
     }
 
-    // Seed location reference data (states, districts, cities) if empty
-    try {
-      const seedLocations = require('./utils/seedLocations');
-      await seedLocations();
-    } catch (seedErr) {
-      logger.warn('⚠️  Location seed failed (non-fatal):', seedErr.message);
-    }
-
-    // Seed body types, fuel types, and transmission reference data
-    try {
-      const seedReferenceData = require('./utils/seedReferenceData');
-      await seedReferenceData();
-    } catch (refErr) {
-      logger.warn('⚠️  Reference data seed failed (non-fatal):', refErr.message);
-    }
-
-    // Seed vehicle catalog reference data (brands, models, variants)
-    try {
-      const carCatalogService = require('./services/carCatalogService');
-      const carData = require('../scripts/car-catalog-data.json');
-      const syncResult = await carCatalogService.syncCatalogData(carData.brands);
-      logger.info(`✅ Vehicle catalog reference data verified and seeded (${syncResult.createdCount} created, ${syncResult.updatedCount} updated)`);
-    } catch (catalogErr) {
-      logger.warn('⚠️  Vehicle catalog seed failed (non-fatal):', catalogErr.message);
-    }
+    // Auto-seeders for locations, reference data, and car catalog have been 
+    // removed from server startup to drastically improve startup time.
+    // They should now be executed explicitly via database migrations or CLI scripts.
     // 3.5 Connect to Redis
     const redisClient = require('./config/redis');
     await redisClient.connect();

@@ -1,6 +1,7 @@
 jest.setTimeout(30000);
 
 const sequelize = require('../src/config/database');
+const redisClient = require('../src/config/redis');
 const {
   User,
   CustomerProfile,
@@ -36,6 +37,7 @@ const seedLocations = async () => {
 
 beforeAll(async () => {
   await sequelize.authenticate();
+  await redisClient.connect();
   await seedLocations();
 });
 
@@ -67,4 +69,5 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await sequelize.close();
+  await redisClient.disconnect();
 });
