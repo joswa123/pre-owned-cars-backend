@@ -11,8 +11,8 @@
     "db:migrate": "npx sequelize-cli db:migrate",
     "catalog:seed": "node scripts/seed-car-catalog.js",
     "vercel-build": "npm ci --omit=dev",
-    "render-build": "npm install --legacy-peer-deps && npx sequelize-cli db:migrate --env production && node scripts/seed-car-catalog.js",
-    "postinstall": "npm run db:migrate && npm run catalog:seed"
+    "render-build": "npm install --legacy-peer-deps && npm run db:migrate",
+    "postinstall": "npm run db:migrate"
   },
   "keywords": [],
   "author": "",
