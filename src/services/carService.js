@@ -97,6 +97,22 @@ exports.createCar = async (userId, carData, files) => {
     const b2b_listing =
       user.role === 'dealer' && (mapped.b2b_listing === true || mapped.b2b_listing === 'true');
 
+    let stateId = user.state_id || null;
+    let districtId = user.district_id || null;
+    let cityId = user.city_id || null;
+
+    // Auto-resolve missing location hierarchy from district
+    if (districtId && (!stateId || !cityId)) {
+      const district = await District.findByPk(districtId, { transaction });
+      if (district) {
+        stateId = stateId || district.state_id;
+        const city = await City.findOne({ where: { district_id: districtId }, transaction });
+        if (city) {
+          cityId = cityId || city.id;
+        }
+      }
+    }
+
     const carFields = {
       user_id: userId,
       brand_id: brandId,
@@ -120,9 +136,9 @@ exports.createCar = async (userId, carData, files) => {
       color: mapped.color || '',
       number_plate: mapped.number_plate || '',
       prior_appointemnts: mapped.prior_appointemnts === true || mapped.prior_appointemnts === 'true',
-      state_id: user.state_id || null,
-      district_id: user.district_id || null,
-      city_id: user.city_id || null,
+      state_id: stateId,
+      district_id: districtId,
+      city_id: cityId,
     };
 
     const car = await Car.create(carFields, { transaction });

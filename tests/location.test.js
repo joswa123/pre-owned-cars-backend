@@ -2,16 +2,18 @@ const request = require('supertest');
 const app = require('../src/app');
 const { State, District, City, User, DealerProfile } = require('../src/models');
 const sequelize = require('../src/config/database');
+const crypto = require('crypto');
 
 describe('Location API (Public)', () => {
   let stateId, districtId, cityId, dealerId;
+  let nonDealerId;
 
   beforeAll(async () => {
     const uniqueSuffix = Date.now().toString().slice(-6);
     // Clear cache to avoid stale test data
     const redisClient = require('../src/config/redis');
     await redisClient.del('locations:hierarchy');
-    await redisClient.del('__express__/api/v1/location__');
+    await redisClient.del('__express__/api/v1/locations__');
     
     // Seed test data: a state, district, city, and a dealer user.
     const state = await State.create({ name: `Test State ${uniqueSuffix}`, code: `TS${uniqueSuffix}` });
@@ -26,7 +28,7 @@ describe('Location API (Public)', () => {
       full_name: `Test Dealer ${uniqueSuffix}`,
       phone: `98${uniqueSuffix}12`,
       email: `testdealer${uniqueSuffix}@example.com`,
-      password_hash: 'password', // use password_hash since User.js probably has this, wait user passed password in prompt, let's keep password_hash or just password depending on model. Let's use password_hash just in case. Actually, the prompt says "password: 'password'". The user model might have a hook. Let's use password.
+      password_hash: 'password', 
       password: 'password',
       role: 'dealer',
       state_id: stateId,
@@ -46,13 +48,14 @@ describe('Location API (Public)', () => {
   });
 
   afterAll(async () => {
-    // Clean up test data
+    // Clean up specifically the test data we created, to avoid wiping out the whole DB!
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
-    await DealerProfile.destroy({ where: {} });
-    await User.destroy({ where: {} });
-    await City.destroy({ where: {} });
-    await District.destroy({ where: {} });
-    await State.destroy({ where: {} });
+    if (dealerId) await DealerProfile.destroy({ where: { user_id: dealerId } });
+    if (dealerId) await User.destroy({ where: { id: dealerId } });
+    if (nonDealerId) await User.destroy({ where: { id: nonDealerId } });
+    if (cityId) await City.destroy({ where: { id: cityId } });
+    if (districtId) await District.destroy({ where: { id: districtId } });
+    if (stateId) await State.destroy({ where: { id: stateId } });
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
   });
 
@@ -94,7 +97,7 @@ describe('Location API (Public)', () => {
       status: 'approved'
     });
     
-    const nonDealerId = nonDealer.id;
+    nonDealerId = nonDealer.id;
     const res = await request(app).get(`/api/v1/locations/dealers/${nonDealerId}`);
     expect(res.statusCode).toBe(404);
   });
