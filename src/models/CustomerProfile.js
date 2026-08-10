@@ -28,6 +28,11 @@ const CustomerProfile = sequelize.define('CustomerProfile', {
     allowNull: true,
     comment: 'JSON stringified customer search or car preferences',
   },
+  alt_phone: {
+    type: DataTypes.STRING(15),
+    allowNull: true,
+    validate: { is: /^[0-9]{10,15}$/ },
+  },
 }, {
   tableName: 'customer_profiles',
   timestamps: true,

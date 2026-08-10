@@ -46,6 +46,11 @@ const DealerProfile = sequelize.define('DealerProfile', {
       len: [6, 6],
     },
   },
+  alt_phone: {
+    type: DataTypes.STRING(15),
+    allowNull: true,
+    validate: { is: /^[0-9]{10,15}$/ },
+  },
   gst_no: {
     type: DataTypes.STRING(50),
     allowNull: true,

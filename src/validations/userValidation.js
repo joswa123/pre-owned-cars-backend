@@ -1,32 +1,34 @@
 const Joi = require('joi');
 
 const updateProfileSchema = Joi.object({
-  seller_type: Joi.string().valid('individual', 'company').required().optional(),
-  // Common fields
-  name: Joi.string().min(3).max(100).optional(),
+  // User fields
+  full_name: Joi.string().min(2).max(100).optional(),
+  name: Joi.string().min(2).max(100).optional(),
   phone: Joi.string().pattern(/^[0-9]{10}$/).optional(),
+  profile_picture: Joi.string().uri().optional(),
   email: Joi.string().email().optional(),
+  use_registered_for_whatsapp: Joi.boolean().optional(),
+  whatsapp_number: Joi.string().pattern(/^[0-9]{10,15}$/).optional(),
+  
+  // Dealer/Customer specific fields
+  company_name: Joi.string().max(100).optional(),
+  door_no: Joi.string().max(50).optional(),
+  building_name: Joi.string().max(100).optional(),
+  street_name: Joi.string().max(100).optional(),
+  pincode: Joi.string().pattern(/^[0-9]{5,10}$/).optional(),
+  alt_phone: Joi.string().pattern(/^[0-9]{10,15}$/).optional(),
+  
+  // Customer specific
+  preferences: Joi.object().optional(),
+
+  // Legacy fields
+  seller_type: Joi.string().valid('individual', 'company').optional(),
   address: Joi.string().max(255).optional(),
   city: Joi.string().max(100).optional(),
   state: Joi.string().max(100).optional(),
-  pincode: Joi.string().pattern(/^[0-9]{6}$/).optional(),
-  // Company-only fields
-  company_name: Joi.string().max(100).when('seller_type', {
-    is: 'company',
-    then: Joi.required(),
-  }),
-  license_no: Joi.string().max(100).when('seller_type', {
-    is: 'company',
-    then: Joi.required(),
-  }),
-  gst_no: Joi.string().max(100).when('seller_type', {
-    is: 'company',
-    then: Joi.required(),
-  }),
-  contact_person: Joi.string().max(100).when('seller_type', {
-    is: 'company',
-    then: Joi.required(),
-  }),
-});
+  license_no: Joi.string().max(100).optional(),
+  gst_no: Joi.string().max(100).optional(),
+  contact_person: Joi.string().max(100).optional(),
+}).min(1);
 
 module.exports = { updateProfileSchema };

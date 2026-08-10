@@ -30,6 +30,16 @@ const User = sequelize.define('User', {
     allowNull: true,
     validate: { isEmail: true },
   },
+  use_registered_for_whatsapp: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+  },
+  whatsapp_number: {
+    type: DataTypes.STRING(15),
+    allowNull: true,
+    validate: { is: /^[0-9]{10,15}$/ },
+  },
   password_hash: {
     type: DataTypes.STRING(255),
     allowNull: false,

@@ -1,6 +1,6 @@
 const locationService = require('../services/locationService');
 const { catchAsync } = require('../utils/errorHandler');
-const { State, District, City, User, DealerProfile } = require('../models');
+const { State, District, City, User, DealerProfile, Car, CarImage } = require('../models');
 const { Op } = require('sequelize');
 const redisClient = require('../config/redis');
 
@@ -95,25 +95,48 @@ exports.getFullHierarchy = async (req, res, next) => {
 // 2. Get dealers by location filters
 exports.getDealersByLocation = async (req, res, next) => {
   try {
-    const { state_id, district_id, city_id } = req.query;
-    const where = {};
+    const { state_id, district_id, city_id, company_name, page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+    const where = { role: 'dealer' };
+    
     if (state_id) where.state_id = state_id;
     if (district_id) where.district_id = district_id;
     if (city_id) where.city_id = city_id;
-    // Only dealers
-    where.role = 'dealer';
 
-    const dealers = await User.findAll({
+    const include = [{
+      model: DealerProfile,
+      as: 'dealerProfile',
+      attributes: ['company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'alt_phone', 'verified'],
+    }];
+
+    if (company_name) {
+      include[0].where = { company_name: { [Op.like]: `%${company_name}%` } };
+    }
+
+    const dealers = await User.findAndCountAll({
       where,
-      attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture'],
-      include: [{
-        model: DealerProfile,
-        as: 'dealerProfile',
-        attributes: ['company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'verified'],
-      }],
+      attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture', 'state_id', 'district_id', 'city_id'],
+      include: [
+        ...include,
+        { model: State, as: 'stateDetail', attributes: ['name'] },
+        { model: District, as: 'districtDetail', attributes: ['name'] },
+        { model: City, as: 'cityDetail', attributes: ['name'] },
+      ],
+      limit: parseInt(limit),
+      offset,
+      order: [['full_name', 'ASC']],
     });
 
-    res.json({ status: 'success', data: dealers });
+    res.json({
+      status: 'success',
+      data: dealers.rows,
+      pagination: { 
+        page: parseInt(page), 
+        limit: parseInt(limit), 
+        total: dealers.count, 
+        totalPages: Math.ceil(dealers.count / limit) 
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -131,12 +154,19 @@ exports.getDealerProfile = async (req, res, next) => {
 
     const dealer = await User.findOne({
       where: { id: dealerId, role: 'dealer' },
-      attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture'],
+      attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture', 'whatsapp_number', 'use_registered_for_whatsapp'],
       include: [
         { model: DealerProfile, as: 'dealerProfile' },
         { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
         { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
         { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
+        {
+          model: Car,
+          as: 'postedCars',
+          limit: 20,
+          order: [['created_at', 'DESC']],
+          include: [{ model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] }],
+        },
       ],
     });
 
