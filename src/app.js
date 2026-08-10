@@ -124,15 +124,15 @@ app.get('/server-id', (req, res) => {
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));
 // Apply 60s cache for public car listings (GET only)
-app.use('/api/v1/cars', cacheMiddleware(60), require('./routes/v1/carRoutes'));
+app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
 // Apply 5m cache for location metadata
-app.use('/api/v1/locations', cacheMiddleware(300), require('./routes/v1/locationRoutes'));
+app.use('/api/v1/locations', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/locationRoutes'));
 // Apply 5m cache for vehicle metadata
-app.use('/api/v1/fuel-types', cacheMiddleware(300), require('./routes/v1/fuelTypeRoutes'));
-app.use('/api/v1/transmissions', cacheMiddleware(300), require('./routes/v1/transmissionRoutes'));
-app.use('/api/v1/models', cacheMiddleware(300), require('./routes/v1/modelRoutes'));
-app.use('/api/v1/variants', cacheMiddleware(300), require('./routes/v1/variantRoutes'));
-app.use('/api/v1/car-types', cacheMiddleware(300), require('./routes/v1/carTypeRoutes'));
+app.use('/api/v1/fuel-types', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/fuelTypeRoutes'));
+app.use('/api/v1/transmissions', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/transmissionRoutes'));
+app.use('/api/v1/models', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/modelRoutes'));
+app.use('/api/v1/variants', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/variantRoutes'));
+app.use('/api/v1/car-types', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/carTypeRoutes'));
 app.use('/api/v1/catalog', require('./routes/v1/catalogRoutes'));
 app.use('/api/v1/wishlist', require('./routes/v1/wishlistRoutes'));
 app.use('/api/v1/leads', require('./routes/v1/leadRoutes'));

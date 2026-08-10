@@ -238,7 +238,7 @@ exports.getCars = async (
       const brand = await Brand.findOne({ where: { name: filters.brand } });
       if (brand) where.brand_id = brand.id;
     }
-    if (filters.model) where.model = { [Op.like]: `%${filters.model}%` };
+    if (filters.model) where.model = { [Op.like]: `${filters.model}%` };
     if (filters.fuel_type) where.fuel_type = filters.fuel_type;
     if (filters.transmission) where.transmission = filters.transmission;
     if (filters.state_id) where.state_id = filters.state_id;
@@ -268,7 +268,6 @@ exports.getCars = async (
       limit,
       offset,
       order: [[sortBy, sortOrder.toUpperCase()]],
-      subQuery: false,
     });
 
     count = queryResult.count;

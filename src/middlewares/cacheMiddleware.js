@@ -6,15 +6,15 @@ const logger = require('../utils/logger');
  * Use this on GET requests that benefit from caching.
  * @param {number} duration - Time to live in seconds
  */
-const cacheMiddleware = (duration = 300) => {
+const cacheMiddleware = (duration = 300, options = {}) => {
   return async (req, res, next) => {
     // Only cache GET requests
     if (req.method !== 'GET') {
       return next();
     }
 
-    // Construct cache key based on URL, query params, and authorization header
-    const authHeader = req.headers.authorization || '';
+    // Construct cache key based on URL, query params, and authorization header (if not ignored)
+    const authHeader = options.ignoreAuth ? '' : (req.headers.authorization || '');
     const key = `__express__${req.originalUrl || req.url}__${authHeader}`;
 
     try {
