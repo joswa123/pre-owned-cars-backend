@@ -26,3 +26,24 @@ exports.getProfile = catchAsync(async (req, res) => {
     data: { user },
   });
 });
+
+/**
+ * Get Seller Listings (Public)
+ */
+exports.getSellerListings = catchAsync(async (req, res) => {
+  const { userId } = req.params;
+  const { excludeCarId, page = 1, limit = 10 } = req.query;
+  const carService = require('../services/carService');
+
+  const result = await carService.getSellerListings(
+    userId,
+    excludeCarId,
+    Number(page),
+    Number(limit)
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: result
+  });
+});

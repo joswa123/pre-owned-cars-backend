@@ -52,5 +52,13 @@ const { optionalAuth } = require('../../middlewares/auth');
 router.get('/', optionalAuth, cacheMiddleware(300), carController.getCars);
 router.get('/stats/board-types', cacheMiddleware(300, { ignoreAuth: true }), carController.getBoardTypeStats); // must be BEFORE /:id
 router.get('/featured', optionalAuth, cacheMiddleware(600), carController.getFeaturedCars); // must be BEFORE /:id
+
+// Similar & Recommended Cars (Must be BEFORE /:id)
+router.get('/similar-recommended', optionalAuth, carController.getSimilarRecommended);
+
 router.get('/:id', optionalAuth, cacheMiddleware(120), carController.getCarById);
+
+// Record view
+router.post('/:id/view', optionalAuth, carController.recordView);
+
 module.exports = router;

@@ -805,3 +805,309 @@ exports.getBoardTypeStats = async () => {
   }
   return stats;
 };
+
+/**
+ * Record a car view
+ */
+exports.recordView = async (carId, userId) => {
+  const { View } = require('../models');
+  try {
+    await View.create({
+      car_id: carId,
+      user_id: userId || null, // null for guests
+    });
+  } catch (err) {
+    console.error('Error recording view:', err);
+  }
+};
+
+/**
+ * Get Seller Listings (Other cars from same seller)
+ */
+exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limit = 10) => {
+  const cacheKey = `seller:${sellerId}:${page}:${limit}:${excludeCarId || 'none'}`;
+  let cachedData;
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) cachedData = JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis cache error in getSellerListings:', err);
+  }
+
+  if (cachedData) {
+    return cachedData;
+  }
+
+  const offset = (page - 1) * limit;
+  const whereClause = {
+    user_id: sellerId,
+    status: 'active',
+  };
+  if (excludeCarId) {
+    whereClause.id = { [Op.ne]: excludeCarId };
+  }
+
+  const result = await Car.findAndCountAll({
+    where: whereClause,
+    attributes: [
+      'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven',
+      'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
+    ],
+    include: [
+      {
+        model: Brand,
+        as: 'brand',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: CarImage,
+        as: 'images',
+        attributes: ['id', 'image_url', 'is_primary'],
+        where: { is_primary: true },
+        required: false,
+      },
+      {
+        model: City,
+        as: 'city',
+        attributes: ['id', 'name'],
+      }
+    ],
+    order: [['created_at', 'DESC']],
+    limit,
+    offset,
+  });
+
+  const responseData = {
+    listings: result.rows,
+    pagination: {
+      page,
+      limit,
+      total: result.count,
+      totalPages: Math.ceil(result.count / limit),
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+    }
+  } catch (err) {
+    console.error('Redis cache set error:', err);
+  }
+
+  return responseData;
+};
+
+/**
+ * Get Similar and Recommended Cars
+ */
+exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
+  const cacheKeySimilar = `similar:${carId}:${page}:${limit}`;
+  const cacheKeyRecommended = `recommended:${userId || 'trending'}`;
+  
+  let similarCarsData = null;
+  let recommendedCarsData = null;
+
+  try {
+    if (redisClient.isOpen) {
+      const cachedSimilar = await redisClient.get(cacheKeySimilar);
+      if (cachedSimilar) similarCarsData = JSON.parse(cachedSimilar);
+      
+      const cachedRec = await redisClient.get(cacheKeyRecommended);
+      if (cachedRec) recommendedCarsData = JSON.parse(cachedRec);
+    }
+  } catch (err) {
+    console.error('Redis cache error in getSimilarRecommended:', err);
+  }
+
+  const targetCar = await Car.findByPk(carId);
+  if (!targetCar) {
+    throw new AppError('Car not found.', 404);
+  }
+
+  // 1. Fetch Similar Cars (if not cached)
+  if (!similarCarsData) {
+    const offset = (page - 1) * limit;
+    // Step 1: Gather candidates (Brand OR Model OR BodyType)
+    const candidates = await Car.findAll({
+      where: {
+        status: 'active',
+        id: { [Op.ne]: carId },
+        [Op.or]: [
+          { brand_id: targetCar.brand_id },
+          targetCar.model ? { model: targetCar.model } : null,
+          targetCar.body_type ? { body_type: targetCar.body_type } : null
+        ].filter(Boolean)
+      },
+      attributes: [
+        'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven',
+        'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id', 'body_type'
+      ],
+      include: [
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+        { model: City, as: 'city', attributes: ['id', 'name'] }
+      ]
+    });
+
+    let scoredCandidates = candidates.map(car => {
+      let score = 0;
+      if (car.brand_id === targetCar.brand_id) score += 50;
+      if (car.model && targetCar.model && car.model.toLowerCase() === targetCar.model.toLowerCase()) score += 30;
+      if (car.body_type && targetCar.body_type && car.body_type.toLowerCase() === targetCar.body_type.toLowerCase()) score += 15;
+      if (car.fuel_type && targetCar.fuel_type && car.fuel_type.toLowerCase() === targetCar.fuel_type.toLowerCase()) score += 5;
+      if (car.transmission && targetCar.transmission && car.transmission.toLowerCase() === targetCar.transmission.toLowerCase()) score += 5;
+      
+      if (targetCar.price && car.price) {
+        const diff = Math.abs(parseFloat(car.price) - parseFloat(targetCar.price)) / parseFloat(targetCar.price);
+        if (diff <= 0.20) score += 20;
+      }
+      
+      if (targetCar.year && car.year) {
+        if (Math.abs(car.year - targetCar.year) <= 3) score += 10;
+      }
+      return { car, score };
+    });
+
+    // Sort by score DESC, created_at DESC
+    scoredCandidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.car.created_at) - new Date(a.car.created_at);
+    });
+
+    // Fallback logic
+    if (scoredCandidates.length === 0) {
+      // Third attempt: Fallback to same brand only, latest 4
+      const fallbackCars = await Car.findAll({
+        where: {
+          status: 'active',
+          id: { [Op.ne]: carId },
+          brand_id: targetCar.brand_id
+        },
+        order: [['created_at', 'DESC']],
+        limit: 4,
+        attributes: [
+          'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven',
+          'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
+        ],
+        include: [
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+          { model: City, as: 'city', attributes: ['id', 'name'] }
+        ]
+      });
+      scoredCandidates = fallbackCars.map(car => ({ car, score: 0 }));
+    }
+
+    const total = scoredCandidates.length;
+    const paginatedCars = scoredCandidates.slice(offset, offset + limit).map(sc => sc.car);
+
+    similarCarsData = {
+      data: paginatedCars,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+
+    try {
+      if (redisClient.isOpen) {
+        await redisClient.setEx(cacheKeySimilar, 300, JSON.stringify(similarCarsData));
+      }
+    } catch (err) {}
+  }
+
+  // 2. Fetch Recommended Cars
+  if (!recommendedCarsData) {
+    const { sequelize } = require('../models');
+    let recommendedCarIds = [];
+
+    // Method 1: Collaborative Filtering
+    try {
+      const coViewQuery = `
+        WITH target_viewers AS (
+            SELECT DISTINCT user_id FROM views WHERE car_id = :carId AND user_id IS NOT NULL
+        )
+        SELECT car_id, COUNT(*) as co_view_count
+        FROM views
+        WHERE user_id IN (SELECT user_id FROM target_viewers)
+          AND car_id != :carId
+        GROUP BY car_id
+        ORDER BY co_view_count DESC
+        LIMIT :limit;
+      `;
+      const coViewed = await sequelize.query(coViewQuery, {
+        replacements: { carId, limit },
+        type: sequelize.QueryTypes.SELECT
+      });
+      recommendedCarIds = coViewed.map(r => r.car_id);
+    } catch(e) {
+      console.error('Collab filtering error:', e);
+    }
+
+    // Method 3: Trending Fallback (if Collab yields nothing)
+    if (recommendedCarIds.length === 0) {
+      try {
+        const trendingQuery = `
+          SELECT car_id, COUNT(*) as view_count
+          FROM views
+          WHERE timestamp >= NOW() - INTERVAL 7 DAY
+            AND car_id != :carId
+          GROUP BY car_id
+          ORDER BY view_count DESC
+          LIMIT :limit;
+        `;
+        const trending = await sequelize.query(trendingQuery, {
+          replacements: { carId, limit },
+          type: sequelize.QueryTypes.SELECT
+        });
+        recommendedCarIds = trending.map(r => r.car_id);
+      } catch (e) {
+        console.error('Trending error:', e);
+      }
+    }
+
+    // Fetch car details for recommendedCarIds
+    if (recommendedCarIds.length > 0) {
+      const recCars = await Car.findAll({
+        where: {
+          id: { [Op.in]: recommendedCarIds },
+          status: 'active'
+        },
+        attributes: [
+          'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven',
+          'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
+        ],
+        include: [
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+          { model: City, as: 'city', attributes: ['id', 'name'] }
+        ]
+      });
+      
+      // Order correctly based on the ids
+      recommendedCarsData = recommendedCarIds.map(id => recCars.find(c => c.id === id)).filter(Boolean);
+    } else {
+      recommendedCarsData = [];
+    }
+
+    try {
+      if (redisClient.isOpen) {
+        await redisClient.setEx(cacheKeyRecommended, 300, JSON.stringify(recommendedCarsData));
+      }
+    } catch (err) {}
+  }
+
+  // Deduplication: Keep in similar, remove from recommended
+  const similarIds = new Set(similarCarsData.data.map(c => c.id));
+  recommendedCarsData = recommendedCarsData.filter(c => !similarIds.has(c.id));
+
+  return {
+    similarCars: similarCarsData,
+    recommendedCars: recommendedCarsData
+  };
+};

@@ -18,6 +18,7 @@ const RefreshToken = require('./RefreshToken');
 const Wishlist = require('./Wishlist');
 const Lead = require('./Lead');
 const Subscription = require('./Subscription');
+const View = require('./View');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -130,6 +131,12 @@ Lead.belongsTo(User, { foreignKey: 'seller_id', as: 'seller' });
 User.hasMany(Subscription, { foreignKey: 'seller_id' });
 Subscription.belongsTo(User, { foreignKey: 'seller_id' });
 
+// Views Associations
+Car.hasMany(View, { foreignKey: 'car_id', as: 'views' });
+View.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
+User.hasMany(View, { foreignKey: 'user_id', as: 'views' });
+View.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
 const models = {
   User,
   CustomerProfile,
@@ -150,6 +157,7 @@ const models = {
   Wishlist,
   Lead,
   Subscription,
+  View,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk

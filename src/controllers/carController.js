@@ -201,3 +201,37 @@ exports.getBoardTypeStats = catchAsync(async (req, res) => {
   const stats = await carService.getBoardTypeStats();
   res.status(200).json({ status: 'success', data: stats });
 });
+
+/**
+ * Record Car View
+ */
+exports.recordView = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user ? req.user.id : null;
+  
+  await carService.recordView(id, userId);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'View recorded successfully.',
+  });
+});
+
+/**
+ * Get Similar and Recommended Cars
+ */
+exports.getSimilarRecommended = catchAsync(async (req, res) => {
+  const { carId, userId, limit = 4, page = 1 } = req.query;
+  const currentUserId = userId || (req.user ? req.user.id : null);
+  
+  if (!carId) {
+    return res.status(400).json({ status: 'fail', message: 'carId is required' });
+  }
+
+  const result = await carService.getSimilarRecommended(carId, currentUserId, Number(limit), Number(page));
+
+  res.status(200).json({
+    status: 'success',
+    data: result
+  });
+});
