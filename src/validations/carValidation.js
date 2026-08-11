@@ -192,8 +192,46 @@ const mapToDbValues = (data) => {
   return mapped;
 };
 
+/**
+ * Get Cars Query Filter Schema
+ */
+const carQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).optional(),
+  limit: Joi.number().integer().min(1).optional(),
+  sortBy: Joi.string().optional(),
+  sortOrder: Joi.string().valid('ASC', 'DESC', 'asc', 'desc').optional(),
+  brands: Joi.string().optional(),
+  models: Joi.string().optional(),
+  min_year: Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).optional(),
+  max_year: Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).optional(),
+  min_km: Joi.number().min(0).optional(),
+  max_km: Joi.number().min(0).optional(),
+  min_price: Joi.number().min(0).optional(),
+  max_price: Joi.number().min(0).optional(),
+  fuel_types: Joi.string().optional(),
+  body_types: Joi.string().optional(),
+  ownerships: Joi.string().optional(),
+  transmissions: Joi.string().optional(),
+  posted_within_days: Joi.number().integer().min(1).max(90).optional(),
+  include_expired: Joi.boolean().optional(),
+  brand_id: Joi.string().uuid().optional(),
+  brand: Joi.string().optional(),
+  model: Joi.string().optional(),
+  fuel_type: Joi.string().optional(),
+  transmission: Joi.string().optional(),
+  state_id: Joi.string().uuid().optional(),
+  district_id: Joi.string().uuid().optional(),
+  city_id: Joi.string().uuid().optional(),
+  posted_by_type: Joi.string().optional(),
+  b2b_listing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  body_type: Joi.string().optional(),
+  board_type: Joi.string().optional(),
+  status: Joi.string().optional()
+}).unknown(true);
+
 module.exports = {
   createCarSchema,
   updateCarSchema,
   mapToDbValues,
+  carQuerySchema,
 };

@@ -219,7 +219,6 @@ exports.getCars = async (
     if (filters.b2b_listing !== undefined) {
       where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
     }
-    if (filters.body_type) where.body_type = filters.body_type;
     
     if (filters.board_type) {
       if (filters.board_type.toUpperCase() === 'B2B') {
@@ -229,18 +228,88 @@ exports.getCars = async (
       }
     }
     
+    // Price range
     if (filters.min_price) where.price = { [Op.gte]: parseFloat(filters.min_price) };
     if (filters.max_price) {
       where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
     }
-    if (filters.brand_id) where.brand_id = filters.brand_id;
-    if (filters.brand) {
-      const brand = await Brand.findOne({ where: { name: filters.brand } });
-      if (brand) where.brand_id = brand.id;
+
+    // Brands
+    if (filters.brands && filters.brands.length) {
+      where.brand_id = { [Op.in]: filters.brands };
+    } else {
+      // Fallback for single brand string (backward compatibility)
+      if (filters.brand_id) where.brand_id = filters.brand_id;
+      if (filters.brand) {
+        const brand = await Brand.findOne({ where: { name: filters.brand } });
+        if (brand) where.brand_id = brand.id;
+      }
     }
-    if (filters.model) where.model = { [Op.like]: `${filters.model}%` };
-    if (filters.fuel_type) where.fuel_type = filters.fuel_type;
-    if (filters.transmission) where.transmission = filters.transmission;
+
+    // Models
+    if (filters.models && filters.models.length) {
+      where.model = { [Op.in]: filters.models };
+    } else if (filters.model) {
+      // Fallback for single model string
+      where.model = { [Op.like]: `${filters.model}%` };
+    }
+
+    // Year range
+    if (filters.min_year) where.year = { [Op.gte]: parseInt(filters.min_year) };
+    if (filters.max_year) {
+      where.year = { ...where.year, [Op.lte]: parseInt(filters.max_year) };
+    }
+
+    // KM range
+    if (filters.min_km) where.km_driven = { [Op.gte]: parseFloat(filters.min_km) };
+    if (filters.max_km) {
+      where.km_driven = { ...where.km_driven, [Op.lte]: parseFloat(filters.max_km) };
+    }
+
+    // Fuel types
+    if (filters.fuel_types && filters.fuel_types.length) {
+      where.fuel_type = { [Op.in]: filters.fuel_types };
+    } else if (filters.fuel_type) {
+      where.fuel_type = filters.fuel_type;
+    }
+
+    // Body types
+    if (filters.body_types && filters.body_types.length) {
+      where.body_type = { [Op.in]: filters.body_types };
+    } else if (filters.body_type) {
+      where.body_type = filters.body_type;
+    }
+
+    // Ownership
+    if (filters.ownerships && filters.ownerships.length) {
+      where.ownership = { [Op.in]: filters.ownerships };
+    }
+
+    // Transmissions
+    if (filters.transmissions && filters.transmissions.length) {
+      where.transmission = { [Op.in]: filters.transmissions };
+    } else if (filters.transmission) {
+      where.transmission = filters.transmission;
+    }
+
+    // Posted within days
+    if (filters.posted_within_days) {
+      const days = parseInt(filters.posted_within_days);
+      if (days >= 1 && days <= 90) {
+        const date = new Date();
+        date.setDate(date.getDate() - days);
+        where.created_at = { [Op.gte]: date };
+      }
+    }
+
+    // Expired cars (exclude by default)
+    if (!filters.include_expired) {
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      where.created_at = { ...where.created_at, [Op.gte]: ninetyDaysAgo };
+    }
+
+    // Location
     if (filters.state_id) where.state_id = filters.state_id;
     if (filters.district_id) where.district_id = filters.district_id;
     if (filters.city_id) where.city_id = filters.city_id;

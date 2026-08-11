@@ -26,8 +26,24 @@ exports.createCar = catchAsync(async (req, res) => {
  * Get Public Cars List with Filters
  */
 exports.getCars = catchAsync(async (req, res) => {
-  const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...filters } = req.query;
+  const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...rawFilters } = req.query;
   const userId = req.user?.id;
+
+  const filters = { ...rawFilters };
+
+  // Parse arrays
+  const arrayFields = ['brands', 'models', 'fuel_types', 'body_types', 'ownerships', 'transmissions'];
+  arrayFields.forEach(field => {
+    if (filters[field] && typeof filters[field] === 'string') {
+      filters[field] = filters[field].split(',').map(item => item.trim()).filter(Boolean);
+    }
+  });
+
+  // Parse booleans
+  if (filters.include_expired !== undefined) {
+    filters.include_expired = filters.include_expired === 'true';
+  }
+
   const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder, userId);
   res.status(200).json({ status: "success", data: result });
 });
