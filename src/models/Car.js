@@ -60,7 +60,7 @@ const Car = sequelize.define('Car', {
   modelName: {
     type: DataTypes.VIRTUAL,
     get() {
-      return this.model?.name || null;
+      return this.carModel?.name || null;
     }
   },
   variant_id: {
@@ -72,7 +72,7 @@ const Car = sequelize.define('Car', {
   variantName: {
     type: DataTypes.VIRTUAL,
     get() {
-      return this.variant?.name || null;
+      return this.carVariant?.name || null;
     }
   },
   year: {
