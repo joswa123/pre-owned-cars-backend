@@ -947,8 +947,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
       ],
       include: [
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-        { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-        { model: City, as: 'city', attributes: ['id', 'name'] }
+        { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
       ]
     });
 
@@ -994,8 +993,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         ],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-          { model: City, as: 'city', attributes: ['id', 'name'] }
+          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
         ]
       });
       scoredCandidates = fallbackCars.map(car => ({ car, score: 0 }));
@@ -1084,8 +1082,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         ],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-          { model: City, as: 'city', attributes: ['id', 'name'] }
+          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
         ]
       });
       
