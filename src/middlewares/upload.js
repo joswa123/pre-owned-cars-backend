@@ -30,11 +30,13 @@ const fileFilter = (req, file, cb) => {
 /**
  * Creates a multer instance that uploads to a specific Cloudinary folder.
  * @param {string} folderName - Cloudinary folder (e.g. 'brands', 'cars')
+ * @param {object} extraParams - Extra Cloudinary parameters (e.g., transformations)
  * @returns {multer.Multer}
  */
-function createUpload(folderName) {
+function createUpload(folderName, extraParams = {}) {
   const fs = require('fs');
-  const isTestOrNoSecret = process.env.NODE_ENV === 'test' || !process.env.CLOUDINARY_API_SECRET;
+  const env = (process.env.NODE_ENV || '').trim();
+  const isTestOrNoSecret = env === 'test' || !process.env.CLOUDINARY_API_SECRET;
 
   const storage = isTestOrNoSecret
     ? multer.diskStorage({
@@ -58,8 +60,11 @@ function createUpload(folderName) {
           allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
           public_id: (req, file) => {
             const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-            return `${folderName}-${unique}`;
+            // Prefix specifically for banners to avoid collisions, else just folderName
+            const prefix = folderName === 'banners' ? 'banner' : folderName;
+            return `${prefix}-${unique}`;
           },
+          ...extraParams,
         },
       });
 
@@ -75,4 +80,7 @@ module.exports = {
   brandUpload: createUpload('brands'),
   carUpload: createUpload('cars'),
   profileUpload: createUpload('profiles'),
+  bannerUpload: createUpload('banners', {
+    transformation: [{ width: 1920, height: 600, crop: 'fill' }],
+  }),
 };

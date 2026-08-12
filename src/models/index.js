@@ -19,6 +19,7 @@ const Wishlist = require('./Wishlist');
 const Lead = require('./Lead');
 const Subscription = require('./Subscription');
 const View = require('./View');
+const Banner = require('./Banner');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -158,6 +159,7 @@ const models = {
   Lead,
   Subscription,
   View,
+  Banner,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk
