@@ -16,8 +16,10 @@ const STATUS_TYPES_IN = ['sold', 'active', 'deleted', 'expired'];
 const createCarSchema = Joi.object({
   brand_id:         Joi.string().uuid().optional(),
   brand:            Joi.string().trim().max(50).optional(),
-  model:            Joi.string().trim().max(50).required(),
-  variant:          Joi.string().trim().max(50).required(),
+  model_id:         Joi.string().uuid().optional(),
+  model:            Joi.string().trim().max(50).optional(),
+  variant_id:       Joi.string().uuid().optional(),
+  variant:          Joi.string().trim().max(50).optional(),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).required(),
   price:            Joi.number().positive().required(),
   price_negotiable: Joi.boolean().default(false),
@@ -47,6 +49,8 @@ const createCarSchema = Joi.object({
   .or('body_type', 'car_type')
   .or('board_type', 'numplate')
   .or('brand_id', 'brand')
+  .or('model_id', 'model')
+  .or('variant_id', 'variant')
   .unknown(true);
 
 /**
@@ -55,7 +59,9 @@ const createCarSchema = Joi.object({
 const updateCarSchema = Joi.object({
   brand_id:         Joi.string().uuid().optional(),
   brand:            Joi.string().trim().max(50),
+  model_id:         Joi.string().uuid().optional(),
   model:            Joi.string().trim().max(50),
+  variant_id:       Joi.string().uuid().optional(),
   variant:          Joi.string().trim().max(50),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1),
   price:            Joi.number().positive(),
@@ -216,7 +222,12 @@ const carQuerySchema = Joi.object({
   include_expired: Joi.boolean().optional(),
   brand_id: Joi.string().uuid().optional(),
   brand: Joi.string().optional(),
+  model_id: Joi.string().uuid().optional(),
+  model_ids: Joi.string().optional(),
   model: Joi.string().optional(),
+  variant_id: Joi.string().uuid().optional(),
+  variant_ids: Joi.string().optional(),
+  variant: Joi.string().optional(),
   fuel_type: Joi.string().optional(),
   transmission: Joi.string().optional(),
   state_id: Joi.string().uuid().optional(),

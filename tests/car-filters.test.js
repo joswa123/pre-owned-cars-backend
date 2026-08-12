@@ -69,6 +69,24 @@ describe('Car Filters', () => {
     expect(res.body.status).toBe('success');
   });
 
+  test('Should filter by city_id', async () => {
+    const res = await request(app).get('/api/v1/cars?city_id=471534a0-a7a0-4137-80ef-46d0c5a1ecef');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+  });
+
+  test('Should filter by model_id', async () => {
+    const res = await request(app).get('/api/v1/cars?model_id=dfb0d3ba-1e7c-41bc-979b-88c83558c5e7');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+  });
+
+  test('Should filter by variant_id', async () => {
+    const res = await request(app).get('/api/v1/cars?variant_id=af80dac7-2cf1-4609-829f-0b9192ea67ff');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+  });
+
   test('Combination of all filters', async () => {
     const filters = 'min_year=2015&max_year=2022&min_km=5000&max_km=80000&fuel_types=Petrol&transmissions=Automatic&posted_within_days=15';
     const res = await request(app).get(`/api/v1/cars?${filters}`);

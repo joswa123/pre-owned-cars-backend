@@ -1,4 +1,4 @@
-const { Car, CarImage, User, Wishlist, Lead, State, District, City, Brand } = require('../models');
+const { Car, CarImage, User, Wishlist, Lead, State, District, City, Brand, Model, Variant } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -87,11 +87,53 @@ exports.createCar = async (userId, carData, files) => {
 
     let brandId = mapped.brand_id;
     if (!brandId && mapped.brand) {
-      const brandObj = await Brand.findOne({ where: { name: mapped.brand } });
-      if (!brandObj) throw new AppError(`Brand "${mapped.brand}" not found.`, 400);
+      let brandObj = await Brand.findOne({ where: { name: mapped.brand }, transaction });
+      if (!brandObj) {
+        brandObj = await Brand.create({ name: mapped.brand, logo: '' }, { transaction });
+      }
       brandId = brandObj.id;
     }
     if (!brandId) throw new AppError('Brand ID or brand name is required.', 400);
+
+    let modelId = mapped.model_id;
+    if (!modelId && mapped.model) {
+      // Check if mapped.model is a valid UUID
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.model);
+      if (isUuid) {
+        modelId = mapped.model;
+      } else {
+        let modelObj = await Model.findOne({ where: { name: mapped.model, brandId }, transaction });
+        if (!modelObj) {
+          modelObj = await Model.findOne({ where: { name: mapped.model }, transaction });
+        }
+        if (!modelObj) {
+          modelObj = await Model.create({ name: mapped.model, brandId, body_type: mapped.body_type || 'SUV' }, { transaction });
+        }
+        modelId = modelObj.id;
+      }
+    }
+    if (!modelId) throw new AppError('Model ID or model name is required.', 400);
+
+    let variantId = mapped.variant_id;
+    if (!variantId && mapped.variant) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.variant);
+      if (isUuid) {
+        variantId = mapped.variant;
+      } else {
+        let variantObj = await Variant.findOne({ where: { name: mapped.variant, model_id: modelId }, transaction });
+        if (!variantObj) {
+          variantObj = await Variant.create({
+            name: mapped.variant,
+            model_id: modelId,
+            fuel_type: mapped.fuel_type,
+            transmission: mapped.transmission,
+            price: mapped.price
+          }, { transaction });
+        }
+        variantId = variantObj.id;
+      }
+    }
+    if (!variantId) throw new AppError('Variant ID or variant name is required.', 400);
 
     const posted_by_type = user.role === 'dealer' ? 'dealer' : 'customer';
     const b2b_listing =
@@ -116,8 +158,8 @@ exports.createCar = async (userId, carData, files) => {
     const carFields = {
       user_id: userId,
       brand_id: brandId,
-      model: mapped.model,
-      variant: mapped.variant,
+      model_id: modelId,
+      variant_id: variantId,
       year: mapped.year,
       price: mapped.price,
       price_negotiable: mapped.price_negotiable || false,
@@ -174,6 +216,11 @@ exports.createCar = async (userId, carData, files) => {
         { model: CarImage, as: 'images' },
         { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+        { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
       ],
     });
 
@@ -246,12 +293,45 @@ exports.getCars = async (
       }
     }
 
-    // Models
-    if (filters.models && filters.models.length) {
-      where.model = { [Op.in]: filters.models };
+    // Models filter (supports model_id, model_ids, models, model string or array)
+    if (filters.model_id) {
+      where.model_id = filters.model_id;
+    } else if (filters.model_ids && filters.model_ids.length) {
+      const ids = Array.isArray(filters.model_ids) ? filters.model_ids : filters.model_ids.split(',');
+      where.model_id = { [Op.in]: ids };
+    } else if (filters.models && filters.models.length) {
+      const modelItems = Array.isArray(filters.models) ? filters.models : filters.models.split(',');
+      const isUuidList = modelItems.every(m => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m.trim()));
+      if (isUuidList) {
+        where.model_id = { [Op.in]: modelItems.map(m => m.trim()) };
+      } else {
+        const foundModels = await Model.findAll({ where: { name: { [Op.in]: modelItems } }, attributes: ['id'] });
+        if (foundModels.length) where.model_id = { [Op.in]: foundModels.map(m => m.id) };
+      }
     } else if (filters.model) {
-      // Fallback for single model string
-      where.model = { [Op.like]: `${filters.model}%` };
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.model);
+      if (isUuid) {
+        where.model_id = filters.model;
+      } else {
+        const foundModel = await Model.findOne({ where: { name: { [Op.like]: `${filters.model}%` } } });
+        if (foundModel) where.model_id = foundModel.id;
+      }
+    }
+
+    // Variants filter (supports variant_id, variant_ids, variants, variant)
+    if (filters.variant_id) {
+      where.variant_id = filters.variant_id;
+    } else if (filters.variant_ids && filters.variant_ids.length) {
+      const ids = Array.isArray(filters.variant_ids) ? filters.variant_ids : filters.variant_ids.split(',');
+      where.variant_id = { [Op.in]: ids };
+    } else if (filters.variant) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.variant);
+      if (isUuid) {
+        where.variant_id = filters.variant;
+      } else {
+        const foundVariant = await Variant.findOne({ where: { name: { [Op.like]: `${filters.variant}%` } } });
+        if (foundVariant) where.variant_id = foundVariant.id;
+      }
     }
 
     // Year range
@@ -268,26 +348,30 @@ exports.getCars = async (
 
     // Fuel types
     if (filters.fuel_types && filters.fuel_types.length) {
-      where.fuel_type = { [Op.in]: filters.fuel_types };
+      const fuels = Array.isArray(filters.fuel_types) ? filters.fuel_types : filters.fuel_types.split(',');
+      where.fuel_type = { [Op.in]: fuels };
     } else if (filters.fuel_type) {
       where.fuel_type = filters.fuel_type;
     }
 
     // Body types
     if (filters.body_types && filters.body_types.length) {
-      where.body_type = { [Op.in]: filters.body_types };
+      const bodies = Array.isArray(filters.body_types) ? filters.body_types : filters.body_types.split(',');
+      where.body_type = { [Op.in]: bodies };
     } else if (filters.body_type) {
       where.body_type = filters.body_type;
     }
 
     // Ownership
     if (filters.ownerships && filters.ownerships.length) {
-      where.ownership = { [Op.in]: filters.ownerships };
+      const owns = Array.isArray(filters.ownerships) ? filters.ownerships : filters.ownerships.split(',');
+      where.ownership = { [Op.in]: owns };
     }
 
     // Transmissions
     if (filters.transmissions && filters.transmissions.length) {
-      where.transmission = { [Op.in]: filters.transmissions };
+      const trans = Array.isArray(filters.transmissions) ? filters.transmissions : filters.transmissions.split(',');
+      where.transmission = { [Op.in]: trans };
     } else if (filters.transmission) {
       where.transmission = filters.transmission;
     }
@@ -316,7 +400,7 @@ exports.getCars = async (
 
     const queryResult = await Car.findAndCountAll({
       attributes: [
-        'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven', 
+        'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven', 
         'fuel_type', 'transmission', 'ownership', 'body_type', 'board_type', 
         'insurance_expiry_date', 'insurance_type', 'b2b_listing', 'posted_by_type', 
         'status', 'description', 'color', 'number_plate', 'prior_appointemnts', 
@@ -330,6 +414,8 @@ exports.getCars = async (
         { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
         { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city', 'profile_picture'] },
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+        { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -398,6 +484,8 @@ exports.getCarById = async (carId, userId = null) => {
         { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
         { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role', 'city', 'state', 'profile_picture'] },
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+        { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -497,17 +585,47 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (!car) throw new AppError('Car not found or unauthorized.', 404);
 
     const mapped = mapToDbValues(updateData || {});
-
     let brandId = mapped.brand_id;
     if (!brandId && mapped.brand) {
-      const brandObj = await Brand.findOne({ where: { name: mapped.brand } });
-      if (brandObj) brandId = brandObj.id;
+      let brandObj = await Brand.findOne({ where: { name: mapped.brand }, transaction });
+      if (!brandObj) {
+        brandObj = await Brand.create({ name: mapped.brand, logo: '' }, { transaction });
+      }
+      brandId = brandObj.id;
+    }
+
+    let modelId = mapped.model_id;
+    if (!modelId && mapped.model) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.model);
+      if (isUuid) {
+        modelId = mapped.model;
+      } else {
+        let modelObj = await Model.findOne({ where: { name: mapped.model }, transaction });
+        if (!modelObj && brandId) {
+          modelObj = await Model.create({ name: mapped.model, brandId, body_type: mapped.body_type || 'SUV' }, { transaction });
+        }
+        if (modelObj) modelId = modelObj.id;
+      }
+    }
+
+    let variantId = mapped.variant_id;
+    if (!variantId && mapped.variant) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.variant);
+      if (isUuid) {
+        variantId = mapped.variant;
+      } else {
+        let variantObj = await Variant.findOne({ where: { name: mapped.variant }, transaction });
+        if (!variantObj && modelId) {
+          variantObj = await Variant.create({ name: mapped.variant, model_id: modelId }, { transaction });
+        }
+        if (variantObj) variantId = variantObj.id;
+      }
     }
 
     const filteredData = {};
     if (brandId) filteredData.brand_id = brandId;
-    if (mapped.model !== undefined) filteredData.model = mapped.model;
-    if (mapped.variant !== undefined) filteredData.variant = mapped.variant;
+    if (modelId) filteredData.model_id = modelId;
+    if (variantId) filteredData.variant_id = variantId;
     if (mapped.year !== undefined) filteredData.year = mapped.year;
     if (mapped.price !== undefined) filteredData.price = mapped.price;
     if (mapped.price_negotiable !== undefined) filteredData.price_negotiable = mapped.price_negotiable;
@@ -564,20 +682,14 @@ exports.updateCar = async (carId, userId, updateData, files) => {
         });
       }
 
-      if (files.images && files.images.length > 0) {
-        // If new secondary images are uploaded, and no granular flags were passed, replace old secondary images
-        if (updateData.images_to_keep === undefined && updateData.replace_images === undefined) {
-          await CarImage.destroy({ where: { car_id: car.id, is_primary: false }, transaction });
-        }
-        
-        files.images.forEach(file => {
-          imageRecords.push({
-            car_id: car.id,
-            image_url: getFileUrl(file),
-            is_primary: false,
-          });
+      const secondaryFiles = files.images || [];
+      secondaryFiles.forEach((file) => {
+        imageRecords.push({
+          car_id: car.id,
+          image_url: getFileUrl(file),
+          is_primary: false,
         });
-      }
+      });
 
       if (imageRecords.length > 0) {
         await CarImage.bulkCreate(imageRecords, { transaction });
@@ -591,6 +703,11 @@ exports.updateCar = async (carId, userId, updateData, files) => {
         { model: CarImage, as: 'images' },
         { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+        { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
       ],
     });
 
@@ -937,16 +1054,18 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         id: { [Op.ne]: carId },
         [Op.or]: [
           { brand_id: targetCar.brand_id },
-          targetCar.model ? { model: targetCar.model } : null,
+          targetCar.model_id ? { model_id: targetCar.model_id } : null,
           targetCar.body_type ? { body_type: targetCar.body_type } : null
         ].filter(Boolean)
       },
       attributes: [
-        'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven',
+        'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
         'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id', 'body_type'
       ],
       include: [
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+        { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
         { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
       ]
     });
@@ -954,7 +1073,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
     let scoredCandidates = candidates.map(car => {
       let score = 0;
       if (car.brand_id === targetCar.brand_id) score += 50;
-      if (car.model && targetCar.model && car.model.toLowerCase() === targetCar.model.toLowerCase()) score += 30;
+      if (car.model_id && targetCar.model_id && car.model_id === targetCar.model_id) score += 30;
       if (car.body_type && targetCar.body_type && car.body_type.toLowerCase() === targetCar.body_type.toLowerCase()) score += 15;
       if (car.fuel_type && targetCar.fuel_type && car.fuel_type.toLowerCase() === targetCar.fuel_type.toLowerCase()) score += 5;
       if (car.transmission && targetCar.transmission && car.transmission.toLowerCase() === targetCar.transmission.toLowerCase()) score += 5;
@@ -988,11 +1107,13 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         order: [['created_at', 'DESC']],
         limit: 4,
         attributes: [
-          'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven',
+          'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
           'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
         ],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
         ]
       });
@@ -1021,7 +1142,6 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
 
   // 2. Fetch Recommended Cars
   if (!recommendedCarsData) {
-    const { sequelize } = require('../models');
     let recommendedCarIds = [];
 
     // Method 1: Collaborative Filtering
