@@ -72,7 +72,7 @@ const updateCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN),
   body_type:        Joi.string().trim().max(50),
   car_type:         Joi.string().trim().max(50),
-  board_type:       Joi.string().valid('OWN BOARD', 'T-BOARD', 'COMMERCIAL'),
+  board_type:       enumString(BOARD_TYPES_IN),
   numplate:         Joi.string().trim().max(50),
   insurance_expiry_date: Joi.date().iso().allow('', null),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null),
@@ -142,9 +142,9 @@ const BODY_TYPE_MAP = {
 };
 
 const BOARD_TYPE_MAP = {
-  'own board':  'OWN BOARD',
-  't-board':    'T-BOARD',
-  'commercial': 'COMMERCIAL',
+  'own board':  'Own Board',
+  't-board':    'T-Board',
+  'commercial': 'Commercial',
 };
 
 /**
