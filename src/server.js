@@ -14,15 +14,9 @@ const PORT = process.env.PORT || 5000;
     await sequelize.authenticate();
     logger.info('✅ Database connected successfully');
 
-    // 2. Sync schema — never alter/force in production
-    logger.info('⏳ Syncing database schema...');
-    try {
-      const isDev = process.env.NODE_ENV === 'development';
-      await sequelize.sync(isDev ? { alter: true } : {});
-      logger.info('✅ Database schema synced');
-    } catch (syncErr) {
-      logger.warn('⚠️  Database sync warning (safe to ignore in clustered setup):', syncErr.message);
-    }
+    // 2. We no longer sync schema automatically in production/development
+    // to prevent accidental data wipes via alter: true.
+    // Use `npm run db:migrate` for all schema changes!
 
     // 3. Seed data
     if (process.env.NODE_ENV === 'development') {

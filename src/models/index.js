@@ -65,8 +65,11 @@ Car.belongsTo(User, { foreignKey: 'user_id', as: 'seller' });
 Car.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });
 Brand.hasMany(Car, { foreignKey: 'brand_id', as: 'cars' });
 
+Car.belongsTo(Model, { foreignKey: 'model_id', as: 'model' });
+Model.hasMany(Car, { foreignKey: 'model_id', as: 'cars' });
 
-
+Car.belongsTo(Variant, { foreignKey: 'variant_id', as: 'variant' });
+Variant.hasMany(Car, { foreignKey: 'variant_id', as: 'cars' });
 Car.hasMany(CarImage, { foreignKey: 'car_id', as: 'images' });
 CarImage.belongsTo(Car, { foreignKey: 'car_id' });
 

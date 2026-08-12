@@ -51,13 +51,29 @@ const Car = sequelize.define('Car', {
       return this.brand?.name || null;
     }
   },
-  model: {
-    type: DataTypes.STRING(50),
+  model_id: {
+    type: DataTypes.UUID,
     allowNull: false,
+    references: { model: 'models', key: 'id' },
+    onDelete: 'RESTRICT',
   },
-  variant: {
-    type: DataTypes.STRING(50),
+  modelName: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.model?.name || null;
+    }
+  },
+  variant_id: {
+    type: DataTypes.UUID,
     allowNull: false,
+    references: { model: 'variants', key: 'id' },
+    onDelete: 'RESTRICT',
+  },
+  variantName: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.variant?.name || null;
+    }
   },
   year: {
     type: DataTypes.INTEGER,
