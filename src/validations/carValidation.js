@@ -4,6 +4,7 @@ const FUEL_TYPES_IN         = ['petrol', 'diesel', 'electric', 'hybrid', 'cng', 
 const TRANSMISSION_TYPES_IN = ['manual', 'automatic', 'amt', 'cvt', 'dct'];
 const OWNERSHIP_TYPES_IN    = ['1st owner', '2nd owner', '3rd owner', '4th+ owner'];
 const INSURANCE_TYPE_IN     = ['comprehensive', 'third party', 'not insured'];
+const BOARD_TYPES_IN        = ['own board', 't-board', 'commercial'];
 
 const enumString = (values) =>
   Joi.string().trim().lowercase().valid(...values);
@@ -31,7 +32,7 @@ const createCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
   body_type:        Joi.string().trim().max(50).optional(),
   car_type:         Joi.string().trim().max(50).optional(),
-  board_type:       Joi.string().valid('Own Board', 'T-Board', 'Commercial').required(),
+  board_type:       enumString(BOARD_TYPES_IN).required(),
   numplate:         Joi.string().trim().max(50).optional(),
   insurance_expiry_date: Joi.date().iso().allow('', null).optional(),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
