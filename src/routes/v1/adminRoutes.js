@@ -17,8 +17,10 @@ router.get("/enquiries", adminController.getAllEnquiries);
 // ── Dealers ──────────────────────────────────────────────────────────────────
 // GET /api/v1/admin/dealers        — paginated dealer list (filter by status, search)
 // GET /api/v1/admin/dealers/:id    — single dealer full profile
+// GET /api/v1/admin/dealers/:dealerId/cars — all cars for a specific dealer
 router.get("/dealers", adminController.getDealers);
 router.get("/dealers/:id", adminController.getDealerById);
+router.get("/dealers/:dealerId/cars", adminController.getDealerCars);
 
 // ── Subscriptions & Payments (future) ────────────────────────────────────────
 router.get("/subscriptions", adminController.getSubscriptions);

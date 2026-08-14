@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const { User, Lead, Car, Subscription, DealerProfile, CustomerProfile, Brand, Model } = require('../models');
 const { catchAsync, AppError } = require('../utils/errorHandler');
+const carService = require('../services/carService');
 
 // ── Traffic Stats ─────────────────────────────────────────────────────────────
 // GET /api/v1/admin/traffic
@@ -197,6 +198,20 @@ exports.getDealerById = catchAsync(async (req, res) => {
   }
 
   res.json({ status: 'success', data: { dealer } });
+});
+
+// GET /api/v1/admin/dealers/:dealerId/cars
+// Returns all cars belonging to a specific dealer for admin view
+exports.getDealerCars = catchAsync(async (req, res) => {
+  const { dealerId } = req.params;
+  const dealer = await User.findOne({ where: { id: dealerId, role: 'dealer' } });
+  
+  if (!dealer) {
+    throw new AppError('Dealer not found', 404);
+  }
+
+  const cars = await carService.getUserCars(dealerId);
+  res.json({ status: 'success', data: { cars } });
 });
 
 // ── Subscriptions (future) ────────────────────────────────────────────────────

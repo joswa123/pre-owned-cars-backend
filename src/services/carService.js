@@ -419,6 +419,7 @@ exports.getCars = async (
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: Lead, as: 'leads', attributes: ['id'] },
       ],
       limit,
       offset,
@@ -437,7 +438,15 @@ exports.getCars = async (
     });
 
     const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-    transformedCars = queryResult.rows.map((car) => transformCarImages(car, baseUrl));
+    transformedCars = queryResult.rows.map((car) => {
+      const transformed = transformCarImages(car, baseUrl);
+      const is_expired = transformed.created_at && (Date.now() - new Date(transformed.created_at).getTime()) > 90 * 24 * 60 * 60 * 1000;
+      return {
+        ...transformed,
+        enquiry_count: (userId && userId === car.user_id) ? (car.leads?.length || 0) : null,
+        is_expired,
+      };
+    });
 
     try {
       await redisClient.setEx(cacheKey, 60, JSON.stringify({ count, transformedCars }));
@@ -564,15 +573,26 @@ exports.getUserCars = async (userId, status = null) => {
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+      { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
+      { model: Lead, as: 'leads', attributes: ['id'] },
     ],
     order: [['created_at', 'DESC']],
   });
 
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-  return cars.map((car) => transformCarImages(car, baseUrl));
+  return cars.map((car) => {
+    const transformed = transformCarImages(car, baseUrl);
+    const is_expired = transformed.created_at && (Date.now() - new Date(transformed.created_at).getTime()) > 90 * 24 * 60 * 60 * 1000;
+    return {
+      ...transformed,
+      enquiry_count: car.leads?.length || 0,
+      is_expired,
+    };
+  });
 };
 
 /**

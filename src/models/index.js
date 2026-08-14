@@ -124,7 +124,7 @@ User.hasMany(Wishlist, { foreignKey: 'user_id' });
 Car.hasMany(Wishlist, { foreignKey: 'car_id' });
 
 // Leads Associations
-Car.hasMany(Lead, { foreignKey: 'car_id' });
+Car.hasMany(Lead, { foreignKey: 'car_id', as: 'leads' });
 Lead.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
 User.hasMany(Lead, { foreignKey: 'buyer_id', as: 'buyerLeads' });
 Lead.belongsTo(User, { foreignKey: 'buyer_id', as: 'buyer' });
