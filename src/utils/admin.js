@@ -13,8 +13,17 @@ const seedAdmin = async () => {
 
   try {
     const existingAdmin = await User.findOne({
-      where: { role: 'admin' },
+      where: { role: 'admin', phone: adminPhone },
     });
+
+    if (!existingAdmin) {
+      // Also check if the phone is taken by a non-admin, to prevent crash
+      const phoneTaken = await User.findOne({ where: { phone: adminPhone } });
+      if (phoneTaken) {
+        logger.error(`❌ Failed to seed/sync admin: Phone ${adminPhone} is already in use by another user.`);
+        return;
+      }
+    }
 
     const hashedPassword = await bcrypt.hash(adminPassword, 12);
 
