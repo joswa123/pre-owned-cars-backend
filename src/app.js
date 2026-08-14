@@ -138,13 +138,8 @@ app.use('/api/v1/wishlist', require('./routes/v1/wishlistRoutes'));
 app.use('/api/v1/leads', require('./routes/v1/leadRoutes'));
 app.use('/api/v1/subscriptions', require('./routes/v1/subscriptionRoutes'));
 app.use('/api/v1/banners', require('./routes/v1/bannerRoutes'));
-// Admin routes (protected)
+// ── Admin Routes (protected — admin role required) ───────────────────────────
 app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
-app.use('/api/v1/admin/fuel-types', require('./routes/v1/admin/fuelTypeRoutes'));
-app.use('/api/v1/admin/transmissions', require('./routes/v1/admin/transmissionRoutes'));
-app.use('/api/v1/admin/car-types', require('./routes/v1/admin/carTypeRoutes'));
-app.use('/api/v1/admin/models', require('./routes/v1/admin/modelRoutes'));
-app.use('/api/v1/admin/variants', require('./routes/v1/admin/variantRoutes'));
 app.use('/api/v1/admin/banners', require('./routes/v1/admin/bannerRoutes'));
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────────

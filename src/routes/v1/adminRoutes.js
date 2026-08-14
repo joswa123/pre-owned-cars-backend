@@ -1,58 +1,27 @@
 const express = require("express");
-const Joi = require("joi");
-const validate = require("../../middlewares/validate");
 const router = express.Router();
 const { protect, adminOnly } = require("../../middlewares/auth");
-const { brandUpload } = require("../../middlewares/upload");
-const multer = require("multer");
-const brandController = require("../../controllers/brandController");
-const carController = require("../../controllers/carController");
 const adminController = require("../../controllers/adminController");
+
 // All routes require authentication and admin role
 router.use(protect, adminOnly);
 
-const handleUpload = (req, res, next) => {
-  brandUpload.single("logo")(req, res, (err) => {
-    if (err instanceof multer.MulterError) {
-      return res.status(400).json({ success: false, message: err.message });
-    } else if (err) {
-      return res.status(400).json({ success: false, message: err.message });
-    }
-    next();
-  });
-};
+// ── Traffic & Stats ────────────────────────────────────────────────────────────
+// GET /api/v1/admin/traffic  — app usage stats (registered users vs guests)
+router.get("/traffic", adminController.getTrafficStats);
 
-// Brand routes
-router.route("/brands")
-  .get(brandController.getAllBrands)
-  .post(handleUpload, brandController.createBrand);
+// ── Enquiries ─────────────────────────────────────────────────────────────────
+// GET /api/v1/admin/enquiries  — all lead/enquiry details across the platform
+router.get("/enquiries", adminController.getAllEnquiries);
 
-router.route("/brands/:id")
-  .get(brandController.getBrand)
-  .put(handleUpload, brandController.updateBrand)
-  .delete(brandController.deleteBrand);
+// ── Dealers ──────────────────────────────────────────────────────────────────
+// GET /api/v1/admin/dealers        — paginated dealer list (filter by status, search)
+// GET /api/v1/admin/dealers/:id    — single dealer full profile
+router.get("/dealers", adminController.getDealers);
+router.get("/dealers/:id", adminController.getDealerById);
 
-// Car routes
-router.get("/cars", carController.getAdminCars);
+// ── Subscriptions & Payments (future) ────────────────────────────────────────
+router.get("/subscriptions", adminController.getSubscriptions);
+router.get("/payments", adminController.getPayments);
 
-router.get("/stats", protect, adminOnly, carController.getAdminStats);
-
-const statusUpdateSchema = Joi.object({
-  status: Joi.string().valid("active", "inactive", "sold", "pending").required(),
-});
-
-router.put(
-  "/cars/:id/status",
-  validate(statusUpdateSchema),
-  carController.updateCarStatus
-);
-router.patch(
-  '/cars/:id/featured',
-  protect,
-  adminOnly,
-  carController.toggleFeatured
-);
-
-router.get('/subscriptions', protect, adminOnly, adminController.getSubscriptions);
-router.get('/payments', protect, adminOnly, adminController.getPayments);
 module.exports = router;
