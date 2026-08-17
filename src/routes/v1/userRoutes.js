@@ -15,7 +15,11 @@ router.use(protect);
 router.get('/me', userController.getProfile);
 router.put(
   '/me',
-  upload.single('profile_picture'),
+  upload.fields([
+    { name: 'profile_picture', maxCount: 1 },
+    { name: 'customerProfile', maxCount: 1 },
+    { name: 'dealerProfile', maxCount: 1 },
+  ]),
   validate(updateProfileSchema),
   userController.updateProfile
 );

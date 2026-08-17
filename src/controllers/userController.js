@@ -6,7 +6,11 @@ exports.updateProfile = catchAsync(async (req, res) => {
   const userId = req.user.id;
   const updateData = { ...req.body };
   
-  if (req.file) {
+  if (req.files) {
+    if (req.files.profile_picture) updateData.profile_picture = req.files.profile_picture[0].path;
+    else if (req.files.customerProfile) updateData.profile_picture = req.files.customerProfile[0].path;
+    else if (req.files.dealerProfile) updateData.profile_picture = req.files.dealerProfile[0].path;
+  } else if (req.file) {
     updateData.profile_picture = req.file.path;
   }
 
