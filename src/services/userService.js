@@ -97,10 +97,19 @@ exports.getProfile = async (userId) => {
   if (!userJson.city && userJson.cityDetail?.name) userJson.city = userJson.cityDetail.name;
   
   userJson.location_text = [userJson.city, userJson.district, userJson.state].filter(Boolean).join(', ');
-  userJson.alt_phone = userJson.customerProfile?.alt_phone || userJson.dealerProfile?.alt_phone || null;
+  
+  if (userJson.dealerProfile) {
+    Object.assign(userJson, userJson.dealerProfile);
+    delete userJson.dealerProfile;
+  }
+  if (userJson.customerProfile) {
+    Object.assign(userJson, userJson.customerProfile);
+    delete userJson.customerProfile;
+  }
   
   delete userJson.stateDetail;
   delete userJson.cityDetail;
+  delete userJson.districtDetail;
 
   return userJson;
 };
