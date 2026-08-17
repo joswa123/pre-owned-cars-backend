@@ -98,14 +98,20 @@ exports.getProfile = async (userId) => {
   
   userJson.location_text = [userJson.city, userJson.district, userJson.state].filter(Boolean).join(', ');
   
-  if (userJson.dealerProfile) {
-    Object.assign(userJson, userJson.dealerProfile);
-    delete userJson.dealerProfile;
+  if (userJson.role === 'dealer') {
+    const dealerDefaults = {
+      company_name: null, door_no: null, building_name: null, street_name: null, 
+      pincode: null, alt_phone: null, gst_no: null, license_no: null, 
+      contact_person: null, aadhar_no: null, verified: false
+    };
+    Object.assign(userJson, dealerDefaults, userJson.dealerProfile || {});
+  } else if (userJson.role === 'customer') {
+    const customerDefaults = { preferences: null, alt_phone: null };
+    Object.assign(userJson, customerDefaults, userJson.customerProfile || {});
   }
-  if (userJson.customerProfile) {
-    Object.assign(userJson, userJson.customerProfile);
-    delete userJson.customerProfile;
-  }
+
+  delete userJson.dealerProfile;
+  delete userJson.customerProfile;
   
   delete userJson.stateDetail;
   delete userJson.cityDetail;
