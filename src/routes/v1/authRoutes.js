@@ -12,7 +12,7 @@ const {
   forgotPasswordSchema,
   resetPasswordSchema,
   changePasswordSchema,
-} = require('../../validations/authvalidation');
+} = require('../../validations/authValidation');
 
 // Public Authentication Routes
 router.post('/register', validate(registerSchema), authController.register);
