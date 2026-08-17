@@ -486,3 +486,19 @@ exports.resetPassword = async ({ phone, email }, otp, newPassword) => {
 
   return { userId: user.id };
 };
+
+/**
+ * Change Password for Authenticated User
+ */
+exports.changePassword = async (userId, currentPassword, newPassword) => {
+  const user = await User.findByPk(userId);
+  if (!user) throw new AppError('User not found', 404);
+
+  const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+  if (!isMatch) throw new AppError('Invalid current password', 401);
+
+  const hashed = await bcrypt.hash(newPassword, 12);
+  await user.update({ password_hash: hashed });
+
+  return { message: 'Password updated successfully' };
+};

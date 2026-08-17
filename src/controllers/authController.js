@@ -255,3 +255,12 @@ exports.refreshToken = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Change Password (Protected)
+ */
+exports.changePassword = catchAsync(async (req, res, next) => {
+  const { currentPassword, newPassword } = req.body;
+  const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
+  res.status(200).json({ status: 'success', ...result });
+});
