@@ -30,14 +30,7 @@ const Brand = sequelize.define('Brand', {
   logoUrl: {
     type: DataTypes.VIRTUAL,
     get() {
-      const logo = this.getDataValue('logo');
-      if (!logo) return null;
-      if (logo.startsWith('http://') || logo.startsWith('https://')) {
-        return logo;
-      }
-      const filename = path.basename(logo);
-      const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-      return `${baseUrl}/uploads/brands/${filename}`;
+      return this.getDataValue('logo');
     },
   },
 }, {

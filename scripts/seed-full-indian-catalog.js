@@ -397,6 +397,29 @@ const catalog = [
   }
 ];
 
+const brandLogos = {
+  'Maruti Suzuki': 'https://www.carlogos.org/car-logos/suzuki-logo.png',
+  'Hyundai': 'https://www.carlogos.org/car-logos/hyundai-logo.png',
+  'Tata Motors': 'https://www.carlogos.org/car-logos/tata-logo.png',
+  'Mahindra': 'https://www.carlogos.org/car-logos/mahindra-logo.png',
+  'Toyota': 'https://www.carlogos.org/car-logos/toyota-logo.png',
+  'Honda': 'https://www.carlogos.org/car-logos/honda-logo.png',
+  'Kia': 'https://www.carlogos.org/car-logos/kia-logo.png',
+  'Audi': 'https://www.carlogos.org/car-logos/audi-logo.png',
+  'BMW': 'https://www.carlogos.org/car-logos/bmw-logo.png',
+  'Jaguar': 'https://www.carlogos.org/car-logos/jaguar-logo.png',
+  'Volkswagen': 'https://www.carlogos.org/car-logos/volkswagen-logo.png',
+  'Skoda': 'https://www.carlogos.org/car-logos/skoda-logo.png',
+  'Nissan': 'https://www.carlogos.org/car-logos/nissan-logo.png',
+  'Renault': 'https://www.carlogos.org/car-logos/renault-logo.png',
+  'Ford': 'https://www.carlogos.org/car-logos/ford-logo.png',
+  'Jeep': 'https://www.carlogos.org/car-logos/jeep-logo.png',
+  'MG': 'https://www.carlogos.org/car-logos/mg-logo.png',
+  'BYD': 'https://www.carlogos.org/car-logos/byd-logo.png',
+  'Citroën': 'https://www.carlogos.org/car-logos/citroen-logo.png',
+  'Mercedes-Benz': 'https://www.carlogos.org/car-logos/mercedes-benz-logo.png'
+};
+
 async function seedCatalog() {
   let brandsCreated = 0;
   let modelsCreated = 0;
@@ -406,14 +429,21 @@ async function seedCatalog() {
   const transaction = await sequelize.transaction();
   try {
     for (const brandData of catalog) {
+      const logoUrl = brandLogos[brandData.name] || '';
       const [brand, brandCreated] = await Brand.findOrCreate({
         where: { name: brandData.name },
-        defaults: { name: brandData.name, logo: '', is_active: true },
+        defaults: { name: brandData.name, logo: logoUrl, is_active: true },
         transaction
       });
 
-      if (brandCreated) brandsCreated++;
-      else skipped++;
+      if (brandCreated) {
+        brandsCreated++;
+      } else {
+        skipped++;
+        if (brand.logo !== logoUrl && logoUrl) {
+          await brand.update({ logo: logoUrl }, { transaction });
+        }
+      }
 
       for (const modelData of brandData.models) {
         const [model, modelCreated] = await Model.findOrCreate({
