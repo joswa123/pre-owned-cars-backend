@@ -77,13 +77,26 @@ exports.updateProfile = async (userId, payload) => {
  * Get user profile by ID (exclude password_hash)
  */
 exports.getProfile = async (userId) => {
+  const { State, District, City } = require('../models');
   const user = await User.findByPk(userId, {
     attributes: { exclude: ['password_hash'] },
     include: [
       { model: CustomerProfile, as: 'customerProfile' },
-      { model: DealerProfile, as: 'dealerProfile' }
+      { model: DealerProfile, as: 'dealerProfile' },
+      { model: State, as: 'stateDetail', attributes: ['name'] },
+      { model: District, as: 'district', attributes: ['name'] },
+      { model: City, as: 'cityDetail', attributes: ['name'] }
     ]
   });
   if (!user) throw new AppError('User not found', 404);
-  return user;
+  
+  const userJson = user.toJSON();
+  userJson.district = userJson.district?.name || null;
+  if (!userJson.state && userJson.stateDetail?.name) userJson.state = userJson.stateDetail.name;
+  if (!userJson.city && userJson.cityDetail?.name) userJson.city = userJson.cityDetail.name;
+  
+  delete userJson.stateDetail;
+  delete userJson.cityDetail;
+
+  return userJson;
 };

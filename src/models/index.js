@@ -97,6 +97,7 @@ City.belongsTo(State, { foreignKey: 'state_id', as: 'state' });
 // User location linkages
 User.belongsTo(State, { foreignKey: 'state_id', as: 'stateDetail' });
 User.belongsTo(District, { foreignKey: 'district_id', as: 'districtDetail' });
+User.belongsTo(District, { foreignKey: 'district_id', as: 'district' });
 City.hasMany(User, { foreignKey: 'city_id', as: 'users' });
 User.belongsTo(City, { foreignKey: 'city_id', as: 'cityDetail' });
 
