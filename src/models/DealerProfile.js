@@ -63,6 +63,11 @@ const DealerProfile = sequelize.define('DealerProfile', {
     type: DataTypes.STRING(100),
     allowNull: true,
   },
+  aadhar_no: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    validate: { is: /^[0-9]{12}$/ },
+  },
   verified: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,

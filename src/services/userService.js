@@ -13,7 +13,8 @@ exports.updateProfile = async (userId, payload) => {
     // 2. Extract user-level fields
     const userFields = [
       'full_name', 'profile_picture', 'email', 'phone',
-      'use_registered_for_whatsapp', 'whatsapp_number', 'seller_type'
+      'use_registered_for_whatsapp', 'whatsapp_number', 'seller_type',
+      'state_id', 'district_id', 'city_id'
     ];
     // Map frontend field 'name' to 'full_name' if sent
     if (payload.name) payload.full_name = payload.name;
@@ -39,7 +40,7 @@ exports.updateProfile = async (userId, payload) => {
     // If they have role 'dealer', update DealerProfile
     if (user.role === 'dealer') {
       ProfileModel = DealerProfile;
-      const dealerFields = ['company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'alt_phone', 'gst_no', 'license_no', 'contact_person'];
+      const dealerFields = ['company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'alt_phone', 'gst_no', 'license_no', 'contact_person', 'aadhar_no'];
       dealerFields.forEach(f => { if (payload[f] !== undefined) profileFields[f] = payload[f]; });
     } else if (user.role === 'customer') {
       ProfileModel = CustomerProfile;
@@ -94,6 +95,8 @@ exports.getProfile = async (userId) => {
   userJson.district = userJson.district?.name || null;
   if (!userJson.state && userJson.stateDetail?.name) userJson.state = userJson.stateDetail.name;
   if (!userJson.city && userJson.cityDetail?.name) userJson.city = userJson.cityDetail.name;
+  
+  userJson.location_text = [userJson.city, userJson.district, userJson.state].filter(Boolean).join(', ');
   
   delete userJson.stateDetail;
   delete userJson.cityDetail;

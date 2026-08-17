@@ -183,6 +183,8 @@ exports.registerUser = async (userData) => {
         pincode: pincode || (userData.role === 'dealer' ? userData.pincode : null),
         address: address || null,
         seller_type: role === 'dealer' ? 'company' : 'individual',
+        whatsapp_number: userData.whatsapp_number || null,
+        use_registered_for_whatsapp: userData.use_registered_for_whatsapp !== undefined ? userData.use_registered_for_whatsapp : true,
       },
       { transaction }
     );
@@ -201,6 +203,7 @@ exports.registerUser = async (userData) => {
           gst_no: gst_no || null,
           license_no: license_no || null,
           contact_person: contact_person || null,
+          aadhar_no: userData.aadhar_no || null,
           verified: false,
         },
         { transaction }

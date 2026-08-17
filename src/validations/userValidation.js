@@ -29,6 +29,14 @@ const updateProfileSchema = Joi.object({
   license_no: Joi.string().max(100).optional(),
   gst_no: Joi.string().max(100).optional(),
   contact_person: Joi.string().max(100).optional(),
+  
+  // Location IDs
+  state_id: Joi.string().uuid().optional(),
+  district_id: Joi.string().uuid().optional(),
+  city_id: Joi.string().uuid().optional(),
+  
+  // Dealer specific
+  aadhar_no: Joi.string().pattern(/^[0-9]{12}$/).optional(),
 }).min(1);
 
 module.exports = { updateProfileSchema };
