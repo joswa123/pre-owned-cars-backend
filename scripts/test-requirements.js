@@ -162,10 +162,9 @@ async function testSuite() {
       .send({
         brand_id: brand1.id,
         model_id: modelOfBrand1.id,
-        min_year: 2018,
-        max_year: 2023,
-        min_price: 500000,
-        max_price: 1500000,
+        year: 2020,
+        price: 1000000,
+        km: 30000,
         purchase_plan_days: 30,
         description: 'Valid test requirement',
       });
