@@ -26,5 +26,7 @@ router.post('/refresh-token', authController.refreshToken);
 
 // Protected Routes
 router.post('/change-password', protect, validate(changePasswordSchema), authController.changePassword);
+router.put('/change-password', protect, validate(changePasswordSchema), authController.changePassword);
+router.patch('/change-password', protect, validate(changePasswordSchema), authController.changePassword);
 
 module.exports = router;
