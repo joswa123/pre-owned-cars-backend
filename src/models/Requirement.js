@@ -46,6 +46,12 @@ const Requirement = sequelize.define('Requirement', {
       this.setDataValue('km_driven', val);
     }
   },
+  model: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.carModel || null;
+    }
+  },
   body_type: {
     type: DataTypes.STRING(50),
     allowNull: false,
