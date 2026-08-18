@@ -55,7 +55,7 @@ async function testSuite() {
       phone: '9999900002',
       email: 'userb@test.com',
       password_hash: hashedPass,
-      role: 'customer', // Initially Customer
+      role: 'customer',
       is_verified: true,
     });
     tokenB = jwt.sign({ id: userB.id, role: userB.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
@@ -79,29 +79,62 @@ async function testSuite() {
     // ==========================================
     console.log('\n═══ TEST 1: Joi Schema Validation ═══');
 
+    const validBasePayload = {
+      brand_id: brand1.id,
+      model_id: modelOfBrand1.id,
+      body_type: 'Sedan',
+      transmission: 'Automatic',
+      board_type: 'OWN BOARD',
+      purchase_plan_days: 30,
+    };
+
     // 1a. Missing brand_id
     let res = await request(app)
       .post('/api/v1/requirements')
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({ purchase_plan_days: 30 });
+      .send({ ...validBasePayload, brand_id: undefined });
     assert('Create Requirement fails on missing brand_id', res.statusCode === 400 && res.body.success === false, res.body.message);
 
-    // 1b. Missing purchase_plan_days
+    // 1b. Missing model_id
     res = await request(app)
       .post('/api/v1/requirements')
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({ brand_id: brand1.id });
+      .send({ ...validBasePayload, model_id: undefined });
+    assert('Create Requirement fails on missing model_id', res.statusCode === 400 && res.body.success === false, res.body.message);
+
+    // 1c. Missing body_type
+    res = await request(app)
+      .post('/api/v1/requirements')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ ...validBasePayload, body_type: undefined });
+    assert('Create Requirement fails on missing body_type', res.statusCode === 400 && res.body.success === false, res.body.message);
+
+    // 1d. Missing transmission
+    res = await request(app)
+      .post('/api/v1/requirements')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ ...validBasePayload, transmission: undefined });
+    assert('Create Requirement fails on missing transmission', res.statusCode === 400 && res.body.success === false, res.body.message);
+
+    // 1e. Missing board_type
+    res = await request(app)
+      .post('/api/v1/requirements')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ ...validBasePayload, board_type: undefined });
+    assert('Create Requirement fails on missing board_type', res.statusCode === 400 && res.body.success === false, res.body.message);
+
+    // 1f. Missing purchase_plan_days
+    res = await request(app)
+      .post('/api/v1/requirements')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ ...validBasePayload, purchase_plan_days: undefined });
     assert('Create Requirement fails on missing purchase_plan_days', res.statusCode === 400 && res.body.success === false, res.body.message);
 
-    // 1c. Too long description (> 500 characters)
+    // 1g. Too long description (> 500 characters)
     res = await request(app)
       .post('/api/v1/requirements')
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({
-        brand_id: brand1.id,
-        purchase_plan_days: 30,
-        description: 'a'.repeat(501),
-      });
+      .send({ ...validBasePayload, description: 'a'.repeat(501) });
     assert('Create Requirement fails when description is over 500 characters', res.statusCode === 400 && res.body.success === false, res.body.message);
 
     // ==========================================
@@ -115,21 +148,14 @@ async function testSuite() {
     res = await request(app)
       .post('/api/v1/requirements')
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({
-        brand_id: fakeUuid,
-        purchase_plan_days: 30,
-      });
+      .send({ ...validBasePayload, brand_id: fakeUuid });
     assert('Create Requirement fails with 404 if brand_id does not exist', res.statusCode === 404, `got: ${res.statusCode} ${JSON.stringify(res.body)}`);
 
     // 2b. Non-existent model_id
     res = await request(app)
       .post('/api/v1/requirements')
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({
-        brand_id: brand1.id,
-        model_id: fakeUuid,
-        purchase_plan_days: 30,
-      });
+      .send({ ...validBasePayload, model_id: fakeUuid });
     assert('Create Requirement fails with 404 if model_id does not exist', res.statusCode === 404, `got: ${res.statusCode} ${JSON.stringify(res.body)}`);
 
     // ==========================================
@@ -140,11 +166,7 @@ async function testSuite() {
     res = await request(app)
       .post('/api/v1/requirements')
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({
-        brand_id: brand1.id,
-        model_id: modelOfBrand2.id, // belongs to brand2
-        purchase_plan_days: 30,
-      });
+      .send({ ...validBasePayload, model_id: modelOfBrand2.id });
     assert(
       'Create Requirement fails with 400 when model does not belong to brand',
       res.statusCode === 400 && res.body.message.includes('belong'),
@@ -168,6 +190,9 @@ async function testSuite() {
         max_price: 1500000,
         min_km: 10000,
         max_km: 50000,
+        body_type: 'Sedan',
+        transmission: 'Automatic',
+        board_type: 'OWN BOARD',
         color: 'Blue Metallic',
         purchase_plan_days: 30,
         description: 'Valid test requirement with ranges and color',
@@ -198,6 +223,10 @@ async function testSuite() {
     const expiredReq = await Requirement.create({
       user_id: userA.id,
       brand_id: brand1.id,
+      model_id: modelOfBrand1.id,
+      body_type: 'Sedan',
+      transmission: 'Automatic',
+      board_type: 'OWN BOARD',
       purchase_plan_days: 10,
       expiry_date: new Date(Date.now() - 24 * 60 * 60 * 1000), // yesterday
       status: 'active',

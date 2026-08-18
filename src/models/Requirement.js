@@ -21,9 +21,9 @@ const Requirement = sequelize.define('Requirement', {
   },
   model_id: {
     type: DataTypes.UUID,
-    allowNull: true,
+    allowNull: false,
     references: { model: 'models', key: 'id' },
-    onDelete: 'SET NULL',
+    onDelete: 'RESTRICT',
   },
   min_year: {
     type: DataTypes.INTEGER,
@@ -51,15 +51,15 @@ const Requirement = sequelize.define('Requirement', {
   },
   body_type: {
     type: DataTypes.STRING(50),
-    allowNull: true,
+    allowNull: false,
   },
   transmission: {
     type: DataTypes.STRING(50),
-    allowNull: true,
+    allowNull: false,
   },
   board_type: {
     type: DataTypes.STRING(50),
-    allowNull: true,
+    allowNull: false,
   },
   color: {
     type: DataTypes.STRING(50),

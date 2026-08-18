@@ -22,9 +22,9 @@ module.exports = {
       },
       model_id: {
         type: Sequelize.UUID,
-        allowNull: true,
+        allowNull: false,
         references: { model: 'models', key: 'id' },
-        onDelete: 'SET NULL',
+        onDelete: 'RESTRICT',
       },
       min_year: {
         type: Sequelize.INTEGER,
@@ -52,15 +52,15 @@ module.exports = {
       },
       body_type: {
         type: Sequelize.STRING(50),
-        allowNull: true,
+        allowNull: false,
       },
       transmission: {
         type: Sequelize.STRING(50),
-        allowNull: true,
+        allowNull: false,
       },
       board_type: {
         type: Sequelize.STRING(50),
-        allowNull: true,
+        allowNull: false,
       },
       color: {
         type: Sequelize.STRING(50),
