@@ -13,34 +13,33 @@ exports.createRequirement = async (userId, data) => {
   }
 
   // 2. Validate Model exists and belongs to the selected Brand
-  if (data.model_id) {
-    const model = await Model.findByPk(data.model_id);
-    if (!model) {
-      throw new AppError('Model not found', 404);
-    }
-    if (model.brandId !== data.brand_id) {
-      throw new AppError('Model does not belong to the selected brand', 400);
-    }
+  const model = await Model.findByPk(data.model_id);
+  if (!model) {
+    throw new AppError('Model not found', 404);
+  }
+  if (model.brandId !== data.brand_id) {
+    throw new AppError('Model does not belong to the selected brand', 400);
   }
 
   // 3. Compute expiry date
   const expiryDate = new Date();
   expiryDate.setDate(expiryDate.getDate() + data.purchase_plan_days);
 
+  const kmValue = data.km_driven !== undefined && data.km_driven !== null && data.km_driven !== ''
+    ? data.km_driven
+    : (data.km !== undefined && data.km !== null && data.km !== '' ? data.km : null);
+
   // 4. Create requirement
   const requirement = await Requirement.create({
     user_id: userId,
     brand_id: data.brand_id,
-    model_id: data.model_id || null,
-    min_year: data.min_year || null,
-    max_year: data.max_year || null,
-    min_price: data.min_price || null,
-    max_price: data.max_price || null,
-    min_km: data.min_km || null,
-    max_km: data.max_km || null,
-    body_type: data.body_type || null,
-    transmission: data.transmission || null,
-    board_type: data.board_type || null,
+    model_id: data.model_id,
+    year: data.year || null,
+    price: data.price || null,
+    km_driven: kmValue,
+    body_type: data.body_type,
+    transmission: data.transmission,
+    board_type: data.board_type,
     color: data.color || null,
     purchase_plan_days: data.purchase_plan_days,
     expiry_date: expiryDate,

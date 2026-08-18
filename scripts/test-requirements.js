@@ -85,6 +85,10 @@ async function testSuite() {
       body_type: 'Sedan',
       transmission: 'Automatic',
       board_type: 'OWN BOARD',
+      year: 2020,
+      price: 850000,
+      km_driven: 25000,
+      color: 'Black',
       purchase_plan_days: 30,
     };
 
@@ -184,25 +188,22 @@ async function testSuite() {
       .send({
         brand_id: brand1.id,
         model_id: modelOfBrand1.id,
-        min_year: 2018,
-        max_year: 2023,
-        min_price: 500000,
-        max_price: 1500000,
-        min_km: 10000,
-        max_km: 50000,
         body_type: 'Sedan',
         transmission: 'Automatic',
         board_type: 'OWN BOARD',
-        color: 'Blue Metallic',
+        year: 2021,
+        price: 900000,
+        km_driven: 32000,
+        color: 'Midnight Blue',
         purchase_plan_days: 30,
-        description: 'Valid test requirement with ranges and color',
+        description: 'Looking for a well-maintained Sedan',
       });
 
     assert('Create Requirement succeeds (201)', res.statusCode === 201);
     if (res.statusCode === 201) {
       const reqData = res.body.data;
       createdReqIds.push(reqData.id);
-      assert('Requirement contains ranges & color correctly saved', reqData.min_year === 2018 && reqData.color === 'Blue Metallic');
+      assert('Requirement contains year, price, km_driven & color correctly saved', reqData.year === 2021 && reqData.km_driven === 32000 && reqData.color === 'Midnight Blue');
       assert('Requirement contains computed expiry_date', !!reqData.expiry_date);
       assert('Requirement brand details loaded', reqData.brand?.name === brand1.name);
       assert('Requirement model details loaded', reqData.carModel?.name === modelOfBrand1.name);
@@ -227,6 +228,9 @@ async function testSuite() {
       body_type: 'Sedan',
       transmission: 'Automatic',
       board_type: 'OWN BOARD',
+      year: 2019,
+      price: 600000,
+      km_driven: 45000,
       purchase_plan_days: 10,
       expiry_date: new Date(Date.now() - 24 * 60 * 60 * 1000), // yesterday
       status: 'active',
@@ -347,7 +351,7 @@ async function testSuite() {
     const foundDeleted = res.body.data.requirements.find(r => r.id === targetReqId);
     assert('Soft-deleted requirement excluded from default retrieve list', !foundDeleted);
 
-    // Verify it returns when status=deleted is requested
+    // Verify it returns when status=deleted is filtered
     res = await request(app)
       .get('/api/v1/requirements/me?status=deleted')
       .set('Authorization', `Bearer ${tokenA}`);
@@ -377,7 +381,7 @@ async function testSuite() {
       }
       if (userA) await userA.destroy();
       if (userB) await userB.destroy();
-      if (brand2) await brand2.destroy(); // modelOfBrand2 deleted automatically via cascade
+      if (brand2) await brand2.destroy();
       console.log('✅ Cleanup complete.');
     } catch (e) {
       console.error('⚠️ Cleanup warning:', e.message);

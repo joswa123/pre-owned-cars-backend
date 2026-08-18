@@ -25,29 +25,26 @@ const Requirement = sequelize.define('Requirement', {
     references: { model: 'models', key: 'id' },
     onDelete: 'RESTRICT',
   },
-  min_year: {
+  year: {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
-  max_year: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
-  min_price: {
+  price: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
   },
-  max_price: {
-    type: DataTypes.DECIMAL(12, 2),
-    allowNull: true,
-  },
-  min_km: {
+  km_driven: {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
-  max_km: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
+  km: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('km_driven');
+    },
+    set(val) {
+      this.setDataValue('km_driven', val);
+    }
   },
   body_type: {
     type: DataTypes.STRING(50),
