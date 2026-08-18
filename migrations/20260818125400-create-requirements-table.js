@@ -26,15 +26,27 @@ module.exports = {
         references: { model: 'models', key: 'id' },
         onDelete: 'SET NULL',
       },
-      year: {
+      min_year: {
         type: Sequelize.INTEGER,
         allowNull: true,
       },
-      price: {
+      max_year: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+      },
+      min_price: {
         type: Sequelize.DECIMAL(12, 2),
         allowNull: true,
       },
-      km: {
+      max_price: {
+        type: Sequelize.DECIMAL(12, 2),
+        allowNull: true,
+      },
+      min_km: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+      },
+      max_km: {
         type: Sequelize.INTEGER,
         allowNull: true,
       },
@@ -47,6 +59,10 @@ module.exports = {
         allowNull: true,
       },
       board_type: {
+        type: Sequelize.STRING(50),
+        allowNull: true,
+      },
+      color: {
         type: Sequelize.STRING(50),
         allowNull: true,
       },

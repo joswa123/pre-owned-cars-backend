@@ -25,15 +25,27 @@ const Requirement = sequelize.define('Requirement', {
     references: { model: 'models', key: 'id' },
     onDelete: 'SET NULL',
   },
-  year: {
+  min_year: {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
-  price: {
+  max_year: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  min_price: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
   },
-  km: {
+  max_price: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+  min_km: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  max_km: {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
@@ -46,6 +58,10 @@ const Requirement = sequelize.define('Requirement', {
     allowNull: true,
   },
   board_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+  color: {
     type: DataTypes.STRING(50),
     allowNull: true,
   },

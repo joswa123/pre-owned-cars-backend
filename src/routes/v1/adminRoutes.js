@@ -2,12 +2,14 @@ const express = require("express");
 const router = express.Router();
 const { protect, adminOnly } = require("../../middlewares/auth");
 const adminController = require("../../controllers/adminController");
+const requirementController = require("../../controllers/requirementController");
 
 // All routes require authentication and admin role
 router.use(protect, adminOnly);
 
 // ── Traffic & Stats ────────────────────────────────────────────────────────────
 // GET /api/v1/admin/traffic  — app usage stats (registered users vs guests)
+router.get("/requirements", requirementController.getAllRequirementsForAdmin);
 router.get("/traffic", adminController.getTrafficStats);
 
 // ── Enquiries ─────────────────────────────────────────────────────────────────

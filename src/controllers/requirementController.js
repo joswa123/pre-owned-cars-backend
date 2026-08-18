@@ -44,3 +44,14 @@ exports.deleteRequirement = catchAsync(async (req, res) => {
     data: result,
   });
 });
+
+/**
+ * Admin: Get all requirements across the platform
+ */
+exports.getAllRequirementsForAdmin = catchAsync(async (req, res) => {
+  const result = await requirementService.getAllRequirementsForAdmin(req.query);
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});

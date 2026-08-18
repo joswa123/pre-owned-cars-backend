@@ -1,4 +1,4 @@
-const { Requirement, Brand, Model } = require('../models');
+const { Requirement, Brand, Model, User } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 
@@ -32,12 +32,16 @@ exports.createRequirement = async (userId, data) => {
     user_id: userId,
     brand_id: data.brand_id,
     model_id: data.model_id || null,
-    year: data.year || null,
-    price: data.price || null,
-    km: data.km || null,
+    min_year: data.min_year || null,
+    max_year: data.max_year || null,
+    min_price: data.min_price || null,
+    max_price: data.max_price || null,
+    min_km: data.min_km || null,
+    max_km: data.max_km || null,
     body_type: data.body_type || null,
     transmission: data.transmission || null,
     board_type: data.board_type || null,
+    color: data.color || null,
     purchase_plan_days: data.purchase_plan_days,
     expiry_date: expiryDate,
     status: 'active',
@@ -152,4 +156,53 @@ exports.deleteRequirement = async (requirementId, userId) => {
   });
 
   return { success: true };
+};
+
+/**
+ * Admin view: Fetch all requirements with status, user, and date range filters
+ */
+exports.getAllRequirementsForAdmin = async (filters = {}) => {
+  const limit = parseInt(filters.limit) || 20;
+  const page = parseInt(filters.page) || 1;
+  const offset = (page - 1) * limit;
+
+  const where = {};
+
+  if (filters.status) {
+    where.status = filters.status;
+  }
+
+  if (filters.user_id) {
+    where.user_id = filters.user_id;
+  }
+
+  if (filters.start_date || filters.end_date) {
+    where.created_at = {};
+    if (filters.start_date) {
+      where.created_at[Op.gte] = new Date(filters.start_date);
+    }
+    if (filters.end_date) {
+      where.created_at[Op.lte] = new Date(filters.end_date);
+    }
+  }
+
+  const { count, rows } = await Requirement.findAndCountAll({
+    where,
+    include: [
+      { model: User, as: 'user', attributes: ['id', 'full_name', 'phone', 'email'] },
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+    ],
+    limit,
+    offset,
+    order: [['created_at', 'DESC']],
+  });
+
+  return {
+    total: count,
+    requirements: rows,
+    page,
+    limit,
+    totalPages: Math.ceil(count / limit),
+  };
 };

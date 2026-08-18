@@ -55,7 +55,7 @@ async function testSuite() {
       phone: '9999900002',
       email: 'userb@test.com',
       password_hash: hashedPass,
-      role: 'customer',
+      role: 'customer', // Initially Customer
       is_verified: true,
     });
     tokenB = jwt.sign({ id: userB.id, role: userB.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
@@ -162,17 +162,22 @@ async function testSuite() {
       .send({
         brand_id: brand1.id,
         model_id: modelOfBrand1.id,
-        year: 2020,
-        price: 1000000,
-        km: 30000,
+        min_year: 2018,
+        max_year: 2023,
+        min_price: 500000,
+        max_price: 1500000,
+        min_km: 10000,
+        max_km: 50000,
+        color: 'Blue Metallic',
         purchase_plan_days: 30,
-        description: 'Valid test requirement',
+        description: 'Valid test requirement with ranges and color',
       });
 
     assert('Create Requirement succeeds (201)', res.statusCode === 201);
     if (res.statusCode === 201) {
       const reqData = res.body.data;
       createdReqIds.push(reqData.id);
+      assert('Requirement contains ranges & color correctly saved', reqData.min_year === 2018 && reqData.color === 'Blue Metallic');
       assert('Requirement contains computed expiry_date', !!reqData.expiry_date);
       assert('Requirement brand details loaded', reqData.brand?.name === brand1.name);
       assert('Requirement model details loaded', reqData.carModel?.name === modelOfBrand1.name);
@@ -226,8 +231,8 @@ async function testSuite() {
     res = await request(app)
       .patch(`/api/v1/requirements/${targetReqId}/status`)
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({ status: 'bought', bought_from: 'OLX' });
-    assert("Marking status 'bought' with bought_from succeeds", res.statusCode === 200 && res.body.data.status === 'bought' && res.body.data.bought_from === 'OLX');
+      .send({ status: 'bought', bought_from: 'Friend Recommendation' });
+    assert("Marking status 'bought' with bought_from succeeds", res.statusCode === 200 && res.body.data.status === 'bought' && res.body.data.bought_from === 'Friend Recommendation');
 
     // 6c. Transition back to 'active' -> bought_from must clear to null
     res = await request(app)
@@ -249,9 +254,57 @@ async function testSuite() {
     assert("User B is blocked from updating User A's requirement", res.statusCode === 404);
 
     // ==========================================
-    // TEST 8: SOFT DELETION
+    // TEST 8: ADMIN ENDPOINT & FILTERS
     // ==========================================
-    console.log('\n═══ TEST 8: Soft Deletion ═══');
+    console.log('\n═══ TEST 8: Admin Endpoint & Filters ═══');
+
+    // 8a. User B (Customer role) tries to fetch all requirements -> Expect 403
+    res = await request(app)
+      .get('/api/v1/admin/requirements')
+      .set('Authorization', `Bearer ${tokenB}`);
+    assert('Customer blocked from admin view requirements', res.statusCode === 403);
+
+    // Make User B an Admin in the database and re-sign JWT token with admin role
+    await userB.update({ role: 'admin' });
+    const adminToken = jwt.sign({ id: userB.id, role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    // 8b. Fetch as Admin -> Expect 200
+    res = await request(app)
+      .get('/api/v1/admin/requirements')
+      .set('Authorization', `Bearer ${adminToken}`);
+    assert('Admin can fetch all platform requirements', res.statusCode === 200 && res.body.data.total >= 2);
+    if (res.statusCode === 200) {
+      const records = res.body.data.requirements;
+      const verifiedRecord = records.find(r => r.id === targetReqId);
+      assert('Requirement contains user details nested', !!verifiedRecord?.user?.full_name);
+      assert('Requirement contains brand details nested', !!verifiedRecord?.brand?.name);
+    }
+
+    // 8c. Filter by status = 'active'
+    res = await request(app)
+      .get(`/api/v1/admin/requirements?status=active`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const activeReqs = res.body.data.requirements;
+    assert('Admin filter by status active works', res.statusCode === 200 && activeReqs.every(r => r.status === 'active'));
+
+    // 8d. Filter by user_id = userA.id
+    res = await request(app)
+      .get(`/api/v1/admin/requirements?user_id=${userA.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const userReqs = res.body.data.requirements;
+    assert('Admin filter by user_id works', res.statusCode === 200 && userReqs.every(r => r.user_id === userA.id));
+
+    // 8e. Filter by date range (created_at)
+    const todayStr = new Date().toISOString().split('T')[0];
+    res = await request(app)
+      .get(`/api/v1/admin/requirements?start_date=${todayStr}&end_date=${todayStr}T23:59:59.999Z`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    assert('Admin filter by created_at date ranges works', res.statusCode === 200 && res.body.data.requirements.length >= 2);
+
+    // ==========================================
+    // TEST 9: SOFT DELETION
+    // ==========================================
+    console.log('\n═══ TEST 9: Soft Deletion ═══');
 
     res = await request(app)
       .delete(`/api/v1/requirements/${targetReqId}`)
@@ -287,7 +340,7 @@ async function testSuite() {
     console.error('❌ Test error:', error);
     failed++;
   } finally {
-    // 9. CLEANUP (Database sanitization)
+    // 10. CLEANUP (Database sanitization)
     console.log('\n🧹 Cleaning up test users, brand, model, and requirements...');
     try {
       if (createdReqIds.length > 0) {
