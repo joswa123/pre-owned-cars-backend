@@ -20,6 +20,7 @@ const Lead = require('./Lead');
 const Subscription = require('./Subscription');
 const View = require('./View');
 const Banner = require('./Banner');
+const Requirement = require('./Requirement');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -61,6 +62,15 @@ Otp.belongsTo(User, {
 // ==========================================
 User.hasMany(Car, { foreignKey: 'user_id', as: 'postedCars' });
 Car.belongsTo(User, { foreignKey: 'user_id', as: 'seller' });
+
+// ==========================================
+// REQUIREMENT RELATIONSHIPS
+// ==========================================
+User.hasMany(Requirement, { foreignKey: 'user_id', as: 'requirements' });
+Requirement.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+Requirement.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });
+Requirement.belongsTo(Model, { foreignKey: 'model_id', as: 'carModel' });
+
 
 Car.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });
 Brand.hasMany(Car, { foreignKey: 'brand_id', as: 'cars' });
@@ -164,6 +174,7 @@ const models = {
   Subscription,
   View,
   Banner,
+  Requirement,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk

@@ -139,6 +139,7 @@ app.use('/api/v1/wishlist', require('./routes/v1/wishlistRoutes'));
 app.use('/api/v1/leads', require('./routes/v1/leadRoutes'));
 app.use('/api/v1/subscriptions', require('./routes/v1/subscriptionRoutes'));
 app.use('/api/v1/banners', require('./routes/v1/bannerRoutes'));
+app.use('/api/v1/requirements', require('./routes/v1/requirementRoutes'));
 // ── Admin Routes (protected — admin role required) ───────────────────────────
 app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
 app.use('/api/v1/admin/banners', require('./routes/v1/admin/bannerRoutes'));
