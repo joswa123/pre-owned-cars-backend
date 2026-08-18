@@ -30,6 +30,10 @@ const Model = sequelize.define('Model', {
     allowNull: true,
     comment: 'SUV, Sedan, Hatchback, MUV, etc.',
   },
+  image_url: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
   start_year: {
     type: DataTypes.INTEGER,
     allowNull: true,

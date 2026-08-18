@@ -20,22 +20,77 @@ exports.getAllModels = async (brandId = null) => {
     }
     where.brandId = targetBrandId;
   }
-  return await Model.findAll({
+  const models = await Model.findAll({
     where,
+    attributes: [
+      'id',
+      'brandId',
+      'name',
+      'body_type',
+      'image_url',
+      'start_year',
+      'end_year',
+      'is_active',
+      'created_at',
+      'updated_at',
+      [
+        sequelize.literal(`(
+          SELECT COUNT(*)
+          FROM cars AS car
+          WHERE car.model_id = Model.id
+          AND car.status = 'active'
+        )`),
+        'car_count',
+      ],
+    ],
     include: [{ model: Brand, as: 'brand', attributes: ['id', 'name', 'logo'] }],
     order: [['name', 'ASC']],
+  });
+
+  return models.map((m) => {
+    const json = m.toJSON();
+    return {
+      ...json,
+      car_count: parseInt(json.car_count || 0, 10),
+    };
   });
 };
 
 exports.getModelById = async (id) => {
   const model = await Model.findByPk(id, {
+    attributes: [
+      'id',
+      'brandId',
+      'name',
+      'body_type',
+      'image_url',
+      'start_year',
+      'end_year',
+      'is_active',
+      'created_at',
+      'updated_at',
+      [
+        sequelize.literal(`(
+          SELECT COUNT(*)
+          FROM cars AS car
+          WHERE car.model_id = Model.id
+          AND car.status = 'active'
+        )`),
+        'car_count',
+      ],
+    ],
     include: [{ 
       model: Brand, 
+      as: 'brand',
       attributes: ['id', 'name', 'logo'] 
     }],
   });
   if (!model) throw new AppError('Model not found', 404);
-  return model;
+  const json = model.toJSON();
+  return {
+    ...json,
+    car_count: parseInt(json.car_count || 0, 10),
+  };
 };
 
 exports.createModel = async (data, userId) => {

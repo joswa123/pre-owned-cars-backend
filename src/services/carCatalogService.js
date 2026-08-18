@@ -119,12 +119,31 @@ exports.getModelsByBrand = async (brandId) => {
 
   if (!brand) throw new AppError('Brand not found.', 404);
 
+  const modelAttributes = [
+    'id',
+    'brandId',
+    'name',
+    'body_type',
+    'image_url',
+    'start_year',
+    'end_year',
+    [
+      sequelize.literal(`(
+        SELECT COUNT(*)
+        FROM cars AS car
+        WHERE car.model_id = Model.id
+        AND car.status = 'active'
+      )`),
+      'car_count',
+    ],
+  ];
+
   let models = await Model.findAll({
     where: {
       brandId: brand.id,
       is_active: { [Op.ne]: false },
     },
-    attributes: ['id', 'brandId', 'name', 'body_type', 'start_year', 'end_year'],
+    attributes: modelAttributes,
     order: [['name', 'ASC']],
   });
 
@@ -138,14 +157,22 @@ exports.getModelsByBrand = async (brandId) => {
           brandId: brand.id,
           is_active: { [Op.ne]: false },
         },
-        attributes: ['id', 'brandId', 'name', 'body_type', 'start_year', 'end_year'],
+        attributes: modelAttributes,
         order: [['name', 'ASC']],
       });
     }
   }
 
-  await setCache(cacheKey, models, 900);
-  return models;
+  const formattedModels = models.map((m) => {
+    const json = m.toJSON();
+    return {
+      ...json,
+      car_count: parseInt(json.car_count || 0, 10),
+    };
+  });
+
+  await setCache(cacheKey, formattedModels, 900);
+  return formattedModels;
 };
 
 /**
@@ -242,7 +269,7 @@ exports.searchCatalog = async (query = '', page = 1, limit = 20) => {
       {
         model: Model,
         as: 'model',
-        attributes: ['id', 'name', 'body_type'],
+        attributes: ['id', 'name', 'body_type', 'image_url'],
         include: [{ model: Brand, as: 'brand', attributes: ['id', 'name', 'logoUrl'] }],
       },
     ],
@@ -259,6 +286,7 @@ exports.searchCatalog = async (query = '', page = 1, limit = 20) => {
     engine_cc: v.engine_cc,
     model_id: v.model ? v.model.id : null,
     model_name: v.model ? v.model.name : null,
+    model_image: v.model ? v.model.image_url : null,
     body_type: v.model ? v.model.body_type : null,
     brand_id: v.model && v.model.brand ? v.model.brand.id : null,
     brand_name: v.model && v.model.brand ? v.model.brand.name : null,
