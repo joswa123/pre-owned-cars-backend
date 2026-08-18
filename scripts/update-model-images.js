@@ -1,7 +1,8 @@
 'use strict';
 
 require('dotenv').config({ override: true });
-const { Brand, Model, sequelize } = require('../src/models');
+const { Brand, Model } = require('../src/models');
+const sequelize = require('../src/config/database');
 const { Op, fn, col, where } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
@@ -91,8 +92,8 @@ async function updateModelImages(mappingList = []) {
 
       const targetBrandName = normalizeBrandName(rawBrand).toLowerCase();
 
-      // Find Brand
-      const brand = allBrands.find(b => {
+      // Find all matching Brands (e.g. Tata and Tata Motors)
+      const matchingBrands = allBrands.filter(b => {
         const bName = b.name.toLowerCase();
         return bName === targetBrandName || 
                normalizeBrandName(b.name).toLowerCase() === targetBrandName ||
@@ -100,28 +101,33 @@ async function updateModelImages(mappingList = []) {
                targetBrandName.includes(bName);
       });
 
-      if (!brand) {
+      if (matchingBrands.length === 0) {
         notFound.push({ ...item, reason: `Brand not found: ${rawBrand}` });
         continue;
       }
 
       const targetModelName = normalizeModelName(rawModel);
 
-      // Find Model under this Brand
-      const modelsUnderBrand = allModels.filter(m => m.brandId === brand.id);
-      let model = modelsUnderBrand.find(m => m.name.toLowerCase() === rawModel.trim().toLowerCase());
+      // Find Model under any matching Brand
+      let model = null;
+      for (const brand of matchingBrands) {
+        const modelsUnderBrand = allModels.filter(m => m.brandId === brand.id);
+        model = modelsUnderBrand.find(m => m.name.toLowerCase() === rawModel.trim().toLowerCase());
 
-      if (!model) {
-        // Try normalized name
-        model = modelsUnderBrand.find(m => normalizeModelName(m.name) === targetModelName);
-      }
+        if (!model) {
+          model = modelsUnderBrand.find(m => normalizeModelName(m.name) === targetModelName);
+        }
 
-      if (!model) {
-        // Try fuzzy inclusion
-        model = modelsUnderBrand.find(m => {
-          const mNorm = normalizeModelName(m.name);
-          return mNorm.includes(targetModelName) || targetModelName.includes(mNorm);
-        });
+        if (!model) {
+          model = modelsUnderBrand.find(m => {
+            const mNorm = normalizeModelName(m.name);
+            return mNorm.includes(targetModelName) || targetModelName.includes(mNorm);
+          });
+        }
+
+        if (model) {
+          break;
+        }
       }
 
       if (!model) {
