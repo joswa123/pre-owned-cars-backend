@@ -1,4 +1,4 @@
-const { Car, CarImage, User, Wishlist, Lead, State, District, City, Brand, Model, Variant } = require('../models');
+const { Car, CarImage, User, DealerProfile, Wishlist, Lead, State, District, City, Brand, Model, Variant } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -28,10 +28,21 @@ const clearCachePattern = async (pattern) => {
 };
 const { mapToDbValues } = require('../validations/carValidation');
 
+const sellerInclude = {
+  model: User,
+  as: 'seller',
+  attributes: ['id', 'full_name', 'phone', 'email', 'role', 'city', 'state', 'profile_picture'],
+  include: [
+    { model: District, as: 'district', attributes: ['name'] },
+    { model: DealerProfile, as: 'dealerProfile', attributes: ['company_name'] },
+  ],
+};
+
 /**
- * Helper to transform car images into absolute URLs
+ * Helper to transform car images into absolute URLs and flatten seller district & company_name
  */
 const transformCarImages = (car, baseUrl = null) => {
+  if (!car) return null;
   const images = car.images || [];
   const primary = images.find((img) => img.is_primary === true);
   const secondary = images.filter((img) => img.is_primary !== true);
@@ -55,12 +66,27 @@ const transformCarImages = (car, baseUrl = null) => {
     return absUrl;
   };
 
+  const carJson = typeof car.toJSON === 'function' ? car.toJSON() : { ...car };
+
+  if (carJson.seller) {
+    const rawSeller = car.seller;
+    const sellerDistrictName = rawSeller?.district?.name || carJson.seller.district?.name || (typeof carJson.seller.district === 'string' ? carJson.seller.district : null);
+    const sellerCompanyName = rawSeller?.dealerProfile?.company_name || carJson.seller.dealerProfile?.company_name || carJson.seller.company_name || null;
+
+    carJson.seller = {
+      ...carJson.seller,
+      district: sellerDistrictName,
+      company_name: sellerCompanyName,
+    };
+    delete carJson.seller.dealerProfile;
+  }
+
   return {
-    ...car.toJSON(),
+    ...carJson,
     primary_image: primary ? getOptimizedImageUrl(primary.image_url) : null,
     secondary_images: secondary.map((img) => getOptimizedImageUrl(img.image_url)),
     images: images.map((img) => ({
-      ...img.toJSON(),
+      ...(typeof img.toJSON === 'function' ? img.toJSON() : img),
       image_url: getOptimizedImageUrl(img.image_url),
     })),
   };
@@ -296,7 +322,8 @@ exports.getCars = async (
 
     // Brands
     if (filters.brands && filters.brands.length) {
-      where.brand_id = { [Op.in]: filters.brands };
+      const brandIds = Array.isArray(filters.brands) ? filters.brands : filters.brands.split(',');
+      where.brand_id = { [Op.in]: brandIds };
     } else {
       // Fallback for single brand string (backward compatibility)
       if (filters.brand_id) where.brand_id = filters.brand_id;
@@ -433,7 +460,7 @@ exports.getCars = async (
       where,
       include: [
         { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-        { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city', 'profile_picture'] },
+        sellerInclude,
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
@@ -501,9 +528,11 @@ exports.getCarById = async (carId, userId = null) => {
   
   let transformedCar;
   try {
-    const cached = await redisClient.get(cacheKey);
-    if (cached) {
-      transformedCar = JSON.parse(cached);
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) {
+        transformedCar = JSON.parse(cached);
+      }
     }
   } catch (err) {
     console.error('Redis cache error in getCarById:', err);
@@ -514,7 +543,7 @@ exports.getCarById = async (carId, userId = null) => {
       attributes: { include: ['created_at', 'deleted_at'] },
       include: [
         { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-        { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role', 'city', 'state', 'profile_picture'] },
+        sellerInclude,
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
@@ -559,7 +588,7 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
     where: { status: 'active' },
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-      { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'profile_picture'] },
+      sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
@@ -597,6 +626,7 @@ exports.getUserCars = async (userId, status = null) => {
     where: whereClause,
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+      sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: Model, as: 'carModel', attributes: ['id', 'name'] },
       { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
@@ -746,7 +776,7 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     const updatedCar = await Car.findByPk(car.id, {
       include: [
         { model: CarImage, as: 'images' },
-        { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
+        sellerInclude,
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
@@ -842,7 +872,7 @@ exports.markCarAsSold = async (carId, userId, userRole = null) => {
   const updatedCar = await Car.findByPk(car.id, {
     include: [
       { model: CarImage, as: 'images' },
-      { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
+      sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: Model, as: 'carModel', attributes: ['id', 'name'] },
       { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
@@ -901,7 +931,7 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
     where,
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-      { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'profile_picture'] },
+      sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },

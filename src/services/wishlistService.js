@@ -1,4 +1,4 @@
-const { Wishlist, Car, CarImage, User } = require('../models');
+const { Wishlist, Car, CarImage, User, District, DealerProfile, Brand, Model, Variant, State, City } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { Op } = require('sequelize');
 
@@ -39,8 +39,22 @@ exports.getWishlist = async (userId) => {
       {
         model: Car,
         include: [
-          { model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] },
-          { model: User, attributes: ['id', 'full_name', 'phone', 'profile_picture'] },
+          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+          {
+            model: User,
+            as: 'seller',
+            attributes: ['id', 'full_name', 'phone', 'email', 'role', 'city', 'state', 'profile_picture'],
+            include: [
+              { model: District, as: 'district', attributes: ['name'] },
+              { model: DealerProfile, as: 'dealerProfile', attributes: ['company_name'] },
+            ],
+          },
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+          { model: State, as: 'state', attributes: ['id', 'name'] },
+          { model: District, as: 'district', attributes: ['id', 'name'] },
+          { model: City, as: 'city', attributes: ['id', 'name'] },
         ],
       }
     ],
