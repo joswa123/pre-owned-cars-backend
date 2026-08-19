@@ -4,6 +4,7 @@ const sequelize = require('../config/database');
 const { User, Lead, Car, Subscription, DealerProfile, CustomerProfile, Brand, Model } = require('../models');
 const { catchAsync, AppError } = require('../utils/errorHandler');
 const carService = require('../services/carService');
+const leadService = require('../services/leadService');
 
 // ── Traffic Stats ─────────────────────────────────────────────────────────────
 // GET /api/v1/admin/traffic
@@ -73,61 +74,12 @@ exports.getTrafficStats = catchAsync(async (req, res) => {
 
 // ── All Enquiries ─────────────────────────────────────────────────────────────
 // GET /api/v1/admin/enquiries
-// Returns every lead with buyer (if registered) + car + seller info
+// Returns every lead with buyer + car + seller info
 exports.getAllEnquiries = catchAsync(async (req, res) => {
-  const { page = 1, limit = 20, status, search } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
-
-  const whereClause = {};
-  // Filter by viewed/unviewed status
-  if (status === 'unread') whereClause.is_viewed = false;
-  if (status === 'read') whereClause.is_viewed = true;
-  if (status === 'unlocked') whereClause.contact_unlocked = true;
-
-  // Search by buyer phone, name, or email (works for both guests and registered users)
-  if (search) {
-    whereClause[Op.or] = [
-      { buyer_name: { [Op.like]: `%${search}%` } },
-      { buyer_phone: { [Op.like]: `%${search}%` } },
-      { buyer_email: { [Op.like]: `%${search}%` } },
-    ];
-  }
-
-  const { count, rows: leads } = await Lead.findAndCountAll({
-    where: whereClause,
-    include: [
-      {
-        model: Car,
-        as: 'car',
-        attributes: ['id', 'title', 'price', 'status'],
-        include: [
-          {
-            model: User,
-            as: 'seller',
-            attributes: ['id', 'full_name', 'phone', 'email', 'role'],
-          },
-        ],
-      },
-      {
-        model: User,
-        as: 'buyer',
-        attributes: ['id', 'full_name', 'phone', 'email'],
-        required: false, // LEFT JOIN — guests have no buyer record
-      },
-    ],
-    order: [['created_at', 'DESC']],
-    limit: parseInt(limit),
-    offset,
-  });
-
+  const result = await leadService.getAllLeadsForAdmin(req.query);
   res.json({
-    success: true,
-    data: {
-      total: count,
-      page: parseInt(page),
-      totalPages: Math.ceil(count / parseInt(limit)),
-      leads,
-    },
+    status: 'success',
+    data: result,
   });
 });
 
