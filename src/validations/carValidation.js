@@ -238,9 +238,12 @@ const carQuerySchema = Joi.object({
   status: Joi.string().optional()
 }).unknown(true);
 
+const sellCarSchema = Joi.object({}).unknown(true);
+
 module.exports = {
   createCarSchema,
   updateCarSchema,
   mapToDbValues,
   carQuerySchema,
+  sellCarSchema,
 };

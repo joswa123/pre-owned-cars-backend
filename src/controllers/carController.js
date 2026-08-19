@@ -128,6 +128,20 @@ exports.deleteCarImage = catchAsync(async (req, res) => {
 });
 
 /**
+ * Mark Car as Sold
+ */
+exports.markCarAsSold = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const updatedCar = await carService.markCarAsSold(id, req.user.id, req.user.role);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Car marked as sold successfully.',
+    data: { car: updatedCar },
+  });
+});
+
+/**
  * Delete Car Listing
  */
 exports.deleteCar = catchAsync(async (req, res) => {

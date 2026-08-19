@@ -6,7 +6,9 @@ const redisClient = require('../config/redis');
 
 const clearCache = async (key) => {
   try {
-    await redisClient.del(key);
+    if (redisClient.isOpen) {
+      await redisClient.del(key);
+    }
   } catch (err) {
     console.error('Redis clear cache error:', err);
   }
@@ -14,9 +16,11 @@ const clearCache = async (key) => {
 
 const clearCachePattern = async (pattern) => {
   try {
-    const keys = await redisClient.keys(pattern);
-    if (keys.length > 0) {
-      await redisClient.del(keys);
+    if (redisClient.isOpen) {
+      const keys = await redisClient.keys(pattern);
+      if (keys.length > 0) {
+        await redisClient.del(keys);
+      }
     }
   } catch (err) {
     console.error('Redis clear pattern error:', err);
@@ -247,8 +251,10 @@ exports.getCars = async (
   
   let cachedData;
   try {
-    const cached = await redisClient.get(cacheKey);
-    if (cached) cachedData = JSON.parse(cached);
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) cachedData = JSON.parse(cached);
+    }
   } catch (err) {
     console.error('Redis cache error in getCars:', err);
   }
@@ -449,7 +455,9 @@ exports.getCars = async (
     });
 
     try {
-      await redisClient.setEx(cacheKey, 60, JSON.stringify({ count, transformedCars }));
+      if (redisClient.isOpen) {
+        await redisClient.setEx(cacheKey, 60, JSON.stringify({ count, transformedCars }));
+      }
     } catch (err) {
       console.error('Redis set cache error in getCars:', err);
     }
@@ -513,7 +521,9 @@ exports.getCarById = async (carId, userId = null) => {
     transformedCar = transformCarImages(car, baseUrl);
 
     try {
-      await redisClient.setEx(cacheKey, 300, JSON.stringify(transformedCar));
+      if (redisClient.isOpen) {
+        await redisClient.setEx(cacheKey, 300, JSON.stringify(transformedCar));
+      }
     } catch (err) {
       console.error('Redis set cache error in getCarById:', err);
     }
@@ -776,6 +786,59 @@ exports.deleteCarImage = async (userId, carId, imageId, userRole) => {
     await transaction.rollback();
     throw error;
   }
+};
+
+/**
+ * Mark car as sold
+ */
+exports.markCarAsSold = async (carId, userId, userRole = null) => {
+  const car = await Car.unscoped().findByPk(carId);
+  if (!car) throw new AppError('Car not found.', 404);
+
+  // Authorization: Owner or Admin
+  let isAdmin = userRole === 'admin';
+  if (!isAdmin && userRole === null) {
+    const user = await User.findByPk(userId);
+    isAdmin = user?.role === 'admin';
+  }
+
+  if (car.user_id !== userId && !isAdmin) {
+    throw new AppError('You are not authorized to mark this car as sold', 403);
+  }
+
+  if (car.status === 'sold') {
+    throw new AppError('Car is already sold', 400);
+  }
+
+  if (car.status === 'deleted') {
+    throw new AppError('Cannot sell a deleted car', 400);
+  }
+
+  await car.update({ status: 'sold' });
+
+  // Invalidate Redis cache
+  const { clearCache: clearMiddlewareCache } = require('../middlewares/cacheMiddleware');
+  await clearCache(`car:${carId}`);
+  await clearCachePattern('cars:*');
+  await clearCache('brands:with_counts');
+  await clearCache('board_type_stats');
+  clearMiddlewareCache('/api/v1/cars');
+
+  const updatedCar = await Car.findByPk(car.id, {
+    include: [
+      { model: CarImage, as: 'images' },
+      { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+      { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
+    ],
+  });
+
+  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  return transformCarImages(updatedCar, baseUrl);
 };
 
 /**

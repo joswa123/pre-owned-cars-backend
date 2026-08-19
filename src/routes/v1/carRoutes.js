@@ -41,6 +41,9 @@ router.put('/:id', protect, carUpload.fields([
     { name: 'images', maxCount: 10 }
   ]),validate(updateCarSchema), carController.updateCar);
 
+// ─── Mark Car as Sold ───────────────────────────────────────
+router.patch('/:id/sell', protect, carController.markCarAsSold);
+
 // ─── Delete Car ─────────────────────────────────────────────
 router.delete('/:id', protect, carController.deleteCar);
 
