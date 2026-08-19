@@ -70,6 +70,9 @@ exports.triggerSync = catchAsync(async (req, res) => {
   const externalData = await externalCatalogApi.fetchExternalCatalogData();
   const summary = await carCatalogService.syncCatalogData(externalData);
 
+  const { clearCache } = require('../middlewares/cacheMiddleware');
+  clearCache('/api/v1/catalog');
+
   res.status(200).json({
     status: 'success',
     message: 'Vehicle catalog synchronization completed successfully.',

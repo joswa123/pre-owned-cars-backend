@@ -37,6 +37,10 @@ exports.createBrand = async (req, res, next) => {
     // Create brand
     const brand = await brandService.createBrand(value, logoFile);
 
+    const { clearCache } = require('../middlewares/cacheMiddleware');
+    clearCache('/api/v1/catalog');
+    clearCache('/api/v1/admin/brands');
+
     return res.status(200).json({
       success: true,
       data: brand,
@@ -52,6 +56,11 @@ exports.updateBrand = async (req, res, next) => {
       return res.status(400).json({ success: false, message: error.details[0].message });
     }
     const brand = await brandService.updateBrand(req.params.id, value, req.file);
+
+    const { clearCache } = require('../middlewares/cacheMiddleware');
+    clearCache('/api/v1/catalog');
+    clearCache('/api/v1/admin/brands');
+
     res.json({ success: true, data: brand });
   } catch (error) {
     next(error);
@@ -61,6 +70,11 @@ exports.updateBrand = async (req, res, next) => {
 exports.deleteBrand = async (req, res, next) => {
   try {
     const result = await brandService.deleteBrand(req.params.id);
+
+    const { clearCache } = require('../middlewares/cacheMiddleware');
+    clearCache('/api/v1/catalog');
+    clearCache('/api/v1/admin/brands');
+
     res.json({ success: true, ...result });
   } catch (error) {
     next(error);

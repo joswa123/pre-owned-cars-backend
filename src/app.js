@@ -9,14 +9,27 @@ const fs = require('fs');
 const { globalErrorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
 const { cacheMiddleware } = require('./middlewares/cacheMiddleware');
+const sequelize = require('./config/database');
 const morgan = require('morgan');
 
 const app = express();
 
-// ─── Logging ─────────────────────────────────────────────────────────────────
+// ─── Logging & Performance Tracking ───────────────────────────────────────────
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
   stream: { write: message => logger.info(message.trim()) }
 }));
+
+// Slow Request Profiling (logs warnings for requests exceeding 1000ms)
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (duration > 1000) {
+      logger.warn(`⚠️ Slow Request (${duration}ms): ${req.method} ${req.originalUrl} [Status ${res.statusCode}]`);
+    }
+  });
+  next();
+});
 
 // ─── Trust Proxy (required for Render/Heroku) ────────────────────────────────
 app.set('trust proxy', 1);
@@ -99,13 +112,23 @@ app.get('/api/debug/uploads', (req, res) => {
 });
 
 // ─── Diagnostic Routes ───────────────────────────────────────────────────────
-// GET /health — Used by Render and Nginx to check if this instance is alive.
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-  });
+// GET /health — Used by Render and monitoring services to check API and DB connectivity.
+app.get('/health', async (req, res) => {
+  try {
+    await sequelize.authenticate();
+    res.status(200).json({
+      status: 'ok',
+      db: 'connected',
+      timestamp: new Date().toISOString(),
+      uptime: Math.floor(process.uptime()),
+    });
+  } catch (err) {
+    res.status(503).json({
+      status: 'db_unavailable',
+      error: err.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // GET /server-id — Shows which instance handled this request.

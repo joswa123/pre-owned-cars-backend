@@ -54,10 +54,24 @@ const sequelize = new Sequelize(
       : false,
     dialectOptions,
     pool: {
-      max: 5,
-      min: 0,
+      max: 20,
+      min: 2,
       acquire: 30000,
       idle: 10000,
+      evict: 1000,
+    },
+    retry: {
+      max: 5,
+      match: [
+        /SequelizeConnectionError/,
+        /SequelizeConnectionRefusedError/,
+        /ETIMEDOUT/,
+        /ECONNRESET/,
+        /ECONNREFUSED/,
+        /PROTOCOL_CONNECTION_LOST/,
+      ],
+      backoffBase: 1000,
+      backoffExponent: 1.5,
     },
     define: {
       timestamps: true,
@@ -66,5 +80,19 @@ const sequelize = new Sequelize(
     },
   }
 );
+
+// Periodic keep-alive query to prevent connection drop / idle timeout on cloud providers
+if (process.env.NODE_ENV !== 'test') {
+  const keepAliveTimer = setInterval(async () => {
+    try {
+      await sequelize.query('SELECT 1');
+    } catch (err) {
+      // Periodic heartbeat failed; next query retry logic will re-establish connection
+    }
+  }, 30000);
+  if (keepAliveTimer.unref) {
+    keepAliveTimer.unref();
+  }
+}
 
 module.exports = sequelize;
