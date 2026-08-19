@@ -333,3 +333,76 @@ exports.getAllRequirementsForAdmin = async (filters = {}) => {
     totalPages: Math.ceil(count / limit),
   };
 };
+
+/**
+ * Match active cars to a requirement (exact match on provided fields)
+ */
+exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {}) => {
+  const requirement = await Requirement.findOne({
+    where: { id: requirementId },
+  });
+
+  if (!requirement) {
+    throw new AppError('Requirement not found', 404);
+  }
+
+  if (requirement.user_id !== userId) {
+    throw new AppError('Unauthorized to search cars for this requirement', 403);
+  }
+
+  if (requirement.status === 'deleted') {
+    throw new AppError('Cannot search cars for a deleted requirement', 400);
+  }
+
+  // Dynamic expiry: update if past expiry
+  if (requirement.status === 'active' && requirement.expiry_date && new Date(requirement.expiry_date) < new Date()) {
+    await requirement.update({ status: 'expired' });
+  }
+
+  if (requirement.status === 'expired') {
+    throw new AppError('Cannot search cars for an expired requirement', 400);
+  }
+
+  // Build filter object for carService.getCars
+  const carFilters = {};
+
+  if (requirement.brand_id) {
+    carFilters.brands = [requirement.brand_id];
+  }
+
+  if (requirement.model_id) {
+    carFilters.models = [requirement.model_id];
+  }
+
+  if (requirement.year !== null && requirement.year !== undefined && requirement.year !== '') {
+    carFilters.year = requirement.year;
+  }
+
+  if (requirement.price !== null && requirement.price !== undefined && requirement.price !== '') {
+    carFilters.price = requirement.price;
+  }
+
+  if (requirement.km_driven !== null && requirement.km_driven !== undefined && requirement.km_driven !== '') {
+    carFilters.km_driven = requirement.km_driven;
+  }
+
+  if (requirement.body_type) {
+    carFilters.body_types = [requirement.body_type];
+  }
+
+  if (requirement.transmission) {
+    carFilters.transmissions = [requirement.transmission];
+  }
+
+  if (requirement.board_type) {
+    carFilters.board_types = [requirement.board_type];
+  }
+
+  const page = parseInt(queryParams.page) || 1;
+  const limit = parseInt(queryParams.limit) || 20;
+  const sortBy = queryParams.sortBy || 'created_at';
+  const sortOrder = queryParams.sortOrder || 'DESC';
+
+  const carService = require('./carService');
+  return await carService.getCars(carFilters, page, limit, sortBy, sortOrder, userId);
+};

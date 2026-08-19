@@ -273,7 +273,10 @@ exports.getCars = async (
       where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
     }
     
-    if (filters.board_type) {
+    if (filters.board_types && filters.board_types.length) {
+      const boards = Array.isArray(filters.board_types) ? filters.board_types : filters.board_types.split(',');
+      where.board_type = { [Op.in]: boards };
+    } else if (filters.board_type) {
       if (filters.board_type.toUpperCase() === 'B2B') {
         where.b2b_listing = true;
       } else {
@@ -281,10 +284,14 @@ exports.getCars = async (
       }
     }
     
-    // Price range
-    if (filters.min_price) where.price = { [Op.gte]: parseFloat(filters.min_price) };
-    if (filters.max_price) {
-      where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
+    // Price range & exact price
+    if (filters.price !== undefined && filters.price !== null && filters.price !== '') {
+      where.price = parseFloat(filters.price);
+    } else {
+      if (filters.min_price) where.price = { [Op.gte]: parseFloat(filters.min_price) };
+      if (filters.max_price) {
+        where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
+      }
     }
 
     // Brands
@@ -340,16 +347,24 @@ exports.getCars = async (
       }
     }
 
-    // Year range
-    if (filters.min_year) where.year = { [Op.gte]: parseInt(filters.min_year) };
-    if (filters.max_year) {
-      where.year = { ...where.year, [Op.lte]: parseInt(filters.max_year) };
+    // Year range & exact year
+    if (filters.year !== undefined && filters.year !== null && filters.year !== '') {
+      where.year = parseInt(filters.year);
+    } else {
+      if (filters.min_year) where.year = { [Op.gte]: parseInt(filters.min_year) };
+      if (filters.max_year) {
+        where.year = { ...where.year, [Op.lte]: parseInt(filters.max_year) };
+      }
     }
 
-    // KM range
-    if (filters.min_km) where.km_driven = { [Op.gte]: parseFloat(filters.min_km) };
-    if (filters.max_km) {
-      where.km_driven = { ...where.km_driven, [Op.lte]: parseFloat(filters.max_km) };
+    // KM range & exact km
+    if (filters.km_driven !== undefined && filters.km_driven !== null && filters.km_driven !== '') {
+      where.km_driven = parseFloat(filters.km_driven);
+    } else {
+      if (filters.min_km) where.km_driven = { [Op.gte]: parseFloat(filters.min_km) };
+      if (filters.max_km) {
+        where.km_driven = { ...where.km_driven, [Op.lte]: parseFloat(filters.max_km) };
+      }
     }
 
     // Fuel types

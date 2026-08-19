@@ -35,6 +35,21 @@ exports.getRequirement = catchAsync(async (req, res) => {
 });
 
 /**
+ * Match active cars to a requirement
+ */
+exports.matchCars = catchAsync(async (req, res) => {
+  const result = await requirementService.matchCarsToRequirement(
+    req.params.id,
+    req.user.id,
+    req.query
+  );
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
+/**
  * Update a requirement
  */
 exports.updateRequirement = catchAsync(async (req, res) => {

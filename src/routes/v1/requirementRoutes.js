@@ -15,6 +15,7 @@ router.use(protect);
 router.post('/', validate(createRequirementSchema), requirementController.createRequirement);
 router.get('/me', requirementController.getMyRequirements);
 router.get('/:id', requirementController.getRequirement);
+router.get('/:id/match-cars', requirementController.matchCars);
 router.put('/:id', validate(updateRequirementSchema), requirementController.updateRequirement);
 router.patch('/:id/status', validate(updateRequirementStatusSchema), requirementController.updateRequirementStatus);
 router.delete('/:id', requirementController.deleteRequirement);
