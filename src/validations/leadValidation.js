@@ -6,31 +6,17 @@ const createLeadSchema = Joi.object({
     'string.guid': 'car_id must be a valid UUID',
     'any.required': 'car_id is required',
   }),
-  message: Joi.string().max(400).optional().allow('', null).messages({
-    'string.max': 'message must not exceed 400 characters',
+  user_id: Joi.string().uuid().optional().messages({
+    'string.guid': 'user_id must be a valid UUID',
   }),
-  contact_phone: Joi.string()
-    .pattern(/^[0-9]{10,15}$/)
-    .optional()
-    .allow('', null)
-    .messages({
-      'string.pattern.base': 'contact_phone must be a valid 10-15 digit phone number',
-    }),
-  preferred_contact: Joi.string()
-    .valid('whatsapp', 'phone', 'email')
-    .optional()
-    .default('phone')
-    .messages({
-      'any.only': 'preferred_contact must be one of: whatsapp, phone, email',
-    }),
   source: Joi.string()
-    .valid('call', 'whatsapp', 'message', 'chat')
+    .valid('whatsapp', 'call', 'message')
     .optional()
     .default('message')
     .messages({
-      'any.only': 'source must be one of: call, whatsapp, message, chat',
+      'any.only': 'source must be one of: whatsapp, call, message',
     }),
-}).unknown(true);
+});
 
 const updateLeadStatusSchema = Joi.object({
   status: Joi.string()

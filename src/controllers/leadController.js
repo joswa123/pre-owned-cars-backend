@@ -6,7 +6,7 @@ const { catchAsync } = require('../utils/errorHandler');
  * Create a new lead/enquiry
  */
 exports.createLead = catchAsync(async (req, res) => {
-  const userId = req.user?.id;
+  const userId = req.user?.id || req.body.user_id;
   const lead = await leadService.createLead(userId, req.body);
 
   res.status(201).json({
