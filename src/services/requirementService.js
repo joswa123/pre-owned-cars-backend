@@ -1,5 +1,6 @@
 const { Requirement, Brand, Model, User } = require('../models');
 const { Op } = require('sequelize');
+const sequelize = require('../config/database');
 const { AppError } = require('../utils/errorHandler');
 
 /**
@@ -102,6 +103,134 @@ exports.getMyRequirements = async (userId, filters = {}) => {
     limit,
     totalPages: Math.ceil(count / limit),
   };
+};
+
+/**
+ * Get a single requirement by ID (ownership protected)
+ */
+exports.getRequirementById = async (requirementId, userId) => {
+  const requirement = await Requirement.findOne({
+    where: { id: requirementId },
+    include: [
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+    ],
+  });
+
+  if (!requirement) {
+    throw new AppError('Requirement not found', 404);
+  }
+
+  if (requirement.user_id !== userId) {
+    throw new AppError('Unauthorized to view this requirement', 403);
+  }
+
+  // Dynamic expiry: auto-expire if active and past expiry date
+  if (requirement.status === 'active' && requirement.expiry_date && new Date(requirement.expiry_date) < new Date()) {
+    await requirement.update({ status: 'expired' });
+  }
+
+  return requirement;
+};
+
+/**
+ * Update a requirement (all fields except status)
+ */
+exports.updateRequirement = async (requirementId, userId, data) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    // 1. Fetch existing requirement
+    const requirement = await Requirement.findOne({
+      where: { id: requirementId },
+      transaction,
+    });
+
+    if (!requirement) {
+      throw new AppError('Requirement not found', 404);
+    }
+
+    if (requirement.user_id !== userId) {
+      throw new AppError('Unauthorized to update this requirement', 403);
+    }
+
+    // Determine target brandId
+    const targetBrandId = data.brand_id || requirement.brand_id;
+
+    // 2. Validate brand_id if provided
+    if (data.brand_id) {
+      const brand = await Brand.findByPk(data.brand_id, { transaction });
+      if (!brand) {
+        throw new AppError('Brand not found', 404);
+      }
+    }
+
+    // 3. Validate model_id if provided (and belongs to brand)
+    if (data.model_id) {
+      const model = await Model.findByPk(data.model_id, { transaction });
+      if (!model) {
+        throw new AppError('Model not found', 404);
+      }
+      const modelBrandId = model.brandId || model.brand_id;
+      if (modelBrandId !== targetBrandId) {
+        throw new AppError('Model does not belong to the selected brand', 400);
+      }
+    } else if (data.brand_id && data.brand_id !== requirement.brand_id) {
+      // If brand_id changed without providing a new model_id, check if existing model belongs to new brand
+      const currentModel = await Model.findByPk(requirement.model_id, { transaction });
+      const currentModelBrandId = currentModel ? (currentModel.brandId || currentModel.brand_id) : null;
+      if (currentModelBrandId !== data.brand_id) {
+        throw new AppError('Model does not belong to the selected brand', 400);
+      }
+    }
+
+    // 4. Prepare update fields (only allowed ones)
+    const allowedFields = [
+      'brand_id',
+      'model_id',
+      'year',
+      'price',
+      'km_driven',
+      'body_type',
+      'transmission',
+      'board_type',
+      'color',
+      'description',
+    ];
+
+    const updateData = {};
+    for (const field of allowedFields) {
+      if (data[field] !== undefined) {
+        updateData[field] = data[field];
+      }
+    }
+
+    // Support 'km' alias for 'km_driven'
+    if (data.km !== undefined && data.km_driven === undefined) {
+      updateData.km_driven = data.km !== '' && data.km !== null ? data.km : null;
+    }
+
+    // 5. Handle purchase_plan_days -> recompute expiry_date
+    if (data.purchase_plan_days !== undefined) {
+      const days = parseInt(data.purchase_plan_days);
+      if (isNaN(days) || days < 1 || days > 365) {
+        throw new AppError('purchase_plan_days must be between 1 and 365', 400);
+      }
+      const createdDate = new Date(requirement.created_at || requirement.createdAt);
+      updateData.expiry_date = new Date(createdDate.getTime() + days * 24 * 60 * 60 * 1000);
+      updateData.purchase_plan_days = days;
+    }
+
+    // 6. Update the requirement
+    await requirement.update(updateData, { transaction });
+    await transaction.commit();
+
+    // 7. Reload and return (with associations)
+    return await exports.getRequirementById(requirementId, userId);
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
 };
 
 /**

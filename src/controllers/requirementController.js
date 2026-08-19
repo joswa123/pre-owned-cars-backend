@@ -24,6 +24,32 @@ exports.getMyRequirements = catchAsync(async (req, res) => {
 });
 
 /**
+ * Get a single requirement by ID
+ */
+exports.getRequirement = catchAsync(async (req, res) => {
+  const requirement = await requirementService.getRequirementById(req.params.id, req.user.id);
+  res.status(200).json({
+    status: 'success',
+    data: requirement,
+  });
+});
+
+/**
+ * Update a requirement
+ */
+exports.updateRequirement = catchAsync(async (req, res) => {
+  const requirement = await requirementService.updateRequirement(
+    req.params.id,
+    req.user.id,
+    req.body
+  );
+  res.status(200).json({
+    status: 'success',
+    data: requirement,
+  });
+});
+
+/**
  * Update the status of a requirement
  */
 exports.updateRequirementStatus = catchAsync(async (req, res) => {
