@@ -56,7 +56,9 @@ exports.createRequirement = async (userId, data) => {
 };
 
 /**
- * Get all requirements belonging to the authenticated user
+ * Get all requirements belonging to the authenticated user.
+ * Returns all requirements (active, expired, bought, deleted) by default without automatic exclusion.
+ * Optionally filters by status if provided in filters.
  */
 exports.getMyRequirements = async (userId, filters = {}) => {
   // 1. Run dynamic expiry logic: auto-expire requirements whose time has passed
@@ -80,9 +82,6 @@ exports.getMyRequirements = async (userId, filters = {}) => {
 
   if (filters.status) {
     where.status = filters.status;
-  } else {
-    // Exclude deleted requirements by default
-    where.status = { [Op.ne]: 'deleted' };
   }
 
   const { count, rows } = await Requirement.findAndCountAll({

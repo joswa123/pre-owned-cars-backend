@@ -344,12 +344,12 @@ async function testSuite() {
       .set('Authorization', `Bearer ${tokenA}`);
     assert('Soft deletion succeeds (200)', res.statusCode === 200);
 
-    // Verify it is excluded from default GET list
+    // Verify it is included in default GET list (all statuses returned by default)
     res = await request(app)
       .get('/api/v1/requirements/me')
       .set('Authorization', `Bearer ${tokenA}`);
     const foundDeleted = res.body.data.requirements.find(r => r.id === targetReqId);
-    assert('Soft-deleted requirement excluded from default retrieve list', !foundDeleted);
+    assert('Soft-deleted requirement is included in default retrieve list', !!foundDeleted && foundDeleted.status === 'deleted');
 
     // Verify it returns when status=deleted is filtered
     res = await request(app)
@@ -357,6 +357,13 @@ async function testSuite() {
       .set('Authorization', `Bearer ${tokenA}`);
     const foundDeletedExplicit = res.body.data.requirements.find(r => r.id === targetReqId);
     assert('Soft-deleted requirement returns when status=deleted is filtered', !!foundDeletedExplicit && foundDeletedExplicit.status === 'deleted');
+
+    // Verify it is excluded when status=active is filtered
+    res = await request(app)
+      .get('/api/v1/requirements/me?status=active')
+      .set('Authorization', `Bearer ${tokenA}`);
+    const foundActiveDeleted = res.body.data.requirements.find(r => r.id === targetReqId);
+    assert('Soft-deleted requirement is excluded when status=active is filtered', !foundActiveDeleted);
 
     // ==========================================
     // SUMMARY
