@@ -34,7 +34,7 @@ exports.getActiveBanners = async () => {
   const banners = await Banner.findAll({
     where: { is_active: true },
     order: [['order', 'ASC'], ['created_at', 'DESC']],
-    attributes: ['id', 'image_url', 'link_url', 'title', 'order'],
+   attributes: ['id', 'image_url', 'link_url', 'title', 'order', 'dealer_id'], 
   });
 
   try {
