@@ -68,7 +68,7 @@ exports.getActiveDealers = async (filters = {}, page = 1, limit = 20) => {
 exports.getDealerById = async (dealerId) => {
   const dealer = await User.findOne({
     where: { id: dealerId, role: 'dealer', status: 'approved' },
-    attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture', 'state_id', 'district_id', 'city_id'],
+    attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture', 'state_id', 'district_id', 'city_id', 'whatsapp_number', 'use_registered_for_whatsapp'],
     include: [
       {
         model: DealerProfile,
@@ -78,6 +78,23 @@ exports.getDealerById = async (dealerId) => {
       { model: State, as: 'stateDetail', attributes: ['name'] },
       { model: District, as: 'districtDetail', attributes: ['name'] },
       { model: City, as: 'cityDetail', attributes: ['name'] },
+      {
+        model: Car,
+        as: 'postedCars',
+        limit: 20,
+        order: [['created_at', 'DESC']],
+        where: { status: 'active' },
+        required: false,
+        include: [
+          { model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] },
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+          { model: State, as: 'state', attributes: ['name'] },
+          { model: District, as: 'district', attributes: ['name'] },
+          { model: City, as: 'city', attributes: ['name'] },
+        ],
+      },
     ],
   });
 
@@ -108,6 +125,9 @@ exports.getDealerCars = async (dealerId, page = 1, limit = 20) => {
       { model: Brand, as: 'brand', attributes: ['id', 'name', 'logo'] },
       { model: Model, as: 'carModel', attributes: ['id', 'name'] },
       { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['name'] },
+      { model: District, as: 'district', attributes: ['name'] },
+      { model: City, as: 'city', attributes: ['name'] },
     ],
     order: [['created_at', 'DESC']],
     limit: parseInt(limit),

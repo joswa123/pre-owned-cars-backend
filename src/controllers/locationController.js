@@ -1,6 +1,6 @@
 const locationService = require('../services/locationService');
 const { catchAsync } = require('../utils/errorHandler');
-const { State, District, City, User, DealerProfile, Car, CarImage } = require('../models');
+const { State, District, City, User, DealerProfile, Car, CarImage, Brand, Model, Variant } = require('../models');
 const { Op } = require('sequelize');
 const redisClient = require('../config/redis');
 
@@ -147,9 +147,11 @@ exports.getDealerProfile = async (req, res, next) => {
   try {
     const { dealerId } = req.params;
     const cacheKey = `dealer:${dealerId}`;
-    const cached = await redisClient.get(cacheKey);
-    if (cached) {
-      return res.json({ status: 'success', data: JSON.parse(cached) });
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) {
+        return res.json({ status: 'success', data: JSON.parse(cached) });
+      }
     }
 
     const dealer = await User.findOne({
@@ -165,7 +167,17 @@ exports.getDealerProfile = async (req, res, next) => {
           as: 'postedCars',
           limit: 20,
           order: [['created_at', 'DESC']],
-          include: [{ model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] }],
+          where: { status: 'active' },
+          required: false,
+          include: [
+            { model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] },
+            { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+            { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+            { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+            { model: State, as: 'state', attributes: ['name'] },
+            { model: District, as: 'district', attributes: ['name'] },
+            { model: City, as: 'city', attributes: ['name'] },
+          ],
         },
       ],
     });
@@ -174,8 +186,13 @@ exports.getDealerProfile = async (req, res, next) => {
       return res.status(404).json({ status: 'error', message: 'Dealer not found' });
     }
 
-    await redisClient.setEx(cacheKey, 300, JSON.stringify(dealer)); // 5 min
-    res.json({ status: 'success', data: dealer });
+    const dealerJson = dealer.toJSON();
+    dealerJson.location_text = [dealerJson.cityDetail?.name, dealerJson.districtDetail?.name, dealerJson.stateDetail?.name].filter(Boolean).join(', ');
+
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(dealerJson)); // 5 min
+    }
+    res.json({ status: 'success', data: dealerJson });
   } catch (error) {
     next(error);
   }
