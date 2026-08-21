@@ -1,5 +1,4 @@
-// services/leadService.js
-const { Lead, Car, User, Brand, Model, Variant, CarImage } = require('../models');
+const { Lead, Car, User, Brand, Model, Variant, CarImage, CarStat } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const redisClient = require('../config/redis');
@@ -23,36 +22,60 @@ const formatLead = (lead) => {
   const car = json.car;
   const carFormatted = car ? {
     id: car.id,
+    name: [car.brand?.name, car.carModel?.name, car.carVariant?.name].filter(Boolean).join(' ') || 'Pre-Owned Car',
     brand: car.brand?.name || null,
     model: car.carModel?.name || null,
     variant: car.carVariant?.name || null,
     year: car.year || null,
     price: car.price || null,
     status: car.status || null,
+    number_plate: car.number_plate || null,
     primary_image: car.images?.find((i) => i.is_primary)?.image_url || car.images?.[0]?.image_url || null,
+    metrics: {
+      views: car.stats?.views_count || 0,
+      total_enquiries: car.stats?.enquiries_count || 0,
+      enquiries: car.stats?.enquiries_count || 0,
+      total_calls: car.stats?.calls_count || 0,
+      calls: car.stats?.calls_count || 0,
+      total_whatsapp: car.stats?.whatsapp_count || 0,
+      whatsapp: car.stats?.whatsapp_count || 0,
+      total_messages: car.stats?.messages_count || 0,
+      messages: car.stats?.messages_count || 0,
+      wishlist_count: car.stats?.wishlist_count || 0,
+    },
   } : null;
+
+  const buyerName = json.buyer?.full_name || json.buyer_name || 'Anonymous';
+  const buyerPhone = json.contact_phone || json.buyer?.phone || json.buyer_phone || 'N/A';
+  const buyerEmail = json.buyer?.email || json.buyer_email || null;
 
   return {
     id: json.id,
+    interaction_id: json.id,
     car_id: json.car_id,
     seller_id: json.seller_id,
     user_id: json.buyer_id,
     buyer_id: json.buyer_id,
-    car: carFormatted,
-    seller: json.seller || null,
+    type: json.source || 'enquiry',
+    buyer_name: buyerName,
+    buyer_phone: buyerPhone,
+    buyer_email: buyerEmail,
     buyer: json.buyer || {
       id: json.buyer_id,
-      full_name: json.buyer_name,
-      phone: json.buyer_phone,
-      email: json.buyer_email,
+      full_name: buyerName,
+      phone: buyerPhone,
+      email: buyerEmail,
     },
-    message: json.message || null,
-    contact_phone: json.contact_phone || json.buyer_phone || null,
+    car: carFormatted,
+    seller: json.seller || null,
+    message: json.message || 'No message provided',
+    contact_phone: buyerPhone,
     preferred_contact: json.preferred_contact || 'phone',
     source: json.source || 'message',
     status: json.status || 'new',
     is_viewed: json.is_viewed || false,
     read_at: json.read_at || null,
+    interacted_at: json.created_at || json.createdAt,
     created_at: json.created_at || json.createdAt,
     updated_at: json.updated_at || json.updatedAt,
   };
@@ -143,7 +166,12 @@ exports.createLead = async (userId, data) => {
  * Get leads for cars owned by the seller
  */
 exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) => {
-  const cacheKey = `seller:leads:${sellerId}:${filters.status || 'all'}:${page}:${limit}`;
+  const status = filters.status || null;
+  const cursor = filters.cursor || null;
+  const limitNum = parseInt(limit) || 20;
+  const pageNum = parseInt(page) || 1;
+
+  const cacheKey = `seller:leads:${sellerId}:${status || 'all'}:${cursor || pageNum}:${limitNum}`;
 
   try {
     if (redisClient.isOpen) {
@@ -154,25 +182,31 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
     console.error('Redis get cache error in getSellerLeads:', err);
   }
 
-  const offset = (page - 1) * limit;
   const where = { seller_id: sellerId };
-
-  if (filters.status) {
-    where.status = filters.status;
+  if (cursor) {
+    where.created_at = { [Op.lt]: new Date(cursor) };
   }
 
-  const { count, rows } = await Lead.findAndCountAll({
+  const carWhere = {};
+  if (status && status !== 'all') {
+    carWhere.status = status;
+  }
+
+  const queryOptions = {
     where,
     include: [
       {
         model: Car,
         as: 'car',
-        attributes: ['id', 'year', 'price', 'status', 'brand_id', 'model_id', 'variant_id', 'body_type'],
+        where: Object.keys(carWhere).length > 0 ? carWhere : undefined,
+        required: Object.keys(carWhere).length > 0,
+        attributes: ['id', 'year', 'price', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
           { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+          { model: CarStat, as: 'stats', required: false },
         ],
       },
       {
@@ -182,17 +216,29 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
       },
     ],
     order: [['created_at', 'DESC']],
-    limit,
-    offset,
-  });
+    limit: limitNum,
+  };
+
+  // If no cursor and page > 1, use offset fallback
+  if (!cursor && pageNum > 1) {
+    queryOptions.offset = (pageNum - 1) * limitNum;
+  }
+
+  const { count, rows } = await Lead.findAndCountAll(queryOptions);
+
+  const formattedLeads = rows.map(formatLead);
+  const lastLead = formattedLeads.length > 0 ? formattedLeads[formattedLeads.length - 1] : null;
+  const next_cursor = lastLead ? (lastLead.interacted_at ? new Date(lastLead.interacted_at).toISOString() : null) : null;
 
   const response = {
-    leads: rows.map(formatLead),
+    leads: formattedLeads,
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      limit: limitNum,
+      page: cursor ? null : pageNum,
       total: count,
-      totalPages: Math.ceil(count / limit),
+      totalPages: Math.ceil(count / limitNum),
+      next_cursor,
+      has_more: rows.length === limitNum,
     },
   };
 
@@ -211,25 +257,36 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
  * Get enquiries made by the logged-in buyer
  */
 exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
-  const offset = (page - 1) * limit;
-  const where = { buyer_id: buyerId };
+  const status = filters.status || null;
+  const cursor = filters.cursor || null;
+  const limitNum = parseInt(limit) || 20;
+  const pageNum = parseInt(page) || 1;
 
-  if (filters.status) {
-    where.status = filters.status;
+  const where = { buyer_id: buyerId };
+  if (cursor) {
+    where.created_at = { [Op.lt]: new Date(cursor) };
   }
 
-  const { count, rows } = await Lead.findAndCountAll({
+  const carWhere = {};
+  if (status && status !== 'all') {
+    carWhere.status = status;
+  }
+
+  const queryOptions = {
     where,
     include: [
       {
         model: Car,
         as: 'car',
-        attributes: ['id', 'year', 'price', 'status', 'brand_id', 'model_id', 'variant_id', 'body_type'],
+        where: Object.keys(carWhere).length > 0 ? carWhere : undefined,
+        required: Object.keys(carWhere).length > 0,
+        attributes: ['id', 'year', 'price', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
           { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+          { model: CarStat, as: 'stats', required: false },
         ],
       },
       {
@@ -239,17 +296,28 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
       },
     ],
     order: [['created_at', 'DESC']],
-    limit,
-    offset,
-  });
+    limit: limitNum,
+  };
+
+  if (!cursor && pageNum > 1) {
+    queryOptions.offset = (pageNum - 1) * limitNum;
+  }
+
+  const { count, rows } = await Lead.findAndCountAll(queryOptions);
+
+  const formattedLeads = rows.map(formatLead);
+  const lastLead = formattedLeads.length > 0 ? formattedLeads[formattedLeads.length - 1] : null;
+  const next_cursor = lastLead ? (lastLead.interacted_at ? new Date(lastLead.interacted_at).toISOString() : null) : null;
 
   return {
-    leads: rows.map(formatLead),
+    leads: formattedLeads,
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      limit: limitNum,
+      page: cursor ? null : pageNum,
       total: count,
-      totalPages: Math.ceil(count / limit),
+      totalPages: Math.ceil(count / limitNum),
+      next_cursor,
+      has_more: rows.length === limitNum,
     },
   };
 };

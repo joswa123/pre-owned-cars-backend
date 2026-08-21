@@ -21,9 +21,9 @@ exports.createLead = catchAsync(async (req, res) => {
  */
 exports.getSellerLeads = catchAsync(async (req, res) => {
   const sellerId = req.user.id;
-  const { status, page = 1, limit = 20 } = req.query;
+  const { status, page = 1, limit = 20, cursor } = req.query;
 
-  const result = await leadService.getSellerLeads(sellerId, { status }, page, limit);
+  const result = await leadService.getSellerLeads(sellerId, { status, cursor }, page, limit);
 
   res.status(200).json({
     status: 'success',
@@ -36,9 +36,9 @@ exports.getSellerLeads = catchAsync(async (req, res) => {
  */
 exports.getBuyerLeads = catchAsync(async (req, res) => {
   const buyerId = req.user.id;
-  const { status, page = 1, limit = 20 } = req.query;
+  const { status, page = 1, limit = 20, cursor } = req.query;
 
-  const result = await leadService.getBuyerLeads(buyerId, { status }, page, limit);
+  const result = await leadService.getBuyerLeads(buyerId, { status, cursor }, page, limit);
 
   res.status(200).json({
     status: 'success',

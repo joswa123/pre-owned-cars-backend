@@ -61,7 +61,8 @@ router.get('/similar-recommended', optionalAuth, carController.getSimilarRecomme
 
 router.get('/:id', optionalAuth, cacheMiddleware(300), carController.getCarById);
 
-// Record view
+// Record view & interactions
 router.post('/:id/view', optionalAuth, carController.recordView);
+router.post('/:id/interact', optionalAuth, carController.recordInteraction);
 
 module.exports = router;

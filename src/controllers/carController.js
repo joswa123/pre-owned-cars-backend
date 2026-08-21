@@ -73,17 +73,21 @@ exports.getFeaturedCars = catchAsync(async (req, res) => {
 });
 
 /**
- * Get Cars Posted by Current Logged-in User
+ * Get Cars Posted by Current Logged-in User (with real-time metrics & cursor pagination)
  */
 exports.getUserCars = catchAsync(async (req, res) => {
   const userId = req.user.id;
-  const { status } = req.query; // Allow filtering by status (e.g. ?status=active)
+  const { status, page, limit, cursor } = req.query;
   
-  const cars = await carService.getUserCars(userId, status);
+  const result = await carService.getUserCars(userId, { status, page, limit, cursor });
+  const cars = result.cars || result;
 
   res.status(200).json({
     status: "success",
-    data: { cars },
+    data: { 
+      cars,
+      pagination: result.pagination,
+    },
   });
 });
 
@@ -217,17 +221,36 @@ exports.getBoardTypeStats = catchAsync(async (req, res) => {
 });
 
 /**
- * Record Car View
+ * Record Car View (Legacy & Direct)
  */
 exports.recordView = catchAsync(async (req, res) => {
   const { id } = req.params;
   const userId = req.user ? req.user.id : null;
+  const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
   
-  await carService.recordView(id, userId);
+  await carService.recordView(id, userId, ipAddress);
 
   res.status(200).json({
     status: 'success',
     message: 'View recorded successfully.',
+  });
+});
+
+/**
+ * Record Customer Interaction (View, Call, WhatsApp, Message, Enquiry, Wishlist)
+ */
+exports.recordInteraction = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { type = 'view' } = req.body;
+  const userId = req.user ? req.user.id : null;
+  const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+
+  const analyticsService = require('../services/analyticsService');
+  await analyticsService.recordInteraction({ carId: id, userId, type, ipAddress });
+
+  res.status(200).json({
+    status: 'success',
+    message: `${type} interaction recorded successfully.`,
   });
 });
 

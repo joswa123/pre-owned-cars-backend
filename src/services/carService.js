@@ -1,4 +1,4 @@
-const { Car, CarImage, User, DealerProfile, Wishlist, Lead, State, District, City, Brand, Model, Variant } = require('../models');
+const { Car, CarImage, User, DealerProfile, Wishlist, Lead, State, District, City, Brand, Model, Variant, CarStat } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -609,20 +609,30 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
 };
 
 /**
- * Get listings belonging to logged-in user
+ * Get listings belonging to logged-in user with high-scale metrics aggregation
  */
-exports.getUserCars = async (userId, status = null) => {
+exports.getUserCars = async (userId, options = {}) => {
+  const status = typeof options === 'string' ? options : options.status;
+  const page = typeof options === 'object' && options.page ? parseInt(options.page) : 1;
+  const limit = typeof options === 'object' && options.limit ? parseInt(options.limit) : 20;
+  const cursor = typeof options === 'object' ? options.cursor : null;
+
   const whereClause = { user_id: userId };
   let queryModel = Car;
   
-  if (status) {
+  if (status && status !== 'all') {
     whereClause.status = status;
     if (status === 'deleted') {
       queryModel = Car.unscoped();
     }
   }
 
-  const cars = await queryModel.findAll({
+  // Keyset Cursor Pagination (High-Speed O(1) Seek for infinite scroll)
+  if (cursor) {
+    whereClause.created_at = { [Op.lt]: new Date(cursor) };
+  }
+
+  const queryOptions = {
     where: whereClause,
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
@@ -634,20 +644,54 @@ exports.getUserCars = async (userId, status = null) => {
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
       { model: Lead, as: 'leads', attributes: ['id'] },
+      { model: CarStat, as: 'stats', required: false },
     ],
     order: [['created_at', 'DESC']],
-  });
+    limit: parseInt(limit),
+  };
+
+  // If no cursor provided and standard page > 1 requested, use offset fallback
+  if (!cursor && page > 1) {
+    queryOptions.offset = (page - 1) * parseInt(limit);
+  }
+
+  const cars = await queryModel.findAll(queryOptions);
 
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-  return cars.map((car) => {
+  const transformedCars = cars.map((car) => {
     const transformed = transformCarImages(car, baseUrl);
     const is_expired = transformed.created_at && (Date.now() - new Date(transformed.created_at).getTime()) > 90 * 24 * 60 * 60 * 1000;
+    
+    const stats = car.stats || {};
+    const enquiries = stats.enquiries_count || (car.leads?.length || 0);
+
     return {
       ...transformed,
-      enquiry_count: car.leads?.length || 0,
+      enquiry_count: enquiries,
       is_expired,
+      metrics: {
+        views: stats.views_count || 0,
+        enquiries,
+        calls: stats.calls_count || 0,
+        whatsapp: stats.whatsapp_count || 0,
+        messages: stats.messages_count || 0,
+        wishlist_count: stats.wishlist_count || 0,
+      },
     };
   });
+
+  const lastCar = cars.length > 0 ? cars[cars.length - 1] : null;
+  const next_cursor = lastCar && lastCar.created_at ? lastCar.created_at.toISOString() : null;
+
+  return {
+    cars: transformedCars,
+    pagination: {
+      limit: parseInt(limit),
+      page: cursor ? null : page,
+      next_cursor,
+      has_more: cars.length === parseInt(limit),
+    },
+  };
 };
 
 /**
@@ -1052,18 +1096,11 @@ exports.getBoardTypeStats = async () => {
 };
 
 /**
- * Record a car view
+ * Record a car view (High-scale atomic buffer)
  */
-exports.recordView = async (carId, userId) => {
-  const { View } = require('../models');
-  try {
-    await View.create({
-      car_id: carId,
-      user_id: userId || null, // null for guests
-    });
-  } catch (err) {
-    console.error('Error recording view:', err);
-  }
+exports.recordView = async (carId, userId, ipAddress = null) => {
+  const analyticsService = require('./analyticsService');
+  await analyticsService.recordInteraction({ carId, userId, type: 'view', ipAddress });
 };
 
 /**

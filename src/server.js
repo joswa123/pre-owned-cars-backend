@@ -33,14 +33,42 @@ const PORT = process.env.PORT || 5000;
     // They should now be executed explicitly via database migrations or CLI scripts.
     // 3.5 Connect to Redis
     const redisClient = require('./config/redis');
-    await redisClient.connect();
+    try {
+      await redisClient.connect();
+    } catch (redisErr) {
+      logger.warn('⚠️ Redis connection warning:', redisErr.message);
+    }
+
+    // 3.6 Start Analytics Metric Flusher (60s interval)
+    const analyticsService = require('./services/analyticsService');
+    const flusherInterval = setInterval(() => {
+      analyticsService.flushMetricsToDb().catch(err => {
+        logger.error('Background metric flush error:', err.message);
+      });
+    }, 60000);
 
     // 4. Start HTTP server
     // Bind to 0.0.0.0 to accept connections from Docker network / Render
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
       logger.info(`🆔 Process ID: ${process.pid}`);
     });
+
+    // Graceful Shutdown
+    const gracefulShutdown = async (signal) => {
+      logger.info(`🛑 ${signal} received. Closing server and flushing live metrics...`);
+      clearInterval(flusherInterval);
+      try {
+        await analyticsService.flushMetricsToDb();
+      } catch (e) {}
+      server.close(() => {
+        logger.info('HTTP server closed.');
+        process.exit(0);
+      });
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   } catch (err) {
     logger.error('❌ Startup failed:', err.message);

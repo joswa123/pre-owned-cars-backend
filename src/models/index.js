@@ -21,6 +21,8 @@ const Subscription = require('./Subscription');
 const View = require('./View');
 const Banner = require('./Banner');
 const Requirement = require('./Requirement');
+const CarStat = require('./CarStat');
+const CarInteraction = require('./CarInteraction');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -152,6 +154,15 @@ View.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
 User.hasMany(View, { foreignKey: 'user_id', as: 'views' });
 View.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// Car Analytics & Metrics Associations (High-Scale O(1) Pre-aggregations)
+Car.hasOne(CarStat, { foreignKey: 'car_id', as: 'stats', onDelete: 'CASCADE' });
+CarStat.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
+
+Car.hasMany(CarInteraction, { foreignKey: 'car_id', as: 'interactions', onDelete: 'CASCADE' });
+CarInteraction.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
+User.hasMany(CarInteraction, { foreignKey: 'user_id', as: 'interactions' });
+CarInteraction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
 const models = {
   User,
   CustomerProfile,
@@ -175,6 +186,8 @@ const models = {
   View,
   Banner,
   Requirement,
+  CarStat,
+  CarInteraction,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk
