@@ -34,13 +34,9 @@ const formatLead = (lead) => {
     metrics: {
       views: car.stats?.views_count || 0,
       total_enquiries: car.stats?.enquiries_count || 0,
-      enquiries: car.stats?.enquiries_count || 0,
       total_calls: car.stats?.calls_count || 0,
-      calls: car.stats?.calls_count || 0,
       total_whatsapp: car.stats?.whatsapp_count || 0,
-      whatsapp: car.stats?.whatsapp_count || 0,
       total_messages: car.stats?.messages_count || 0,
-      messages: car.stats?.messages_count || 0,
       wishlist_count: car.stats?.wishlist_count || 0,
     },
   } : null;
@@ -52,32 +48,23 @@ const formatLead = (lead) => {
   return {
     id: json.id,
     interaction_id: json.id,
-    car_id: json.car_id,
-    seller_id: json.seller_id,
-    user_id: json.buyer_id,
+    type: json.source || 'message',
+    status: json.status || 'new',
+    is_viewed: json.is_viewed || false,
+    interacted_at: json.created_at || json.createdAt,
+    created_at: json.created_at || json.createdAt,
     buyer_id: json.buyer_id,
-    type: json.source || 'enquiry',
-    buyer_name: buyerName,
-    buyer_phone: buyerPhone,
-    buyer_email: buyerEmail,
-    buyer: json.buyer || {
+    buyer: {
       id: json.buyer_id,
       full_name: buyerName,
       phone: buyerPhone,
       email: buyerEmail,
+      role: json.buyer?.role || 'customer',
+      city: json.buyer?.city || null,
+      state: json.buyer?.state || null,
+      profile_picture: json.buyer?.profile_picture || null,
     },
     car: carFormatted,
-    seller: json.seller || null,
-    message: json.message || 'No message provided',
-    contact_phone: buyerPhone,
-    preferred_contact: json.preferred_contact || 'phone',
-    source: json.source || 'message',
-    status: json.status || 'new',
-    is_viewed: json.is_viewed || false,
-    read_at: json.read_at || null,
-    interacted_at: json.created_at || json.createdAt,
-    created_at: json.created_at || json.createdAt,
-    updated_at: json.updated_at || json.updatedAt,
   };
 };
 
@@ -157,6 +144,24 @@ exports.createLead = async (userId, data) => {
   await clearCachePattern(`seller:leads:${car.user_id}:*`);
   if (userId) {
     await clearCachePattern(`buyer:leads:${userId}:*`);
+  }
+
+  // Synchronize with Analytics Engine (Redis Buffer + car_stats)
+  try {
+    const analyticsService = require('./analyticsService');
+    const interactionType = data.source === 'call' ? 'call' : data.source === 'whatsapp' ? 'whatsapp' : 'message';
+    await analyticsService.recordInteraction({
+      carId: car.id,
+      userId: userId || null,
+      type: interactionType,
+    });
+    await analyticsService.recordInteraction({
+      carId: car.id,
+      userId: userId || null,
+      type: 'enquiry',
+    });
+  } catch (statErr) {
+    console.warn('Lead analytics synchronization warning:', statErr.message);
   }
 
   return await exports.getLeadById(lead.id);
