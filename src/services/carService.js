@@ -257,6 +257,10 @@ exports.createCar = async (userId, carData, files) => {
     await clearCache('brands:with_counts');
     await clearCache('board_type_stats');
     await clearCachePattern('cars:list:*');
+
+    const dashboardService = require('./dashboardService');
+    await dashboardService.invalidateDashboardCache(userId);
+
     return createdCar;
   } catch (error) {
     console.error('❌ CREATE CAR SERVICE ERROR:', error);
@@ -834,6 +838,10 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     await clearCache('board_type_stats');
     await clearCache(`car:${carId}`);
     await clearCachePattern('cars:list:*');
+
+    const dashboardService = require('./dashboardService');
+    await dashboardService.invalidateDashboardCache(userId);
+
     return updatedCar;
   } catch (error) {
     await transaction.rollback();
@@ -905,6 +913,9 @@ exports.markCarAsSold = async (carId, userId, userRole = null) => {
 
   await car.update({ status: 'sold' });
 
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(car.user_id);
+
   // Invalidate Redis cache
   const { clearCache: clearMiddlewareCache } = require('../middlewares/cacheMiddleware');
   await clearCache(`car:${carId}`);
@@ -944,6 +955,10 @@ exports.deleteCar = async (carId, userId) => {
   await clearCache('board_type_stats');
   await clearCache(`car:${carId}`);
   await clearCachePattern('cars:list:*');
+
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(userId);
+
   return { success: true };
 };
 
@@ -1029,6 +1044,10 @@ exports.updateCarStatus = async (carId, status, adminId) => {
   await clearCache('board_type_stats');
   await clearCache(`car:${carId}`);
   await clearCachePattern('cars:list:*');
+
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(car.user_id);
+
   return car;
 };
 

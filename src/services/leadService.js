@@ -170,6 +170,12 @@ exports.createLead = async (userId, data) => {
     await clearCachePattern(`buyer:leads:${userId}:*`);
   }
 
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(car.user_id);
+  if (userId) {
+    await dashboardService.invalidateDashboardCache(userId);
+  }
+
   // Synchronize with Analytics Engine (Redis Buffer + car_stats)
   try {
     const analyticsService = require('./analyticsService');
@@ -661,6 +667,12 @@ exports.updateLeadStatus = async (leadId, userId, userRole, newStatus) => {
   await clearCachePattern(`car:leads:${lead.car_id}:*`);
   if (lead.buyer_id) {
     await clearCachePattern(`buyer:leads:${lead.buyer_id}:*`);
+  }
+
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(lead.seller_id);
+  if (lead.buyer_id) {
+    await dashboardService.invalidateDashboardCache(lead.buyer_id);
   }
 
   return await exports.getLeadById(lead.id);
