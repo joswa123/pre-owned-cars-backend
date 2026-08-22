@@ -1,6 +1,29 @@
 const { Wishlist, Car, CarImage, User, District, DealerProfile, Brand, Model, Variant, State, City } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { Op } = require('sequelize');
+const redisClient = require('../config/redis');
+
+const encodeCursor = (cursorObj) => {
+  if (!cursorObj || !cursorObj.created_at) return null;
+  return Buffer.from(JSON.stringify(cursorObj)).toString('base64');
+};
+
+const decodeCursor = (cursorStr) => {
+  if (!cursorStr) return null;
+  try {
+    const jsonStr = Buffer.from(cursorStr, 'base64').toString('utf-8');
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && parsed.created_at) {
+      return parsed;
+    }
+  } catch (e) {
+    const d = new Date(cursorStr);
+    if (!isNaN(d.getTime())) {
+      return { created_at: d.toISOString(), id: null };
+    }
+  }
+  return null;
+};
 
 /**
  * Add a car to wishlist
@@ -62,4 +85,109 @@ exports.getWishlist = async (userId) => {
   });
   // Extract cars from wishlist entries
   return wishlist.map(w => w.Car);
+};
+
+/**
+ * Get users who wishlisted a specific car (seller authorization check)
+ */
+exports.getCarWishlists = async (sellerId, carId, { limit = 20, cursor = null } = {}) => {
+  // 1. Security Check: Verify car exists and belongs to this seller
+  const car = await Car.findOne({
+    where: { id: carId, user_id: sellerId },
+    include: [
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+    ],
+  });
+
+  if (!car) {
+    throw new AppError('Car not found or you are not authorized to view these metrics', 404);
+  }
+
+  const limitNum = Math.min(parseInt(limit) || 20, 100);
+  const cacheKey = `car:wishlists:${carId}:${cursor || 'first'}:${limitNum}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get cache error in getCarWishlists:', err);
+  }
+
+  const whereClause = {
+    car_id: carId,
+  };
+
+  const decodedCursor = decodeCursor(cursor);
+  if (decodedCursor) {
+    if (decodedCursor.id) {
+      whereClause[Op.or] = [
+        { created_at: { [Op.lt]: new Date(decodedCursor.created_at) } },
+        {
+          created_at: new Date(decodedCursor.created_at),
+          id: { [Op.lt]: decodedCursor.id },
+        },
+      ];
+    } else {
+      whereClause.created_at = { [Op.lt]: new Date(decodedCursor.created_at) };
+    }
+  }
+
+  const wishlists = await Wishlist.findAll({
+    where: whereClause,
+    include: [
+      {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'full_name', 'phone'],
+      },
+    ],
+    order: [
+      ['created_at', 'DESC'],
+      ['id', 'DESC'],
+    ],
+    limit: limitNum,
+  });
+
+  const formattedWishlists = wishlists.map((w) => {
+    const json = typeof w.toJSON === 'function' ? w.toJSON() : w;
+    return {
+      user_name: json.user?.full_name || 'Anonymous',
+      user_phone: json.user?.phone || 'N/A',
+      wishlisted_at: json.created_at,
+    };
+  });
+
+  const lastItem = wishlists.length > 0 ? wishlists[wishlists.length - 1] : null;
+  const nextCursor = lastItem
+    ? encodeCursor({ created_at: lastItem.created_at, id: lastItem.id })
+    : null;
+
+  const carName = [car.brand?.name, car.carModel?.name].filter(Boolean).join(' ') || 'Pre-Owned Car';
+
+  const result = {
+    car_info: {
+      id: car.id,
+      name: carName,
+      number_plate: car.number_plate,
+    },
+    wishlists: formattedWishlists,
+    pagination: {
+      limit: limitNum,
+      next_cursor: nextCursor,
+      has_more: formattedWishlists.length === limitNum,
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 30, JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('Redis set cache error in getCarWishlists:', err);
+  }
+
+  return result;
 };

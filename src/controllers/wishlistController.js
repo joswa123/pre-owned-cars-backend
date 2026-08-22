@@ -28,3 +28,20 @@ exports.getWishlist = catchAsync(async (req, res) => {
   }));
   res.status(200).json({ success: true, data: transformed });
 });
+
+/**
+ * Get users who wishlisted a specific car (seller authorization check)
+ * GET /api/v1/wishlists/car/:carId
+ */
+exports.getCarWishlists = catchAsync(async (req, res) => {
+  const sellerId = req.user.id;
+  const { carId } = req.params;
+  const { limit = 20, cursor } = req.query;
+
+  const result = await wishlistService.getCarWishlists(sellerId, carId, { limit, cursor });
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});

@@ -7,6 +7,7 @@ const wishlistController = require('../../controllers/wishlistController');
 router.use(protect);
 
 router.get('/', wishlistController.getWishlist);
+router.get('/car/:carId', wishlistController.getCarWishlists);
 router.post('/', wishlistController.addToWishlist);
 router.delete('/:carId', wishlistController.removeFromWishlist);
 

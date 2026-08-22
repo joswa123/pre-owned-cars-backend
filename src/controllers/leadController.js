@@ -37,9 +37,9 @@ exports.getLeadSummary = catchAsync(async (req, res) => {
 exports.getCarLeads = catchAsync(async (req, res) => {
   const sellerId = req.user.id;
   const { carId } = req.params;
-  const { limit = 20, cursor } = req.query;
+  const { limit = 20, cursor, source } = req.query;
 
-  const result = await leadService.getCarLeads(sellerId, carId, { limit, cursor });
+  const result = await leadService.getCarLeads(sellerId, carId, { limit, cursor, source });
 
   res.status(200).json({
     status: 'success',

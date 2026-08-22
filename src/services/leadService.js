@@ -341,9 +341,9 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
 };
 
 /**
- * Drill-Down API: Fetch timeline of buyers for a specific car with composite cursor tie-breaker
+ * Drill-Down API: Fetch timeline of buyers for a specific car with composite cursor tie-breaker & source filter
  */
-exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null } = {}) => {
+exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, source = null } = {}) => {
   // 1. Security Check: Verify car exists and belongs to this seller
   const car = await Car.findOne({
     where: { id: carId, user_id: sellerId },
@@ -358,7 +358,7 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null } = {}
   }
 
   const limitNum = Math.min(parseInt(limit) || 20, 100);
-  const cacheKey = `car:leads:${carId}:${cursor || 'first'}:${limitNum}`;
+  const cacheKey = `car:leads:${carId}:${source || 'all'}:${cursor || 'first'}:${limitNum}`;
 
   try {
     if (redisClient.isOpen) {
@@ -373,6 +373,10 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null } = {}
     car_id: carId,
     seller_id: sellerId,
   };
+
+  if (source && source !== 'all') {
+    whereClause.source = source;
+  }
 
   const decodedCursor = decodeCursor(cursor);
   if (decodedCursor) {
@@ -395,7 +399,7 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null } = {}
       {
         model: User,
         as: 'buyer',
-        attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture'],
+        attributes: ['id', 'full_name', 'phone', 'email'],
       },
     ],
     order: [
@@ -409,19 +413,12 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null } = {}
     const json = typeof lead.toJSON === 'function' ? lead.toJSON() : lead;
     const buyerName = json.buyer?.full_name || json.buyer_name || 'Anonymous';
     const buyerPhone = json.contact_phone || json.buyer?.phone || json.buyer_phone || 'N/A';
-    const buyerEmail = json.buyer?.email || json.buyer_email || null;
-    const buyerPic = json.buyer?.profile_picture || null;
 
     return {
-      interaction_id: json.id,
-      type: json.source || 'message',
       buyer_name: buyerName,
       buyer_phone: buyerPhone,
-      buyer_email: buyerEmail,
-      buyer_profile_pic: buyerPic,
       interacted_at: json.created_at,
-      status: json.status || 'new',
-      is_viewed: json.is_viewed || false,
+      source: json.source || 'message',
     };
   });
 
@@ -448,6 +445,7 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null } = {}
 
   try {
     if (redisClient.isOpen) {
+      // 30-second cache TTL for drill-down
       await redisClient.setEx(cacheKey, 30, JSON.stringify(result));
     }
   } catch (err) {

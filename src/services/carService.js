@@ -1,4 +1,4 @@
-const { Car, CarImage, User, DealerProfile, Wishlist, Lead, State, District, City, Brand, Model, Variant, CarStat } = require('../models');
+const { Car, CarImage, User, DealerProfile, Wishlist, Lead, View, State, District, City, Brand, Model, Variant, CarStat } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -1115,11 +1115,22 @@ exports.getBoardTypeStats = async () => {
 };
 
 /**
- * Record a car view (High-scale atomic buffer)
+ * Record a car view (Unique per user tracking & live metrics)
  */
-exports.recordView = async (carId, userId, ipAddress = null) => {
-  const analyticsService = require('./analyticsService');
-  await analyticsService.recordInteraction({ carId, userId, type: 'view', ipAddress });
+exports.recordView = async (carId, userId = null, ipAddress = null) => {
+  if (userId) {
+    const existing = await View.findOne({
+      where: { car_id: carId, user_id: userId },
+    });
+    if (!existing) {
+      await View.create({ car_id: carId, user_id: userId, timestamp: new Date() });
+      const analyticsService = require('./analyticsService');
+      await analyticsService.recordInteraction({ carId, userId, type: 'view', ipAddress });
+    }
+  } else {
+    const analyticsService = require('./analyticsService');
+    await analyticsService.recordInteraction({ carId, userId: null, type: 'view', ipAddress });
+  }
 };
 
 /**
