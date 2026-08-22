@@ -15,15 +15,15 @@ const STATUS_TYPES_IN = ['sold', 'active', 'deleted', 'expired'];
  * Create Car Joi Schema
  */
 const createCarSchema = Joi.object({
-  brand_id:         Joi.string().uuid().required(),
-  brand:            Joi.string().trim().max(50).optional(),
-  model_id:         Joi.string().uuid().required(),
-  model:            Joi.string().trim().max(50).optional(),
-  variant_id:       Joi.string().uuid().required(),
-  variant:          Joi.string().trim().max(50).optional(),
+  brand_id:         Joi.string().uuid().optional(),
+  brand:            Joi.string().trim().max(100).optional(),
+  model_id:         Joi.string().uuid().optional(),
+  model:            Joi.string().trim().max(100).optional(),
+  variant_id:       Joi.string().uuid().optional(),
+  variant:          Joi.string().trim().max(100).optional(),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).required(),
   price:            Joi.number().positive().required(),
-  price_negotiable: Joi.boolean().default(false),
+  price_negotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
   km_driven:        Joi.number().integer().min(0).optional(),
   kmdriven:         Joi.number().integer().min(0).optional(),
   fuel_type:        enumString(FUEL_TYPES_IN).optional(),
@@ -32,20 +32,28 @@ const createCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
   body_type:        Joi.string().trim().max(50).optional(),
   car_type:         Joi.string().trim().max(50).optional(),
-  board_type:       enumString(BOARD_TYPES_IN).required(),
+  board_type:       enumString(BOARD_TYPES_IN).optional(),
   numplate:         Joi.string().trim().max(50).optional(),
   insurance_expiry_date: Joi.date().iso().allow('', null).optional(),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
-  b2b_listing:      Joi.boolean().default(false),
+  b2b_listing:      Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
   description:      Joi.string().trim().allow('', null).optional(),
   color:            Joi.string().trim().max(50).allow('', null).optional(),
   number_plate:     Joi.string().trim().max(50).allow('', null).optional(),
   numberplate:      Joi.string().trim().max(50).allow('', null).optional(),
-  prior_appointments: Joi.boolean().default(false),
-  prior_appointemnts: Joi.boolean().default(false),
+  prior_appointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  prior_appointemnts: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
   status:           enumString(STATUS_TYPES_IN).optional(),
-}).or('km_driven', 'kmdriven')
+  state_id:         Joi.string().uuid().allow('', null).optional(),
+  district_id:      Joi.string().uuid().allow('', null).optional(),
+  city_id:          Joi.string().uuid().allow('', null).optional(),
+  primary_image:    Joi.any().optional(),
+  images:           Joi.any().optional(),
+}).or('brand_id', 'brand')
+  .or('model_id', 'model')
+  .or('variant_id', 'variant')
+  .or('km_driven', 'kmdriven')
   .or('fuel_type', 'fueltype')
   .or('body_type', 'car_type')
   .or('board_type', 'numplate')

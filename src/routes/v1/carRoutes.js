@@ -17,12 +17,11 @@ router.post(
     { name: 'images', maxCount: 10 }
   ]),
   (req, res, next) => {
-    console.log('📝 req.body:', req.body);
-    console.log('📁 req.files:', req.files);
-    next();
-  },
-  (req, res, next) => {
-    if (!req.files || !req.files.primary_image || req.files.primary_image.length === 0) {
+    const hasPrimaryFile = req.files && req.files.primary_image && req.files.primary_image.length > 0;
+    const hasSecondaryFiles = req.files && req.files.images && req.files.images.length > 0;
+    const hasBodyImage = req.body && (req.body.primary_image || req.body.image_url || (Array.isArray(req.body.images) && req.body.images.length > 0));
+
+    if (!hasPrimaryFile && !hasSecondaryFiles && !hasBodyImage) {
       return res.status(400).json({ success: false, message: 'Primary image is required.' });
     }
     next();

@@ -1,5 +1,5 @@
 const { Car, CarImage, User, DealerProfile, Wishlist, Lead, View, State, District, City, Brand, Model, Variant, CarStat } = require('../models');
-const { Op, Sequelize } = require('sequelize');
+const { Op, Sequelize, fn, col, where } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
@@ -116,28 +116,48 @@ exports.createCar = async (userId, carData, files) => {
     const mapped = mapToDbValues(carData);
 
     let brandId = mapped.brand_id;
+    if (brandId) {
+      const brandExists = await Brand.findByPk(brandId, { transaction });
+      if (!brandExists) brandId = null;
+    }
     if (!brandId && mapped.brand) {
-      let brandObj = await Brand.findOne({ where: { name: mapped.brand }, transaction });
+      let brandObj = await Brand.findOne({
+        where: sequelize.where(fn('LOWER', col('name')), mapped.brand.trim().toLowerCase()),
+        transaction,
+      });
       if (!brandObj) {
-        brandObj = await Brand.create({ name: mapped.brand, logo: '' }, { transaction });
+        brandObj = await Brand.create({ name: mapped.brand.trim(), logo: '' }, { transaction });
       }
       brandId = brandObj.id;
     }
     if (!brandId) throw new AppError('Brand ID or brand name is required.', 400);
 
     let modelId = mapped.model_id;
+    if (modelId) {
+      const modelExists = await Model.findByPk(modelId, { transaction });
+      if (!modelExists) modelId = null;
+    }
     if (!modelId && mapped.model) {
-      // Check if mapped.model is a valid UUID
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.model);
       if (isUuid) {
-        modelId = mapped.model;
-      } else {
-        let modelObj = await Model.findOne({ where: { name: mapped.model, brandId }, transaction });
+        const mObj = await Model.findByPk(mapped.model, { transaction });
+        if (mObj) modelId = mObj.id;
+      }
+      if (!modelId) {
+        let modelObj = await Model.findOne({
+          where: {
+            [Op.and]: [
+              sequelize.where(fn('LOWER', col('name')), mapped.model.trim().toLowerCase()),
+              { brandId }
+            ]
+          },
+          transaction
+        });
         if (!modelObj) {
-          modelObj = await Model.findOne({ where: { name: mapped.model }, transaction });
-        }
-        if (!modelObj) {
-          modelObj = await Model.create({ name: mapped.model, brandId, body_type: mapped.body_type || 'SUV' }, { transaction });
+          modelObj = await Model.create(
+            { name: mapped.model.trim(), brandId, body_type: mapped.body_type || 'SUV' },
+            { transaction }
+          );
         }
         modelId = modelObj.id;
       }
@@ -145,20 +165,37 @@ exports.createCar = async (userId, carData, files) => {
     if (!modelId) throw new AppError('Model ID or model name is required.', 400);
 
     let variantId = mapped.variant_id;
+    if (variantId) {
+      const variantExists = await Variant.findByPk(variantId, { transaction });
+      if (!variantExists) variantId = null;
+    }
     if (!variantId && mapped.variant) {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.variant);
       if (isUuid) {
-        variantId = mapped.variant;
-      } else {
-        let variantObj = await Variant.findOne({ where: { name: mapped.variant, model_id: modelId }, transaction });
+        const vObj = await Variant.findByPk(mapped.variant, { transaction });
+        if (vObj) variantId = vObj.id;
+      }
+      if (!variantId) {
+        let variantObj = await Variant.findOne({
+          where: {
+            [Op.and]: [
+              sequelize.where(fn('LOWER', col('name')), mapped.variant.trim().toLowerCase()),
+              { model_id: modelId }
+            ]
+          },
+          transaction
+        });
         if (!variantObj) {
-          variantObj = await Variant.create({
-            name: mapped.variant,
-            model_id: modelId,
-            fuel_type: mapped.fuel_type,
-            transmission: mapped.transmission,
-            price: mapped.price
-          }, { transaction });
+          variantObj = await Variant.create(
+            {
+              name: mapped.variant.trim(),
+              model_id: modelId,
+              fuel_type: mapped.fuel_type,
+              transmission: mapped.transmission,
+              price: mapped.price
+            },
+            { transaction }
+          );
         }
         variantId = variantObj.id;
       }
@@ -169,20 +206,32 @@ exports.createCar = async (userId, carData, files) => {
     const b2b_listing =
       user.role === 'dealer' && (mapped.b2b_listing === true || mapped.b2b_listing === 'true');
 
-    let stateId = user.state_id || null;
-    let districtId = user.district_id || null;
-    let cityId = user.city_id || null;
+    let stateId = mapped.state_id || user.state_id || null;
+    let districtId = mapped.district_id || user.district_id || null;
+    let cityId = mapped.city_id || user.city_id || null;
 
     // Auto-resolve missing location hierarchy from district
-    if (districtId && (!stateId || !cityId)) {
+    if (districtId) {
       const district = await District.findByPk(districtId, { transaction });
       if (district) {
         stateId = stateId || district.state_id;
-        const city = await City.findOne({ where: { district_id: districtId }, transaction });
-        if (city) {
-          cityId = cityId || city.id;
+        if (!cityId) {
+          const city = await City.findOne({ where: { district_id: districtId }, transaction });
+          if (city) cityId = city.id;
         }
+      } else {
+        districtId = null;
       }
+    }
+
+    if (cityId) {
+      const cityExists = await City.findByPk(cityId, { transaction });
+      if (!cityExists) cityId = null;
+    }
+
+    if (stateId) {
+      const stateExists = await State.findByPk(stateId, { transaction });
+      if (!stateExists) stateId = null;
     }
 
     const carFields = {
@@ -224,16 +273,48 @@ exports.createCar = async (userId, carData, files) => {
         image_url: getFileUrl(files.primary_image[0]),
         is_primary: true,
       });
+    } else if (files && files.images && files.images.length > 0) {
+      imageRecords.push({
+        car_id: car.id,
+        image_url: getFileUrl(files.images[0]),
+        is_primary: true,
+      });
+    } else if (carData.primary_image && typeof carData.primary_image === 'string') {
+      imageRecords.push({
+        car_id: car.id,
+        image_url: carData.primary_image,
+        is_primary: true,
+      });
+    } else if (Array.isArray(carData.images) && carData.images.length > 0) {
+      imageRecords.push({
+        car_id: car.id,
+        image_url: typeof carData.images[0] === 'string' ? carData.images[0] : getFileUrl(carData.images[0]),
+        is_primary: true,
+      });
     }
 
     const secondaryFiles = files ? files.images || [] : [];
-    secondaryFiles.forEach((file) => {
+    const startIdx = (files && (!files.primary_image || !files.primary_image[0]) && files.images && files.images.length > 0) ? 1 : 0;
+    for (let i = startIdx; i < secondaryFiles.length; i++) {
       imageRecords.push({
         car_id: car.id,
-        image_url: getFileUrl(file),
+        image_url: getFileUrl(secondaryFiles[i]),
         is_primary: false,
       });
-    });
+    }
+
+    if ((!files || !files.images || files.images.length === 0) && Array.isArray(carData.images)) {
+      const bodyStartIdx = (!carData.primary_image && carData.images.length > 0) ? 1 : 0;
+      for (let i = bodyStartIdx; i < carData.images.length; i++) {
+        if (typeof carData.images[i] === 'string') {
+          imageRecords.push({
+            car_id: car.id,
+            image_url: carData.images[i],
+            is_primary: false,
+          });
+        }
+      }
+    }
 
     if (imageRecords.length > 0) {
       await CarImage.bulkCreate(imageRecords, { transaction });
@@ -261,10 +342,19 @@ exports.createCar = async (userId, carData, files) => {
     const dashboardService = require('./dashboardService');
     await dashboardService.invalidateDashboardCache(userId);
 
-    return createdCar;
+    return transformCarImages(createdCar);
   } catch (error) {
     console.error('❌ CREATE CAR SERVICE ERROR:', error);
     await transaction.rollback();
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      throw new AppError('Foreign key constraint error: Brand, Model, Variant, or Location not found in database.', 400);
+    }
+    if (error.name === 'SequelizeValidationError') {
+      throw new AppError(error.errors?.[0]?.message || 'Database validation error', 400);
+    }
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      throw new AppError('Duplicate record detected for this car listing.', 400);
+    }
     throw error;
   }
 };
