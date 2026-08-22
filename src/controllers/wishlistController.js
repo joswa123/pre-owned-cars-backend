@@ -10,6 +10,20 @@ exports.addToWishlist = catchAsync(async (req, res) => {
   res.status(200).json({ success: true, message: 'Added to wishlist', data: wishlist });
 });
 
+exports.toggleWishlist = catchAsync(async (req, res) => {
+  const { carId, car_id } = req.body;
+  const finalCarId = car_id || carId;
+  const userId = req.user.id;
+  const result = await wishlistService.toggleWishlist(userId, finalCarId);
+  res.status(200).json({
+    success: true,
+    message: result.message,
+    data: result.data || null,
+    is_wishlisted: result.is_wishlisted,
+    isWishlist: result.isWishlist,
+  });
+});
+
 exports.removeFromWishlist = catchAsync(async (req, res) => {
   const { carId } = req.params;
   const userId = req.user.id;

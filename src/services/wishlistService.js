@@ -26,30 +26,78 @@ const decodeCursor = (cursorStr) => {
 };
 
 /**
- * Add a car to wishlist
+ * Add a car to wishlist (idempotent, prevents duplicates)
  */
 exports.addToWishlist = async (userId, carId) => {
-  try {
+  if (!carId) throw new AppError('Car ID is required', 400);
+
+  const car = await Car.findByPk(carId);
+  if (!car) throw new AppError('Car not found', 404);
+
+  const [wishlist, created] = await Wishlist.findOrCreate({
+    where: { user_id: userId, car_id: carId },
+    defaults: { user_id: userId, car_id: carId },
+  });
+
+  if (created) {
+    const analyticsService = require('./analyticsService');
+    await analyticsService.recordInteraction({ carId, userId, type: 'wishlist' });
+    const dashboardService = require('./dashboardService');
+    await dashboardService.invalidateDashboardCache(userId);
+  }
+
+  return wishlist;
+};
+
+/**
+ * Toggle a car in wishlist (creates if absent, destroys if present)
+ */
+exports.toggleWishlist = async (userId, carId) => {
+  if (!carId) throw new AppError('Car ID is required', 400);
+
+  const car = await Car.findByPk(carId);
+  if (!car) throw new AppError('Car not found', 404);
+
+  const existing = await Wishlist.findOne({
+    where: { user_id: userId, car_id: carId },
+  });
+
+  const dashboardService = require('./dashboardService');
+
+  if (existing) {
+    await existing.destroy();
+    await dashboardService.invalidateDashboardCache(userId);
+    return {
+      is_wishlisted: false,
+      isWishlist: false,
+      message: 'Removed from wishlist',
+    };
+  } else {
     const wishlist = await Wishlist.create({ user_id: userId, car_id: carId });
-    return wishlist;
-  } catch (error) {
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      throw new AppError('Car already in wishlist', 400);
-    }
-    if (error.name === 'SequelizeForeignKeyConstraintError') {
-      throw new AppError('Car not found', 404);
-    }
-    throw error;
+    const analyticsService = require('./analyticsService');
+    await analyticsService.recordInteraction({ carId, userId, type: 'wishlist' });
+    await dashboardService.invalidateDashboardCache(userId);
+    return {
+      is_wishlisted: true,
+      isWishlist: true,
+      message: 'Added to wishlist',
+      data: wishlist,
+    };
   }
 };
 
 /**
- * Remove a car from wishlist
+ * Remove a car from wishlist (idempotent)
  */
 exports.removeFromWishlist = async (userId, carId) => {
+  if (!carId) throw new AppError('Car ID is required', 400);
+
   const deletedCount = await Wishlist.destroy({ where: { user_id: userId, car_id: carId } });
-  if (deletedCount === 0) throw new AppError('Car not in wishlist', 404);
-  return { success: true };
+  if (deletedCount > 0) {
+    const dashboardService = require('./dashboardService');
+    await dashboardService.invalidateDashboardCache(userId);
+  }
+  return { success: true, message: 'Removed from wishlist' };
 };
 
 /**
