@@ -16,6 +16,28 @@ const clearCachePattern = async (pattern) => {
   }
 };
 
+const encodeCursor = (cursorObj) => {
+  if (!cursorObj || !cursorObj.created_at) return null;
+  return Buffer.from(JSON.stringify(cursorObj)).toString('base64');
+};
+
+const decodeCursor = (cursorStr) => {
+  if (!cursorStr) return null;
+  try {
+    const jsonStr = Buffer.from(cursorStr, 'base64').toString('utf-8');
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && parsed.created_at) {
+      return parsed;
+    }
+  } catch (e) {
+    const d = new Date(cursorStr);
+    if (!isNaN(d.getTime())) {
+      return { created_at: d.toISOString(), id: null };
+    }
+  }
+  return null;
+};
+
 const formatLead = (lead) => {
   if (!lead) return null;
   const json = typeof lead.toJSON === 'function' ? lead.toJSON() : { ...lead };
@@ -142,6 +164,8 @@ exports.createLead = async (userId, data) => {
   });
 
   await clearCachePattern(`seller:leads:${car.user_id}:*`);
+  await clearCachePattern(`seller:lead_summary:${car.user_id}:*`);
+  await clearCachePattern(`car:leads:${car.id}:*`);
   if (userId) {
     await clearCachePattern(`buyer:leads:${userId}:*`);
   }
@@ -165,6 +189,291 @@ exports.createLead = async (userId, data) => {
   }
 
   return await exports.getLeadById(lead.id);
+};
+
+/**
+ * Summary API: Cars grouped by lead stats with cursor pagination & Redis cache
+ */
+exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = null } = {}) => {
+  const limitNum = Math.min(parseInt(limit) || 20, 100);
+  const cacheKey = `seller:lead_summary:${sellerId}:${status || 'all'}:${cursor || 'first'}:${limitNum}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get cache error in getLeadSummary:', err);
+  }
+
+  const whereClause = { user_id: sellerId };
+  if (status && status !== 'all') {
+    whereClause.status = status;
+  }
+
+  const decodedCursor = decodeCursor(cursor);
+  if (decodedCursor) {
+    if (decodedCursor.id) {
+      whereClause[Op.or] = [
+        { created_at: { [Op.lt]: new Date(decodedCursor.created_at) } },
+        {
+          created_at: new Date(decodedCursor.created_at),
+          id: { [Op.lt]: decodedCursor.id },
+        },
+      ];
+    } else {
+      whereClause.created_at = { [Op.lt]: new Date(decodedCursor.created_at) };
+    }
+  }
+
+  const cars = await Car.findAll({
+    where: whereClause,
+    attributes: ['id', 'brand_id', 'model_id', 'variant_id', 'price', 'number_plate', 'status', 'created_at'],
+    include: [
+      {
+        model: Brand,
+        as: 'brand',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: Model,
+        as: 'carModel',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: Variant,
+        as: 'carVariant',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: CarStat,
+        as: 'stats',
+        attributes: [
+          'views_count',
+          'enquiries_count',
+          'calls_count',
+          'whatsapp_count',
+          'messages_count',
+          'wishlist_count',
+        ],
+        required: false,
+      },
+      {
+        model: CarImage,
+        as: 'images',
+        attributes: ['id', 'image_url', 'is_primary'],
+        required: false,
+      },
+    ],
+    order: [
+      ['created_at', 'DESC'],
+      ['id', 'DESC'],
+    ],
+    limit: limitNum,
+  });
+
+  const formattedCars = cars.map((car) => {
+    const json = typeof car.toJSON === 'function' ? car.toJSON() : car;
+    const nameParts = [json.brand?.name, json.carModel?.name, json.carVariant?.name].filter(Boolean);
+    const carName = nameParts.length > 0 ? nameParts.join(' ') : 'Pre-Owned Car';
+    const primaryImg = json.images?.find((img) => img.is_primary)?.image_url || json.images?.[0]?.image_url || null;
+
+    const stats = json.stats || {};
+    const calls = stats.calls_count || 0;
+    const whatsapp = stats.whatsapp_count || 0;
+    const messages = stats.messages_count || 0;
+    const enquiries = stats.enquiries_count || 0;
+    const views = stats.views_count || 0;
+    const wishlist = stats.wishlist_count || 0;
+
+    const totalLeadCount = calls + whatsapp + messages + enquiries;
+
+    return {
+      car_id: json.id,
+      name: carName,
+      price: json.price,
+      number_plate: json.number_plate,
+      status: json.status,
+      primary_image: primaryImg,
+      total_lead_count: totalLeadCount,
+      breakdown: {
+        calls,
+        whatsapp,
+        messages,
+        enquiries,
+        views,
+        wishlist,
+      },
+      created_at: json.created_at,
+    };
+  });
+
+  const lastCar = formattedCars.length > 0 ? formattedCars[formattedCars.length - 1] : null;
+  const nextCursor = lastCar
+    ? encodeCursor({ created_at: lastCar.created_at, id: lastCar.car_id })
+    : null;
+
+  const result = {
+    cars: formattedCars,
+    pagination: {
+      limit: limitNum,
+      next_cursor: nextCursor,
+      has_more: formattedCars.length === limitNum,
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 120, JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('Redis set cache error in getLeadSummary:', err);
+  }
+
+  return result;
+};
+
+/**
+ * Drill-Down API: Fetch timeline of buyers for a specific car with composite cursor tie-breaker
+ */
+exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null } = {}) => {
+  // 1. Security Check: Verify car exists and belongs to this seller
+  const car = await Car.findOne({
+    where: { id: carId, user_id: sellerId },
+    include: [
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+    ],
+  });
+
+  if (!car) {
+    throw new AppError('Car not found or you are not authorized to view these leads', 404);
+  }
+
+  const limitNum = Math.min(parseInt(limit) || 20, 100);
+  const cacheKey = `car:leads:${carId}:${cursor || 'first'}:${limitNum}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get cache error in getCarLeads:', err);
+  }
+
+  const whereClause = {
+    car_id: carId,
+    seller_id: sellerId,
+  };
+
+  const decodedCursor = decodeCursor(cursor);
+  if (decodedCursor) {
+    if (decodedCursor.id) {
+      whereClause[Op.or] = [
+        { created_at: { [Op.lt]: new Date(decodedCursor.created_at) } },
+        {
+          created_at: new Date(decodedCursor.created_at),
+          id: { [Op.lt]: decodedCursor.id },
+        },
+      ];
+    } else {
+      whereClause.created_at = { [Op.lt]: new Date(decodedCursor.created_at) };
+    }
+  }
+
+  const leads = await Lead.findAll({
+    where: whereClause,
+    include: [
+      {
+        model: User,
+        as: 'buyer',
+        attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture'],
+      },
+    ],
+    order: [
+      ['created_at', 'DESC'],
+      ['id', 'DESC'],
+    ],
+    limit: limitNum,
+  });
+
+  const formattedLeads = leads.map((lead) => {
+    const json = typeof lead.toJSON === 'function' ? lead.toJSON() : lead;
+    const buyerName = json.buyer?.full_name || json.buyer_name || 'Anonymous';
+    const buyerPhone = json.contact_phone || json.buyer?.phone || json.buyer_phone || 'N/A';
+    const buyerEmail = json.buyer?.email || json.buyer_email || null;
+    const buyerPic = json.buyer?.profile_picture || null;
+
+    return {
+      interaction_id: json.id,
+      type: json.source || 'message',
+      buyer_name: buyerName,
+      buyer_phone: buyerPhone,
+      buyer_email: buyerEmail,
+      buyer_profile_pic: buyerPic,
+      interacted_at: json.created_at,
+      status: json.status || 'new',
+      is_viewed: json.is_viewed || false,
+    };
+  });
+
+  const lastLead = leads.length > 0 ? leads[leads.length - 1] : null;
+  const nextCursor = lastLead
+    ? encodeCursor({ created_at: lastLead.created_at, id: lastLead.id })
+    : null;
+
+  const carName = [car.brand?.name, car.carModel?.name].filter(Boolean).join(' ') || 'Pre-Owned Car';
+
+  const result = {
+    car_info: {
+      id: car.id,
+      name: carName,
+      number_plate: car.number_plate,
+    },
+    leads: formattedLeads,
+    pagination: {
+      limit: limitNum,
+      next_cursor: nextCursor,
+      has_more: formattedLeads.length === limitNum,
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 30, JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('Redis set cache error in getCarLeads:', err);
+  }
+
+  return result;
+};
+
+/**
+ * Batch mark leads as read/viewed
+ */
+exports.batchMarkAsRead = async (sellerId, leadIds = []) => {
+  if (!Array.isArray(leadIds) || leadIds.length === 0) {
+    throw new AppError('lead_ids array is required', 400);
+  }
+
+  await Lead.update(
+    { is_viewed: true, read_at: new Date() },
+    {
+      where: {
+        id: { [Op.in]: leadIds },
+        seller_id: sellerId,
+      },
+    }
+  );
+
+  await clearCachePattern(`seller:lead_summary:${sellerId}:*`);
+  await clearCachePattern(`seller:leads:${sellerId}:*`);
+  await clearCachePattern(`car:leads:*`);
+
+  return { success: true, updated_count: leadIds.length };
 };
 
 /**
@@ -348,6 +657,8 @@ exports.updateLeadStatus = async (leadId, userId, userRole, newStatus) => {
   await lead.update(updateData);
 
   await clearCachePattern(`seller:leads:${lead.seller_id}:*`);
+  await clearCachePattern(`seller:lead_summary:${lead.seller_id}:*`);
+  await clearCachePattern(`car:leads:${lead.car_id}:*`);
   if (lead.buyer_id) {
     await clearCachePattern(`buyer:leads:${lead.buyer_id}:*`);
   }

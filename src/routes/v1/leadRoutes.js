@@ -9,10 +9,16 @@ const {
 } = require('../../validations/leadValidation');
 const leadController = require('../../controllers/leadController');
 
-// ── Enquiry Endpoints ─────────────────────────────────────────────
+// ── Enquiry & Drill-Down Endpoints ─────────────────────────────────
 router.post('/', protect, validate(createLeadSchema), leadController.createLead);
+router.get('/summary', protect, leadController.getLeadSummary);
+router.get('/car/:carId', protect, leadController.getCarLeads);
 router.get('/seller', protect, leadController.getSellerLeads);
+router.get('/seller/summary', protect, leadController.getLeadSummary);
+router.get('/seller/car/:carId', protect, leadController.getCarLeads);
 router.get('/me', protect, leadController.getBuyerLeads);
+router.patch('/batch-read', protect, leadController.batchMarkAsRead);
+router.patch('/:id/read', protect, leadController.markAsRead);
 router.patch('/:id/status', protect, validate(updateLeadStatusSchema), leadController.updateLeadStatus);
 
 // ── Legacy Compatibility Endpoints ────────────────────────────────

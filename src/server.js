@@ -39,13 +39,15 @@ const PORT = process.env.PORT || 5000;
       logger.warn('⚠️ Redis connection warning:', redisErr.message);
     }
 
-    // 3.6 Start Analytics Metric Flusher (60s interval)
+    // 3.6 Start Analytics Metric Flusher (Configurable: default 15s interval)
     const analyticsService = require('./services/analyticsService');
+    const metricFlushInterval = parseInt(process.env.METRIC_FLUSH_INTERVAL_MS) || 15000;
     const flusherInterval = setInterval(() => {
       analyticsService.flushMetricsToDb().catch(err => {
         logger.error('Background metric flush error:', err.message);
       });
-    }, 60000);
+    }, metricFlushInterval);
+    logger.info(`⏱️ Analytics metric flusher active (Interval: ${metricFlushInterval / 1000}s)`);
 
     // 4. Start HTTP server
     // Bind to 0.0.0.0 to accept connections from Docker network / Render
