@@ -299,12 +299,11 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
           [sequelize.fn('COUNT', sequelize.col('id')), 'total_leads'],
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'call' THEN 1 ELSE 0 END")), 'calls'],
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'whatsapp' THEN 1 ELSE 0 END")), 'whatsapp'],
-          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'message' THEN 1 ELSE 0 END")), 'messages'],
-          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message') THEN 1 ELSE 0 END")), 'other_enquiries'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) IN ('message', 'chat') THEN 1 ELSE 0 END")), 'messages'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message', 'chat') THEN 1 ELSE 0 END")), 'other_enquiries'],
         ],
         where: {
           car_id: { [Op.in]: carIds },
-          seller_id: sellerId,
         },
         group: ['car_id'],
         raw: true,
@@ -359,16 +358,13 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     const dbViews = viewMap[json.id] || 0;
     const dbWishlist = wishlistMap[json.id] || 0;
 
-    const calls = Math.max(lData.calls, stats.calls_count || 0);
-    const whatsapp = Math.max(lData.whatsapp, stats.whatsapp_count || 0);
-    const messages = Math.max(lData.messages, stats.messages_count || 0);
-    const enquiries = Math.max(lData.other, stats.enquiries_count || 0);
+    const calls = lData.calls;
+    const whatsapp = lData.whatsapp;
+    const messages = lData.messages;
+    const totalLeadCount = lData.total;
     const views = Math.max(dbViews, stats.views_count || 0);
     const wishlist = Math.max(dbWishlist, stats.wishlist_count || 0);
-
-    const totalLeadCount = lData.total > 0
-      ? lData.total
-      : (calls + whatsapp + messages + enquiries);
+    const enquiries = lData.other > 0 ? lData.other : (stats.enquiries_count || totalLeadCount);
 
     return {
       car_id: json.id,
@@ -446,7 +442,6 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
 
   const whereClause = {
     car_id: carId,
-    seller_id: sellerId,
   };
 
   if (source && source !== 'all') {
