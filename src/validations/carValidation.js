@@ -196,8 +196,18 @@ const mapToDbValues = (data) => {
   const rawBody = (mapped.body_type || '').toString().toLowerCase();
   if (rawBody && BODY_TYPE_MAP[rawBody]) mapped.body_type = BODY_TYPE_MAP[rawBody];
 
-  const rawBoard = (mapped.board_type || '').toString().toLowerCase();
-  if (rawBoard && BOARD_TYPE_MAP[rawBoard]) {
+  if (data.b2b !== undefined && mapped.b2b_listing === undefined) {
+    mapped.b2b_listing = data.b2b === true || data.b2b === 'true' || data.b2b === 1 || data.b2b === '1';
+  }
+  if (mapped.b2b_listing !== undefined) {
+    mapped.b2b_listing = mapped.b2b_listing === true || mapped.b2b_listing === 'true' || mapped.b2b_listing === 1 || mapped.b2b_listing === '1';
+  }
+
+  const rawBoard = (mapped.board_type || '').toString().trim().toLowerCase();
+  if (rawBoard === 'b2b') {
+    mapped.b2b_listing = true;
+    mapped.board_type = 'Own Board';
+  } else if (rawBoard && BOARD_TYPE_MAP[rawBoard]) {
     mapped.board_type = BOARD_TYPE_MAP[rawBoard];
   }
 

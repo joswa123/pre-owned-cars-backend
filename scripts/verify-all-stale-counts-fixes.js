@@ -17,6 +17,9 @@ async function runVerification() {
         await redisClient.connect();
       } catch (e) {}
     }
+    if (redisClient.isOpen) {
+      await redisClient.del(['board_type_stats', 'brands:with_counts']);
+    }
 
     // 1. Setup Test Users
     let seller = await User.findOne({ where: { role: 'dealer' } });

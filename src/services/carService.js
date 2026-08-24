@@ -41,6 +41,9 @@ const invalidateCarCaches = async (carId = null, userId = null) => {
     await clearCachePattern('cars:*');
     await clearCachePattern('seller:*');
     await clearCachePattern('catalog:*');
+    await clearCachePattern('car:leads:*');
+    await clearCachePattern('seller:lead_summary:*');
+    await clearCachePattern('seller:leads:*');
 
     // 2. HTTP middleware cache keys
     const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
@@ -1212,16 +1215,19 @@ exports.getBoardTypeStats = async () => {
       group: ['board_type']
     }),
     Car.count({
-      where: { status: 'active', b2b_listing: true }
+      where: {
+        status: 'active',
+        b2b_listing: true,
+      }
     })
   ]);
 
-  const stats = { 'OWN BOARD': 0, 'T-BOARD': 0, 'COMMERCIAL': 0, 'B2B': b2bCount };
+  const stats = { 'OWN BOARD': 0, 'T-BOARD': 0, 'COMMERCIAL': 0, 'B2B': parseInt(b2bCount, 10) || 0 };
   results.forEach(r => {
     if (r.board_type) {
-      const key = r.board_type.toUpperCase();
+      const key = r.board_type.toString().trim().toUpperCase();
       if (stats[key] !== undefined) {
-        stats[key] = parseInt(r.get('count'));
+        stats[key] = parseInt(r.get('count'), 10) || 0;
       }
     }
   });

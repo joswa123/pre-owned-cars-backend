@@ -215,12 +215,10 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
   }
 
   const whereClause = { user_id: sellerId };
-  let queryModel = Car;
   if (status && status !== 'all') {
-    whereClause.status = status;
-    if (status === 'deleted') {
-      queryModel = Car.unscoped();
-    }
+    whereClause.status = status.toLowerCase();
+  } else {
+    whereClause.status = { [Op.ne]: 'deleted' };
   }
 
   const decodedCursor = decodeCursor(cursor);
@@ -238,7 +236,7 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     }
   }
 
-  const cars = await queryModel.findAll({
+  const cars = await Car.unscoped().findAll({
     where: whereClause,
     attributes: ['id', 'brand_id', 'model_id', 'variant_id', 'price', 'number_plate', 'status', 'created_at'],
     include: [
@@ -584,7 +582,7 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
     where,
     include: [
       {
-        model: Car,
+        model: Car.unscoped(),
         as: 'car',
         where: Object.keys(carWhere).length > 0 ? carWhere : undefined,
         required: Object.keys(carWhere).length > 0,
