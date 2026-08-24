@@ -249,8 +249,12 @@ exports.recordInteraction = catchAsync(async (req, res) => {
   const userId = req.user ? req.user.id : null;
   const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
 
-  const analyticsService = require('../services/analyticsService');
-  await analyticsService.recordInteraction({ carId: id, userId, type, ipAddress });
+  if (type === 'view') {
+    await carService.recordView(id, userId, ipAddress);
+  } else {
+    const analyticsService = require('../services/analyticsService');
+    await analyticsService.recordInteraction({ carId: id, userId, type, ipAddress });
+  }
 
   res.status(200).json({
     status: 'success',

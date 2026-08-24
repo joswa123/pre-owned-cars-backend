@@ -1,4 +1,5 @@
 const { Car, Lead, Requirement } = require('../models');
+const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
 
@@ -33,10 +34,26 @@ exports.getDashboardSummary = async (userId, role) => {
     ? { seller_id: userId }
     : { buyer_id: userId };
 
-  // 3. Parallel aggregated COUNT queries with GROUP BY
+  // 3. Dynamic Expiry: Auto-expire active requirements past expiry date before counting
+  try {
+    await Requirement.update(
+      { status: 'expired' },
+      {
+        where: {
+          user_id: userId,
+          status: 'active',
+          expiry_date: { [Op.lt]: new Date() },
+        },
+      }
+    );
+  } catch (expErr) {
+    console.error('Requirement auto-expiry error in getDashboardSummary:', expErr);
+  }
+
+  // 4. Parallel aggregated COUNT queries with GROUP BY
   const [carCounts, leadCounts, requirementCounts] = await Promise.all([
-    // Cars by status
-    Car.findAll({
+    // Cars by status (unscoped to correctly capture active, sold, and deleted statuses)
+    Car.unscoped().findAll({
       where: { user_id: userId },
       attributes: ['status', [sequelize.fn('COUNT', sequelize.col('status')), 'count']],
       group: ['status'],
@@ -58,7 +75,7 @@ exports.getDashboardSummary = async (userId, role) => {
     }),
   ]);
 
-  // 4. Default zeroed structure (prevents null values for new users)
+  // 5. Default zeroed structure (prevents null values for new users)
   const result = {
     cars: {
       total: 0,
@@ -83,40 +100,51 @@ exports.getDashboardSummary = async (userId, role) => {
     },
   };
 
-  // 5. Populate Car Counts
+  // 6. Populate Car Counts (Total excludes soft-deleted records)
   carCounts.forEach((row) => {
     const status = row.status;
     const count = parseInt(row.count, 10) || 0;
-    result.cars.total += count;
-    if (status === 'active') result.cars.active = count;
-    else if (status === 'sold') result.cars.sold = count;
-    else if (status === 'deleted') result.cars.deleted = count;
+    if (status === 'active') {
+      result.cars.active = count;
+      result.cars.total += count;
+    } else if (status === 'sold') {
+      result.cars.sold = count;
+      result.cars.total += count;
+    } else if (status === 'deleted') {
+      result.cars.deleted = count;
+    } else {
+      // Other non-deleted statuses if any (e.g. pending, inactive)
+      result.cars.total += count;
+    }
   });
 
-  // 6. Populate Lead Counts
+  // 7. Populate Lead Counts
   leadCounts.forEach((row) => {
     const source = row.source || 'message';
     const count = parseInt(row.count, 10) || 0;
     result.leads.total += count;
-    if (result.leads.by_source.hasOwnProperty(source)) {
-      result.leads.by_source[source] = count;
-    } else {
-      result.leads.by_source[source] = count;
-    }
+    result.leads.by_source[source] = count;
   });
 
-  // 7. Populate Requirement Counts
+  // 8. Populate Requirement Counts (Total excludes soft-deleted records)
   requirementCounts.forEach((row) => {
     const status = row.status;
     const count = parseInt(row.count, 10) || 0;
-    result.requirements.total += count;
-    if (status === 'active') result.requirements.active = count;
-    else if (status === 'expired') result.requirements.expired = count;
-    else if (status === 'bought') result.requirements.bought = count;
-    else if (status === 'deleted') result.requirements.deleted = count;
+    if (status === 'active') {
+      result.requirements.active = count;
+      result.requirements.total += count;
+    } else if (status === 'expired') {
+      result.requirements.expired = count;
+      result.requirements.total += count;
+    } else if (status === 'bought') {
+      result.requirements.bought = count;
+      result.requirements.total += count;
+    } else if (status === 'deleted') {
+      result.requirements.deleted = count;
+    }
   });
 
-  // 8. Cache in Redis
+  // 9. Cache in Redis
   if (redisClient.isOpen) {
     try {
       await redisClient.setEx(cacheKey, CACHE_TTL, JSON.stringify(result));

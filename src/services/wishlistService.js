@@ -109,6 +109,7 @@ exports.getWishlist = async (userId) => {
     include: [
       {
         model: Car,
+        as: 'car',
         include: [
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
           {
@@ -131,8 +132,10 @@ exports.getWishlist = async (userId) => {
     ],
     order: [['created_at', 'DESC']],
   });
-  // Extract cars from wishlist entries
-  return wishlist.map(w => w.Car);
+  // Extract cars from wishlist entries, safely filtering out nulls for deleted cars
+  return wishlist
+    .map(w => (w.car || w.Car || null))
+    .filter(Boolean);
 };
 
 /**

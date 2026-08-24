@@ -1153,6 +1153,10 @@ exports.toggleFeatured = async (carId, is_featured) => {
   await clearCache('board_type_stats');
   await clearCache(`car:${carId}`);
   await clearCachePattern('cars:list:*');
+
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(car.user_id);
+
   return car;
 };
 
@@ -1216,8 +1220,12 @@ exports.recordView = async (carId, userId = null, ipAddress = null) => {
       await View.create({ car_id: carId, user_id: userId, timestamp: new Date() });
       const analyticsService = require('./analyticsService');
       await analyticsService.recordInteraction({ carId, userId, type: 'view', ipAddress });
+    } else {
+      // Update the timestamp to reflect the latest view time without inflating records
+      await existing.update({ timestamp: new Date() });
     }
   } else {
+    // Guest view: record aggregated metrics with rate limiting
     const analyticsService = require('./analyticsService');
     await analyticsService.recordInteraction({ carId, userId: null, type: 'view', ipAddress });
   }
