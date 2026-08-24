@@ -52,7 +52,7 @@ router.delete('/:id/images/:imageId', protect, carController.deleteCarImage);
 // ─── Public Routes ──────────────────────────────────────────
 const { optionalAuth } = require('../../middlewares/auth');
 router.get('/', optionalAuth, cacheMiddleware(60), carController.getCars);
-router.get('/stats/board-types', cacheMiddleware(300, { ignoreAuth: true }), carController.getBoardTypeStats); // must be BEFORE /:id
+router.get('/stats/board-types', cacheMiddleware(60, { ignoreAuth: true }), carController.getBoardTypeStats); // must be BEFORE /:id
 router.get('/featured', optionalAuth, cacheMiddleware(600), carController.getFeaturedCars); // must be BEFORE /:id
 
 // Similar & Recommended Cars (Must be BEFORE /:id)
