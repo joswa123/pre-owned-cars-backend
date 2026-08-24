@@ -27,12 +27,8 @@ exports.getDashboardSummary = async (userId, role) => {
     }
   }
 
-  // 2. Role-based lead ownership mapping
-  // Dealers care about leads they received (seller_id)
-  // Customers care about enquiries they sent (buyer_id) or leads on their posted cars (seller_id)
-  const leadWhere = role === 'dealer'
-    ? { seller_id: userId }
-    : { [Op.or]: [{ buyer_id: userId }, { seller_id: userId }] };
+  // 2. Leads ownership mapping: Dashboard counts leads received on user's car listings (seller_id)
+  const leadWhere = { seller_id: userId };
 
   // 3. Dynamic Expiry: Auto-expire active requirements past expiry date before counting
   try {
