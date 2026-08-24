@@ -1,5 +1,6 @@
-const { Lead, Car, User, Brand, Model, Variant, CarImage, CarStat } = require('../models');
+const { Lead, Car, User, Brand, Model, Variant, CarImage, CarStat, View, Wishlist } = require('../models');
 const { Op } = require('sequelize');
+const sequelize = require('../config/database');
 const { AppError } = require('../utils/errorHandler');
 const redisClient = require('../config/redis');
 
@@ -214,8 +215,12 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
   }
 
   const whereClause = { user_id: sellerId };
+  let queryModel = Car;
   if (status && status !== 'all') {
     whereClause.status = status;
+    if (status === 'deleted') {
+      queryModel = Car.unscoped();
+    }
   }
 
   const decodedCursor = decodeCursor(cursor);
@@ -233,7 +238,7 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     }
   }
 
-  const cars = await Car.findAll({
+  const cars = await queryModel.findAll({
     where: whereClause,
     attributes: ['id', 'brand_id', 'model_id', 'variant_id', 'price', 'number_plate', 'status', 'created_at'],
     include: [
@@ -279,6 +284,70 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     limit: limitNum,
   });
 
+  const carIds = cars.map((c) => c.id);
+
+  // Aggregate live counts from Lead, View, and Wishlist tables for accurate metrics
+  let leadMap = {};
+  let viewMap = {};
+  let wishlistMap = {};
+
+  if (carIds.length > 0) {
+    const [leadStats, viewStats, wishlistStats] = await Promise.all([
+      Lead.findAll({
+        attributes: [
+          'car_id',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'total_leads'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'call' THEN 1 ELSE 0 END")), 'calls'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'whatsapp' THEN 1 ELSE 0 END")), 'whatsapp'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'message' THEN 1 ELSE 0 END")), 'messages'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message') THEN 1 ELSE 0 END")), 'other_enquiries'],
+        ],
+        where: {
+          car_id: { [Op.in]: carIds },
+          seller_id: sellerId,
+        },
+        group: ['car_id'],
+        raw: true,
+      }),
+      View.findAll({
+        attributes: [
+          'car_id',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'views_count'],
+        ],
+        where: { car_id: { [Op.in]: carIds } },
+        group: ['car_id'],
+        raw: true,
+      }),
+      Wishlist.findAll({
+        attributes: [
+          'car_id',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'wishlist_count'],
+        ],
+        where: { car_id: { [Op.in]: carIds } },
+        group: ['car_id'],
+        raw: true,
+      }),
+    ]);
+
+    leadStats.forEach((l) => {
+      leadMap[l.car_id] = {
+        total: parseInt(l.total_leads, 10) || 0,
+        calls: parseInt(l.calls, 10) || 0,
+        whatsapp: parseInt(l.whatsapp, 10) || 0,
+        messages: parseInt(l.messages, 10) || 0,
+        other: parseInt(l.other_enquiries, 10) || 0,
+      };
+    });
+
+    viewStats.forEach((v) => {
+      viewMap[v.car_id] = parseInt(v.views_count, 10) || 0;
+    });
+
+    wishlistStats.forEach((w) => {
+      wishlistMap[w.car_id] = parseInt(w.wishlist_count, 10) || 0;
+    });
+  }
+
   const formattedCars = cars.map((car) => {
     const json = typeof car.toJSON === 'function' ? car.toJSON() : car;
     const nameParts = [json.brand?.name, json.carModel?.name, json.carVariant?.name].filter(Boolean);
@@ -286,14 +355,20 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     const primaryImg = json.images?.find((img) => img.is_primary)?.image_url || json.images?.[0]?.image_url || null;
 
     const stats = json.stats || {};
-    const calls = stats.calls_count || 0;
-    const whatsapp = stats.whatsapp_count || 0;
-    const messages = stats.messages_count || 0;
-    const enquiries = stats.enquiries_count || 0;
-    const views = stats.views_count || 0;
-    const wishlist = stats.wishlist_count || 0;
+    const lData = leadMap[json.id] || { total: 0, calls: 0, whatsapp: 0, messages: 0, other: 0 };
+    const dbViews = viewMap[json.id] || 0;
+    const dbWishlist = wishlistMap[json.id] || 0;
 
-    const totalLeadCount = calls + whatsapp + messages + enquiries;
+    const calls = Math.max(lData.calls, stats.calls_count || 0);
+    const whatsapp = Math.max(lData.whatsapp, stats.whatsapp_count || 0);
+    const messages = Math.max(lData.messages, stats.messages_count || 0);
+    const enquiries = Math.max(lData.other, stats.enquiries_count || 0);
+    const views = Math.max(dbViews, stats.views_count || 0);
+    const wishlist = Math.max(dbWishlist, stats.wishlist_count || 0);
+
+    const totalLeadCount = lData.total > 0
+      ? lData.total
+      : (calls + whatsapp + messages + enquiries);
 
     return {
       car_id: json.id,
@@ -331,7 +406,7 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
 
   try {
     if (redisClient.isOpen) {
-      await redisClient.setEx(cacheKey, 120, JSON.stringify(result));
+      await redisClient.setEx(cacheKey, 60, JSON.stringify(result));
     }
   } catch (err) {
     console.error('Redis set cache error in getLeadSummary:', err);
@@ -344,8 +419,8 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
  * Drill-Down API: Fetch timeline of buyers for a specific car with composite cursor tie-breaker & source filter
  */
 exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, source = null } = {}) => {
-  // 1. Security Check: Verify car exists and belongs to this seller
-  const car = await Car.findOne({
+  // 1. Security Check: Verify car exists and belongs to this seller (unscoped to allow sold/deleted cars)
+  const car = await Car.unscoped().findOne({
     where: { id: carId, user_id: sellerId },
     include: [
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
