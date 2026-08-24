@@ -32,6 +32,9 @@ const View = sequelize.define('View', {
 }, {
   tableName: 'views',
   timestamps: false,
+  indexes: [
+    { unique: true, fields: ['car_id', 'user_id'], name: 'unique_car_user_view' }
+  ]
 });
 
 module.exports = View;

@@ -669,6 +669,8 @@ exports.getCarById = async (carId, userId = null) => {
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: Lead, as: 'leads', attributes: ['id'], required: false },
+        { model: CarStat, as: 'stats', required: false },
       ],
     });
     if (!car) throw new AppError('Car not found.', 404);
@@ -681,11 +683,46 @@ exports.getCarById = async (carId, userId = null) => {
     }
 
     const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-    transformedCar = transformCarImages(car, baseUrl);
+    const baseTransformed = transformCarImages(car, baseUrl);
+
+    // Compute live metrics
+    const stats = car.stats || {};
+    const [dbViewsCount, dbWishlistCount] = await Promise.all([
+      View.count({ where: { car_id: car.id } }),
+      Wishlist.count({ where: { car_id: car.id } }),
+    ]);
+
+    const viewsCount = Math.max(stats.views_count || 0, dbViewsCount);
+    const wishlistCount = Math.max(stats.wishlist_count || 0, dbWishlistCount);
+    const enquiriesCount = stats.enquiries_count || (car.leads?.length || 0);
+
+    const metrics = {
+      views: viewsCount,
+      views_count: viewsCount,
+      enquiries: enquiriesCount,
+      enquiry_count: enquiriesCount,
+      calls: stats.calls_count || 0,
+      calls_count: stats.calls_count || 0,
+      whatsapp: stats.whatsapp_count || 0,
+      whatsapp_count: stats.whatsapp_count || 0,
+      messages: stats.messages_count || 0,
+      messages_count: stats.messages_count || 0,
+      wishlist_count: wishlistCount,
+      wishlists: wishlistCount,
+    };
+
+    transformedCar = {
+      ...baseTransformed,
+      views: viewsCount,
+      views_count: viewsCount,
+      wishlist_count: wishlistCount,
+      enquiry_count: enquiriesCount,
+      metrics,
+    };
 
     try {
       if (redisClient.isOpen) {
-        await redisClient.setEx(cacheKey, 300, JSON.stringify(transformedCar));
+        await redisClient.setEx(cacheKey, 60, JSON.stringify(transformedCar));
       }
     } catch (err) {
       console.error('Redis set cache error in getCarById:', err);
@@ -1220,6 +1257,11 @@ exports.recordView = async (carId, userId = null, ipAddress = null) => {
     const analyticsService = require('./analyticsService');
     await analyticsService.recordInteraction({ carId, userId: null, type: 'view', ipAddress });
   }
+
+  // Invalidate single car cache & HTTP middleware cache
+  await clearCache(`car:${carId}`);
+  const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
+  await clearHttpCache(`/api/v1/cars/${carId}`);
 };
 
 /**

@@ -3,6 +3,33 @@ const { AppError } = require('../utils/errorHandler');
 const { Op } = require('sequelize');
 const redisClient = require('../config/redis');
 
+const clearCache = async (key) => {
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.del(key);
+    }
+  } catch (err) {
+    console.error('Redis clear cache error in wishlistService:', err);
+  }
+};
+
+const invalidateWishlistCaches = async (userId, carId, sellerId = null) => {
+  try {
+    const dashboardService = require('./dashboardService');
+    if (userId) await dashboardService.invalidateDashboardCache(userId);
+    if (sellerId) await dashboardService.invalidateDashboardCache(sellerId);
+
+    if (carId) {
+      await clearCache(`car:${carId}`);
+      const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
+      await clearHttpCache(`/api/v1/cars/${carId}`);
+      await clearHttpCache('/api/v1/wishlist');
+    }
+  } catch (e) {
+    console.error('Wishlist cache invalidation error:', e);
+  }
+};
+
 const encodeCursor = (cursorObj) => {
   if (!cursorObj || !cursorObj.created_at) return null;
   return Buffer.from(JSON.stringify(cursorObj)).toString('base64');
@@ -42,8 +69,7 @@ exports.addToWishlist = async (userId, carId) => {
   if (created) {
     const analyticsService = require('./analyticsService');
     await analyticsService.recordInteraction({ carId, userId, type: 'wishlist' });
-    const dashboardService = require('./dashboardService');
-    await dashboardService.invalidateDashboardCache(userId);
+    await invalidateWishlistCaches(userId, carId, car.user_id);
   }
 
   return wishlist;
@@ -62,11 +88,9 @@ exports.toggleWishlist = async (userId, carId) => {
     where: { user_id: userId, car_id: carId },
   });
 
-  const dashboardService = require('./dashboardService');
-
   if (existing) {
     await existing.destroy();
-    await dashboardService.invalidateDashboardCache(userId);
+    await invalidateWishlistCaches(userId, carId, car.user_id);
     return {
       is_wishlisted: false,
       isWishlist: false,
@@ -76,7 +100,7 @@ exports.toggleWishlist = async (userId, carId) => {
     const wishlist = await Wishlist.create({ user_id: userId, car_id: carId });
     const analyticsService = require('./analyticsService');
     await analyticsService.recordInteraction({ carId, userId, type: 'wishlist' });
-    await dashboardService.invalidateDashboardCache(userId);
+    await invalidateWishlistCaches(userId, carId, car.user_id);
     return {
       is_wishlisted: true,
       isWishlist: true,
@@ -92,10 +116,10 @@ exports.toggleWishlist = async (userId, carId) => {
 exports.removeFromWishlist = async (userId, carId) => {
   if (!carId) throw new AppError('Car ID is required', 400);
 
+  const car = await Car.findByPk(carId);
   const deletedCount = await Wishlist.destroy({ where: { user_id: userId, car_id: carId } });
   if (deletedCount > 0) {
-    const dashboardService = require('./dashboardService');
-    await dashboardService.invalidateDashboardCache(userId);
+    await invalidateWishlistCaches(userId, carId, car?.user_id);
   }
   return { success: true, message: 'Removed from wishlist' };
 };

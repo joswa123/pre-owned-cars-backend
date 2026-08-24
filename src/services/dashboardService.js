@@ -29,10 +29,10 @@ exports.getDashboardSummary = async (userId, role) => {
 
   // 2. Role-based lead ownership mapping
   // Dealers care about leads they received (seller_id)
-  // Customers care about enquiries they sent (buyer_id)
+  // Customers care about enquiries they sent (buyer_id) or leads on their posted cars (seller_id)
   const leadWhere = role === 'dealer'
     ? { seller_id: userId }
-    : { buyer_id: userId };
+    : { [Op.or]: [{ buyer_id: userId }, { seller_id: userId }] };
 
   // 3. Dynamic Expiry: Auto-expire active requirements past expiry date before counting
   try {
@@ -120,10 +120,14 @@ exports.getDashboardSummary = async (userId, role) => {
 
   // 7. Populate Lead Counts
   leadCounts.forEach((row) => {
-    const source = row.source || 'message';
+    const source = (row.source || 'message').trim().toLowerCase();
     const count = parseInt(row.count, 10) || 0;
     result.leads.total += count;
-    result.leads.by_source[source] = count;
+    if (result.leads.by_source[source] !== undefined) {
+      result.leads.by_source[source] += count;
+    } else {
+      result.leads.by_source[source] = count;
+    }
   });
 
   // 8. Populate Requirement Counts (Total excludes soft-deleted records)
