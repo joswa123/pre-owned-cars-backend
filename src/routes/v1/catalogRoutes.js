@@ -18,7 +18,7 @@ const handleUpload = (req, res, next) => {
 const { cacheMiddleware } = require('../../middlewares/cacheMiddleware');
 
 // Public Catalog Routes
-router.get('/brands', cacheMiddleware(3600, { ignoreAuth: true }), catalogController.getBrands);
+router.get('/brands', cacheMiddleware(60, { ignoreAuth: true }), catalogController.getBrands);
 router.get('/brands/:brandId/models', cacheMiddleware(3600, { ignoreAuth: true }), catalogController.getModelsByBrand);
 router.get('/models/:modelId/variants', cacheMiddleware(3600, { ignoreAuth: true }), catalogController.getVariantsByModel);
 router.get('/search', catalogController.searchCatalog);

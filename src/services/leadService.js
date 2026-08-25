@@ -1,5 +1,6 @@
-const { Lead, Car, User, Brand, Model, Variant, CarImage, CarStat } = require('../models');
+const { Lead, Car, User, Brand, Model, Variant, CarImage, CarStat, View, Wishlist } = require('../models');
 const { Op } = require('sequelize');
+const sequelize = require('../config/database');
 const { AppError } = require('../utils/errorHandler');
 const redisClient = require('../config/redis');
 
@@ -14,6 +15,28 @@ const clearCachePattern = async (pattern) => {
   } catch (err) {
     console.error('Redis clear pattern error:', err);
   }
+};
+
+const encodeCursor = (cursorObj) => {
+  if (!cursorObj || !cursorObj.created_at) return null;
+  return Buffer.from(JSON.stringify(cursorObj)).toString('base64');
+};
+
+const decodeCursor = (cursorStr) => {
+  if (!cursorStr) return null;
+  try {
+    const jsonStr = Buffer.from(cursorStr, 'base64').toString('utf-8');
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && parsed.created_at) {
+      return parsed;
+    }
+  } catch (e) {
+    const d = new Date(cursorStr);
+    if (!isNaN(d.getTime())) {
+      return { created_at: d.toISOString(), id: null };
+    }
+  }
+  return null;
 };
 
 const formatLead = (lead) => {
@@ -142,8 +165,16 @@ exports.createLead = async (userId, data) => {
   });
 
   await clearCachePattern(`seller:leads:${car.user_id}:*`);
+  await clearCachePattern(`seller:lead_summary:${car.user_id}:*`);
+  await clearCachePattern(`car:leads:${car.id}:*`);
   if (userId) {
     await clearCachePattern(`buyer:leads:${userId}:*`);
+  }
+
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(car.user_id);
+  if (userId) {
+    await dashboardService.invalidateDashboardCache(userId);
   }
 
   // Synchronize with Analytics Engine (Redis Buffer + car_stats)
@@ -165,6 +196,356 @@ exports.createLead = async (userId, data) => {
   }
 
   return await exports.getLeadById(lead.id);
+};
+
+/**
+ * Summary API: Cars grouped by lead stats with cursor pagination & Redis cache
+ */
+exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = null } = {}) => {
+  const limitNum = Math.min(parseInt(limit) || 20, 100);
+  const cacheKey = `seller:lead_summary:${sellerId}:${status || 'all'}:${cursor || 'first'}:${limitNum}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get cache error in getLeadSummary:', err);
+  }
+
+  const whereClause = { user_id: sellerId };
+  if (status && status !== 'all') {
+    whereClause.status = status.toLowerCase();
+  } else {
+    whereClause.status = { [Op.ne]: 'deleted' };
+  }
+
+  const decodedCursor = decodeCursor(cursor);
+  if (decodedCursor) {
+    if (decodedCursor.id) {
+      whereClause[Op.or] = [
+        { created_at: { [Op.lt]: new Date(decodedCursor.created_at) } },
+        {
+          created_at: new Date(decodedCursor.created_at),
+          id: { [Op.lt]: decodedCursor.id },
+        },
+      ];
+    } else {
+      whereClause.created_at = { [Op.lt]: new Date(decodedCursor.created_at) };
+    }
+  }
+
+  const cars = await Car.unscoped().findAll({
+    where: whereClause,
+    attributes: ['id', 'brand_id', 'model_id', 'variant_id', 'price', 'number_plate', 'status', 'created_at'],
+    include: [
+      {
+        model: Brand,
+        as: 'brand',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: Model,
+        as: 'carModel',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: Variant,
+        as: 'carVariant',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: CarStat,
+        as: 'stats',
+        attributes: [
+          'views_count',
+          'enquiries_count',
+          'calls_count',
+          'whatsapp_count',
+          'messages_count',
+          'wishlist_count',
+        ],
+        required: false,
+      },
+      {
+        model: CarImage,
+        as: 'images',
+        attributes: ['id', 'image_url', 'is_primary'],
+        required: false,
+      },
+    ],
+    order: [
+      ['created_at', 'DESC'],
+      ['id', 'DESC'],
+    ],
+    limit: limitNum,
+  });
+
+  const carIds = cars.map((c) => c.id);
+
+  // Aggregate live counts from Lead, View, and Wishlist tables for accurate metrics
+  let leadMap = {};
+  let viewMap = {};
+  let wishlistMap = {};
+
+  if (carIds.length > 0) {
+    const [leadStats, viewStats, wishlistStats] = await Promise.all([
+      Lead.findAll({
+        attributes: [
+          'car_id',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'total_leads'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'call' THEN 1 ELSE 0 END")), 'calls'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'whatsapp' THEN 1 ELSE 0 END")), 'whatsapp'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) IN ('message', 'chat') THEN 1 ELSE 0 END")), 'messages'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message', 'chat') THEN 1 ELSE 0 END")), 'other_enquiries'],
+        ],
+        where: {
+          car_id: { [Op.in]: carIds },
+        },
+        group: ['car_id'],
+        raw: true,
+      }),
+      View.findAll({
+        attributes: [
+          'car_id',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'views_count'],
+        ],
+        where: { car_id: { [Op.in]: carIds } },
+        group: ['car_id'],
+        raw: true,
+      }),
+      Wishlist.findAll({
+        attributes: [
+          'car_id',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'wishlist_count'],
+        ],
+        where: { car_id: { [Op.in]: carIds } },
+        group: ['car_id'],
+        raw: true,
+      }),
+    ]);
+
+    leadStats.forEach((l) => {
+      leadMap[l.car_id] = {
+        total: parseInt(l.total_leads, 10) || 0,
+        calls: parseInt(l.calls, 10) || 0,
+        whatsapp: parseInt(l.whatsapp, 10) || 0,
+        messages: parseInt(l.messages, 10) || 0,
+        other: parseInt(l.other_enquiries, 10) || 0,
+      };
+    });
+
+    viewStats.forEach((v) => {
+      viewMap[v.car_id] = parseInt(v.views_count, 10) || 0;
+    });
+
+    wishlistStats.forEach((w) => {
+      wishlistMap[w.car_id] = parseInt(w.wishlist_count, 10) || 0;
+    });
+  }
+
+  const formattedCars = cars.map((car) => {
+    const json = typeof car.toJSON === 'function' ? car.toJSON() : car;
+    const nameParts = [json.brand?.name, json.carModel?.name, json.carVariant?.name].filter(Boolean);
+    const carName = nameParts.length > 0 ? nameParts.join(' ') : 'Pre-Owned Car';
+    const primaryImg = json.images?.find((img) => img.is_primary)?.image_url || json.images?.[0]?.image_url || null;
+
+    const stats = json.stats || {};
+    const lData = leadMap[json.id] || { total: 0, calls: 0, whatsapp: 0, messages: 0, other: 0 };
+    const dbViews = viewMap[json.id] || 0;
+    const dbWishlist = wishlistMap[json.id] || 0;
+
+    const calls = lData.calls;
+    const whatsapp = lData.whatsapp;
+    const messages = lData.messages;
+    const totalLeadCount = lData.total;
+    const views = Math.max(dbViews, stats.views_count || 0);
+    const wishlist = Math.max(dbWishlist, stats.wishlist_count || 0);
+    const enquiries = lData.other > 0 ? lData.other : (stats.enquiries_count || totalLeadCount);
+
+    return {
+      car_id: json.id,
+      name: carName,
+      price: json.price,
+      number_plate: json.number_plate,
+      status: json.status,
+      primary_image: primaryImg,
+      total_lead_count: totalLeadCount,
+      breakdown: {
+        calls,
+        whatsapp,
+        messages,
+        enquiries,
+        views,
+        wishlist,
+      },
+      created_at: json.created_at,
+    };
+  });
+
+  const lastCar = formattedCars.length > 0 ? formattedCars[formattedCars.length - 1] : null;
+  const nextCursor = lastCar
+    ? encodeCursor({ created_at: lastCar.created_at, id: lastCar.car_id })
+    : null;
+
+  const result = {
+    cars: formattedCars,
+    pagination: {
+      limit: limitNum,
+      next_cursor: nextCursor,
+      has_more: formattedCars.length === limitNum,
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 60, JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('Redis set cache error in getLeadSummary:', err);
+  }
+
+  return result;
+};
+
+/**
+ * Drill-Down API: Fetch timeline of buyers for a specific car with composite cursor tie-breaker & source filter
+ */
+exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, source = null } = {}) => {
+  // 1. Security Check: Verify car exists and belongs to this seller (unscoped to allow sold/deleted cars)
+  const car = await Car.unscoped().findOne({
+    where: { id: carId, user_id: sellerId },
+    include: [
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+    ],
+  });
+
+  if (!car) {
+    throw new AppError('Car not found or you are not authorized to view these leads', 404);
+  }
+
+  const limitNum = Math.min(parseInt(limit) || 20, 100);
+  const cacheKey = `car:leads:${carId}:${source || 'all'}:${cursor || 'first'}:${limitNum}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get cache error in getCarLeads:', err);
+  }
+
+  const whereClause = {
+    car_id: carId,
+  };
+
+  if (source && source !== 'all') {
+    whereClause.source = source;
+  }
+
+  const decodedCursor = decodeCursor(cursor);
+  if (decodedCursor) {
+    if (decodedCursor.id) {
+      whereClause[Op.or] = [
+        { created_at: { [Op.lt]: new Date(decodedCursor.created_at) } },
+        {
+          created_at: new Date(decodedCursor.created_at),
+          id: { [Op.lt]: decodedCursor.id },
+        },
+      ];
+    } else {
+      whereClause.created_at = { [Op.lt]: new Date(decodedCursor.created_at) };
+    }
+  }
+
+  const leads = await Lead.findAll({
+    where: whereClause,
+    include: [
+      {
+        model: User,
+        as: 'buyer',
+        attributes: ['id', 'full_name', 'phone', 'email'],
+      },
+    ],
+    order: [
+      ['created_at', 'DESC'],
+      ['id', 'DESC'],
+    ],
+    limit: limitNum,
+  });
+
+  const formattedLeads = leads.map((lead) => {
+    const json = typeof lead.toJSON === 'function' ? lead.toJSON() : lead;
+    const buyerName = json.buyer?.full_name || json.buyer_name || 'Anonymous';
+    const buyerPhone = json.contact_phone || json.buyer?.phone || json.buyer_phone || 'N/A';
+
+    return {
+      buyer_name: buyerName,
+      buyer_phone: buyerPhone,
+      interacted_at: json.created_at,
+      source: json.source || 'message',
+    };
+  });
+
+  const lastLead = leads.length > 0 ? leads[leads.length - 1] : null;
+  const nextCursor = lastLead
+    ? encodeCursor({ created_at: lastLead.created_at, id: lastLead.id })
+    : null;
+
+  const carName = [car.brand?.name, car.carModel?.name].filter(Boolean).join(' ') || 'Pre-Owned Car';
+
+  const result = {
+    car_info: {
+      id: car.id,
+      name: carName,
+      number_plate: car.number_plate,
+    },
+    leads: formattedLeads,
+    pagination: {
+      limit: limitNum,
+      next_cursor: nextCursor,
+      has_more: formattedLeads.length === limitNum,
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      // 30-second cache TTL for drill-down
+      await redisClient.setEx(cacheKey, 30, JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('Redis set cache error in getCarLeads:', err);
+  }
+
+  return result;
+};
+
+/**
+ * Batch mark leads as read/viewed
+ */
+exports.batchMarkAsRead = async (sellerId, leadIds = []) => {
+  if (!Array.isArray(leadIds) || leadIds.length === 0) {
+    throw new AppError('lead_ids array is required', 400);
+  }
+
+  await Lead.update(
+    { is_viewed: true, read_at: new Date() },
+    {
+      where: {
+        id: { [Op.in]: leadIds },
+        seller_id: sellerId,
+      },
+    }
+  );
+
+  await clearCachePattern(`seller:lead_summary:${sellerId}:*`);
+  await clearCachePattern(`seller:leads:${sellerId}:*`);
+  await clearCachePattern(`car:leads:*`);
+
+  return { success: true, updated_count: leadIds.length };
 };
 
 /**
@@ -201,7 +582,7 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
     where,
     include: [
       {
-        model: Car,
+        model: Car.unscoped(),
         as: 'car',
         where: Object.keys(carWhere).length > 0 ? carWhere : undefined,
         required: Object.keys(carWhere).length > 0,
@@ -348,8 +729,16 @@ exports.updateLeadStatus = async (leadId, userId, userRole, newStatus) => {
   await lead.update(updateData);
 
   await clearCachePattern(`seller:leads:${lead.seller_id}:*`);
+  await clearCachePattern(`seller:lead_summary:${lead.seller_id}:*`);
+  await clearCachePattern(`car:leads:${lead.car_id}:*`);
   if (lead.buyer_id) {
     await clearCachePattern(`buyer:leads:${lead.buyer_id}:*`);
+  }
+
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(lead.seller_id);
+  if (lead.buyer_id) {
+    await dashboardService.invalidateDashboardCache(lead.buyer_id);
   }
 
   return await exports.getLeadById(lead.id);

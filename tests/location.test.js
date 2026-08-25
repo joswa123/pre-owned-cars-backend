@@ -10,10 +10,13 @@ describe('Location API (Public)', () => {
 
   beforeAll(async () => {
     const uniqueSuffix = Date.now().toString().slice(-6);
-    // Clear cache to avoid stale test data
     const redisClient = require('../src/config/redis');
-    await redisClient.del('locations:hierarchy');
-    await redisClient.del('__express__/api/v1/locations__');
+    if (redisClient.isOpen) {
+      try {
+        await redisClient.del('locations:hierarchy');
+        await redisClient.del('__express__/api/v1/locations__');
+      } catch (e) {}
+    }
     
     // Seed test data: a state, district, city, and a dealer user.
     const state = await State.create({ name: `Test State ${uniqueSuffix}`, code: `TS${uniqueSuffix}` });

@@ -147,9 +147,14 @@ exports.resetPassword = catchAsync(async (req, res) => {
  */
 exports.refreshToken = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
+    const rawToken =
+      req.body.refreshToken ||
+      req.body.refresh_token ||
+      req.body.token ||
+      req.headers['x-refresh-token'] ||
+      (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : null);
 
-    if (!refreshToken) {
+    if (!rawToken) {
       return res.status(401).json({
         status: 'error',
         success: false,
@@ -157,21 +162,30 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
+    const refreshToken = typeof rawToken === 'string' ? rawToken.replace(/^Bearer\s+/i, '').trim() : '';
+
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'pre_owned_cars_refresh_secret';
+    const accessSecret = process.env.JWT_SECRET || 'pre_owned_cars_jwt_secret';
+
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+      decoded = jwt.verify(refreshToken, refreshSecret);
     } catch (err) {
-      return res.status(401).json({
-        status: 'error',
-        success: false,
-        message: 'Invalid or expired refresh token',
-      });
+      // Fallback: Check if signed with access token secret
+      try {
+        decoded = jwt.verify(refreshToken, accessSecret);
+      } catch (err2) {
+        return res.status(401).json({
+          status: 'error',
+          success: false,
+          message: 'Invalid or expired refresh token',
+        });
+      }
     }
 
     const storedToken = await RefreshToken.findOne({
       where: {
         token: refreshToken,
-        is_revoked: false,
         user_id: decoded.id,
       },
     });
@@ -180,15 +194,7 @@ exports.refreshToken = async (req, res, next) => {
       return res.status(401).json({
         status: 'error',
         success: false,
-        message: 'Refresh token not found or revoked',
-      });
-    }
-
-    if (new Date() > new Date(storedToken.expires_at)) {
-      return res.status(401).json({
-        status: 'error',
-        success: false,
-        message: 'Refresh token expired',
+        message: 'Refresh token not found',
       });
     }
 
@@ -201,22 +207,77 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
+    // 🔒 Grace Period Window for Mobile Token Rotation Race Condition (30 seconds)
+    if (storedToken.is_revoked) {
+      const revokedAt = storedToken.updated_at || storedToken.updatedAt || storedToken.created_at;
+      const isWithinGracePeriod = revokedAt && (Date.now() - new Date(revokedAt).getTime() < 30000);
+
+      if (isWithinGracePeriod) {
+        const latestActiveToken = await RefreshToken.findOne({
+          where: { user_id: decoded.id, is_revoked: false },
+          order: [['created_at', 'DESC']],
+        });
+
+        if (latestActiveToken && new Date() < new Date(latestActiveToken.expires_at)) {
+          const newAccessToken = jwt.sign(
+            { id: user.id, role: user.role },
+            accessSecret,
+            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+          );
+
+          return res.status(200).json({
+            status: 'success',
+            success: true,
+            message: 'Token refreshed successfully.',
+            accessToken: newAccessToken,
+            refreshToken: latestActiveToken.token,
+            access_token: newAccessToken,
+            refresh_token: latestActiveToken.token,
+            data: {
+              accessToken: newAccessToken,
+              refreshToken: latestActiveToken.token,
+              access_token: newAccessToken,
+              refresh_token: latestActiveToken.token,
+              user: {
+                id: user.id,
+                email: user.email,
+                phone: user.phone,
+                role: user.role,
+                full_name: user.full_name,
+              },
+            },
+          });
+        }
+      }
+
+      return res.status(401).json({
+        status: 'error',
+        success: false,
+        message: 'Refresh token has already been revoked.',
+      });
+    }
+
+    if (new Date() > new Date(storedToken.expires_at)) {
+      return res.status(401).json({
+        status: 'error',
+        success: false,
+        message: 'Refresh token expired',
+      });
+    }
+
     // Mark current refresh token as revoked in DB
-    await RefreshToken.update(
-      { is_revoked: true },
-      { where: { token: refreshToken } }
-    );
+    await storedToken.update({ is_revoked: true });
 
     // Issue new token pair
     const newAccessToken = jwt.sign(
       { id: user.id, role: user.role },
-      process.env.JWT_SECRET,
+      accessSecret,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
     const newRefreshToken = jwt.sign(
       { id: user.id },
-      process.env.JWT_REFRESH_SECRET,
+      refreshSecret,
       { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '90d' }
     );
 
@@ -232,16 +293,19 @@ exports.refreshToken = async (req, res, next) => {
       is_revoked: false,
     });
 
-    // Return both top-level and data wrapper for complete client compatibility (Flutter, React, Postman)
     return res.status(200).json({
       status: 'success',
       success: true,
       message: 'Token refreshed successfully.',
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
+      access_token: newAccessToken,
+      refresh_token: newRefreshToken,
       data: {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
+        access_token: newAccessToken,
+        refresh_token: newRefreshToken,
         user: {
           id: user.id,
           email: user.email,

@@ -48,6 +48,9 @@ exports.createRequirement = async (userId, data) => {
     description: data.description || null,
   });
 
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(userId);
+
   return await Requirement.findByPk(requirement.id, {
     include: [
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
@@ -225,6 +228,9 @@ exports.updateRequirement = async (requirementId, userId, data) => {
     await requirement.update(updateData, { transaction });
     await transaction.commit();
 
+    const dashboardService = require('./dashboardService');
+    await dashboardService.invalidateDashboardCache(userId);
+
     // 7. Reload and return (with associations)
     return await exports.getRequirementById(requirementId, userId);
   } catch (error) {
@@ -256,6 +262,9 @@ exports.updateRequirementStatus = async (requirementId, userId, data) => {
 
   await requirement.update(updateFields);
 
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(userId);
+
   return await Requirement.findByPk(requirement.id, {
     include: [
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
@@ -281,6 +290,9 @@ exports.deleteRequirement = async (requirementId, userId) => {
     status: 'deleted',
     bought_from: null,
   });
+
+  const dashboardService = require('./dashboardService');
+  await dashboardService.invalidateDashboardCache(userId);
 
   return { success: true };
 };

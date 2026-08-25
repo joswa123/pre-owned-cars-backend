@@ -17,12 +17,11 @@ router.post(
     { name: 'images', maxCount: 10 }
   ]),
   (req, res, next) => {
-    console.log('📝 req.body:', req.body);
-    console.log('📁 req.files:', req.files);
-    next();
-  },
-  (req, res, next) => {
-    if (!req.files || !req.files.primary_image || req.files.primary_image.length === 0) {
+    const hasPrimaryFile = req.files && req.files.primary_image && req.files.primary_image.length > 0;
+    const hasSecondaryFiles = req.files && req.files.images && req.files.images.length > 0;
+    const hasBodyImage = req.body && (req.body.primary_image || req.body.image_url || (Array.isArray(req.body.images) && req.body.images.length > 0));
+
+    if (!hasPrimaryFile && !hasSecondaryFiles && !hasBodyImage) {
       return res.status(400).json({ success: false, message: 'Primary image is required.' });
     }
     next();
@@ -53,7 +52,7 @@ router.delete('/:id/images/:imageId', protect, carController.deleteCarImage);
 // ─── Public Routes ──────────────────────────────────────────
 const { optionalAuth } = require('../../middlewares/auth');
 router.get('/', optionalAuth, cacheMiddleware(60), carController.getCars);
-router.get('/stats/board-types', cacheMiddleware(300, { ignoreAuth: true }), carController.getBoardTypeStats); // must be BEFORE /:id
+router.get('/stats/board-types', cacheMiddleware(60, { ignoreAuth: true }), carController.getBoardTypeStats); // must be BEFORE /:id
 router.get('/featured', optionalAuth, cacheMiddleware(600), carController.getFeaturedCars); // must be BEFORE /:id
 
 // Similar & Recommended Cars (Must be BEFORE /:id)
@@ -62,6 +61,7 @@ router.get('/similar-recommended', optionalAuth, carController.getSimilarRecomme
 router.get('/:id', optionalAuth, cacheMiddleware(300), carController.getCarById);
 
 // Record view & interactions
+router.get('/:id/view', optionalAuth, carController.recordView);
 router.post('/:id/view', optionalAuth, carController.recordView);
 router.post('/:id/interact', optionalAuth, carController.recordInteraction);
 

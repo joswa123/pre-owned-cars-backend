@@ -131,10 +131,10 @@ User.hasMany(Transmission, { foreignKey: 'user_id' });
 RefreshToken.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(RefreshToken, { foreignKey: 'user_id' });
 
-Wishlist.belongsTo(User, { foreignKey: 'user_id' });
-Wishlist.belongsTo(Car, { foreignKey: 'car_id' });
-User.hasMany(Wishlist, { foreignKey: 'user_id' });
-Car.hasMany(Wishlist, { foreignKey: 'car_id' });
+Wishlist.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+Wishlist.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
+User.hasMany(Wishlist, { foreignKey: 'user_id', as: 'wishlists' });
+Car.hasMany(Wishlist, { foreignKey: 'car_id', as: 'wishlists' });
 
 // Leads Associations
 Car.hasMany(Lead, { foreignKey: 'car_id', as: 'leads' });

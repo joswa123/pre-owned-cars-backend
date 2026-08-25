@@ -68,6 +68,14 @@ exports.getAllBrands = async () => {
 };
 
 /**
+ * Get brands with active car counts (cached 60s)
+ */
+exports.getBrandsWithCarCounts = async () => {
+  const brandService = require('./brandService');
+  return await brandService.getBrandsWithCarCounts();
+};
+
+/**
  * Helper to find Brand by UUID or Name/Slug
  */
 const findBrandByIdentifier = async (brandId) => {

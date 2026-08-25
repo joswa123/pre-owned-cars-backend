@@ -37,7 +37,11 @@ const seedLocations = async () => {
 
 beforeAll(async () => {
   await sequelize.authenticate();
-  await redisClient.connect();
+  if (!redisClient.isOpen) {
+    try {
+      await redisClient.connect();
+    } catch (e) {}
+  }
   await seedLocations();
 });
 
@@ -68,6 +72,12 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await sequelize.close();
-  await redisClient.disconnect();
+  try {
+    await sequelize.close();
+  } catch (e) {}
+  if (redisClient.isOpen) {
+    try {
+      await redisClient.disconnect();
+    } catch (e) {}
+  }
 });

@@ -17,6 +17,69 @@ exports.createLead = catchAsync(async (req, res) => {
 });
 
 /**
+ * Get lead summary grouped by unique cars for seller dashboard
+ */
+exports.getLeadSummary = catchAsync(async (req, res) => {
+  const sellerId = req.user.id;
+  const { status, limit = 20, cursor } = req.query;
+
+  const result = await leadService.getLeadSummary(sellerId, { status, limit, cursor });
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
+/**
+ * Get drill-down leads timeline for a specific car
+ */
+exports.getCarLeads = catchAsync(async (req, res) => {
+  const sellerId = req.user.id;
+  const { carId } = req.params;
+  const { limit = 20, cursor, source } = req.query;
+
+  const result = await leadService.getCarLeads(sellerId, carId, { limit, cursor, source });
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
+/**
+ * Batch mark leads as read/viewed
+ */
+exports.batchMarkAsRead = catchAsync(async (req, res) => {
+  const sellerId = req.user.id;
+  const { lead_ids } = req.body;
+
+  const result = await leadService.batchMarkAsRead(sellerId, lead_ids);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Leads marked as read successfully',
+    data: result,
+  });
+});
+
+/**
+ * Mark a single lead as read/contacted
+ */
+exports.markAsRead = catchAsync(async (req, res) => {
+  const sellerId = req.user.id;
+  const { id } = req.params;
+
+  const result = await leadService.updateLeadStatus(id, sellerId, req.user.role, 'contacted');
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Lead marked as contacted',
+    data: result,
+  });
+});
+
+/**
  * Get leads for cars owned by the logged-in user (seller)
  */
 exports.getSellerLeads = catchAsync(async (req, res) => {

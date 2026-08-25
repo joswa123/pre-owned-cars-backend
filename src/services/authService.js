@@ -20,15 +20,18 @@ const sequelize = require('../config/database');
  * Helper: Generate Access and Refresh JWT Tokens
  */
 const generateTokens = async (user) => {
+  const accessSecret = process.env.JWT_SECRET || 'pre_owned_cars_jwt_secret';
+  const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'pre_owned_cars_refresh_secret';
+
   const accessToken = jwt.sign(
     { id: user.id, role: user.role },
-    process.env.JWT_SECRET,
+    accessSecret,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
 
   const refreshToken = jwt.sign(
     { id: user.id },
-    process.env.JWT_REFRESH_SECRET,
+    refreshSecret,
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '90d' }
   );
 
@@ -42,6 +45,7 @@ const generateTokens = async (user) => {
     user_id: user.id,
     token: refreshToken,
     expires_at: expiresAt,
+    is_revoked: false,
   });
 
   return { accessToken, refreshToken };

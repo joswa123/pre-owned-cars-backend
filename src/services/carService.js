@@ -1,5 +1,5 @@
-const { Car, CarImage, User, DealerProfile, Wishlist, Lead, State, District, City, Brand, Model, Variant, CarStat } = require('../models');
-const { Op, Sequelize } = require('sequelize');
+const { Car, CarImage, User, DealerProfile, Wishlist, Lead, View, State, District, City, Brand, Model, Variant, CarStat } = require('../models');
+const { Op, Sequelize, fn, col, where } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
@@ -24,6 +24,39 @@ const clearCachePattern = async (pattern) => {
     }
   } catch (err) {
     console.error('Redis clear pattern error:', err);
+  }
+};
+
+/**
+ * Universal cache invalidator for car mutations
+ */
+const invalidateCarCaches = async (carId = null, userId = null) => {
+  try {
+    // 1. Service-level exact & pattern cache keys
+    await clearCache('brands:with_counts');
+    await clearCache('board_type_stats');
+    if (carId) {
+      await clearCache(`car:${carId}`);
+    }
+    await clearCachePattern('cars:*');
+    await clearCachePattern('seller:*');
+    await clearCachePattern('catalog:*');
+    await clearCachePattern('car:leads:*');
+    await clearCachePattern('seller:lead_summary:*');
+    await clearCachePattern('seller:leads:*');
+
+    // 2. HTTP middleware cache keys
+    const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
+    await clearHttpCache('/api/v1/cars');
+    await clearHttpCache('/api/v1/catalog');
+
+    // 3. User Dashboard summary cache
+    if (userId) {
+      const dashboardService = require('./dashboardService');
+      await dashboardService.invalidateDashboardCache(userId);
+    }
+  } catch (err) {
+    console.error('Car cache invalidation error:', err);
   }
 };
 const { mapToDbValues } = require('../validations/carValidation');
@@ -116,28 +149,48 @@ exports.createCar = async (userId, carData, files) => {
     const mapped = mapToDbValues(carData);
 
     let brandId = mapped.brand_id;
+    if (brandId) {
+      const brandExists = await Brand.findByPk(brandId, { transaction });
+      if (!brandExists) brandId = null;
+    }
     if (!brandId && mapped.brand) {
-      let brandObj = await Brand.findOne({ where: { name: mapped.brand }, transaction });
+      let brandObj = await Brand.findOne({
+        where: sequelize.where(fn('LOWER', col('name')), mapped.brand.trim().toLowerCase()),
+        transaction,
+      });
       if (!brandObj) {
-        brandObj = await Brand.create({ name: mapped.brand, logo: '' }, { transaction });
+        brandObj = await Brand.create({ name: mapped.brand.trim(), logo: '' }, { transaction });
       }
       brandId = brandObj.id;
     }
     if (!brandId) throw new AppError('Brand ID or brand name is required.', 400);
 
     let modelId = mapped.model_id;
+    if (modelId) {
+      const modelExists = await Model.findByPk(modelId, { transaction });
+      if (!modelExists) modelId = null;
+    }
     if (!modelId && mapped.model) {
-      // Check if mapped.model is a valid UUID
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.model);
       if (isUuid) {
-        modelId = mapped.model;
-      } else {
-        let modelObj = await Model.findOne({ where: { name: mapped.model, brandId }, transaction });
+        const mObj = await Model.findByPk(mapped.model, { transaction });
+        if (mObj) modelId = mObj.id;
+      }
+      if (!modelId) {
+        let modelObj = await Model.findOne({
+          where: {
+            [Op.and]: [
+              sequelize.where(fn('LOWER', col('name')), mapped.model.trim().toLowerCase()),
+              { brandId }
+            ]
+          },
+          transaction
+        });
         if (!modelObj) {
-          modelObj = await Model.findOne({ where: { name: mapped.model }, transaction });
-        }
-        if (!modelObj) {
-          modelObj = await Model.create({ name: mapped.model, brandId, body_type: mapped.body_type || 'SUV' }, { transaction });
+          modelObj = await Model.create(
+            { name: mapped.model.trim(), brandId, body_type: mapped.body_type || 'SUV' },
+            { transaction }
+          );
         }
         modelId = modelObj.id;
       }
@@ -145,20 +198,37 @@ exports.createCar = async (userId, carData, files) => {
     if (!modelId) throw new AppError('Model ID or model name is required.', 400);
 
     let variantId = mapped.variant_id;
+    if (variantId) {
+      const variantExists = await Variant.findByPk(variantId, { transaction });
+      if (!variantExists) variantId = null;
+    }
     if (!variantId && mapped.variant) {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.variant);
       if (isUuid) {
-        variantId = mapped.variant;
-      } else {
-        let variantObj = await Variant.findOne({ where: { name: mapped.variant, model_id: modelId }, transaction });
+        const vObj = await Variant.findByPk(mapped.variant, { transaction });
+        if (vObj) variantId = vObj.id;
+      }
+      if (!variantId) {
+        let variantObj = await Variant.findOne({
+          where: {
+            [Op.and]: [
+              sequelize.where(fn('LOWER', col('name')), mapped.variant.trim().toLowerCase()),
+              { model_id: modelId }
+            ]
+          },
+          transaction
+        });
         if (!variantObj) {
-          variantObj = await Variant.create({
-            name: mapped.variant,
-            model_id: modelId,
-            fuel_type: mapped.fuel_type,
-            transmission: mapped.transmission,
-            price: mapped.price
-          }, { transaction });
+          variantObj = await Variant.create(
+            {
+              name: mapped.variant.trim(),
+              model_id: modelId,
+              fuel_type: mapped.fuel_type,
+              transmission: mapped.transmission,
+              price: mapped.price
+            },
+            { transaction }
+          );
         }
         variantId = variantObj.id;
       }
@@ -169,20 +239,32 @@ exports.createCar = async (userId, carData, files) => {
     const b2b_listing =
       user.role === 'dealer' && (mapped.b2b_listing === true || mapped.b2b_listing === 'true');
 
-    let stateId = user.state_id || null;
-    let districtId = user.district_id || null;
-    let cityId = user.city_id || null;
+    let stateId = mapped.state_id || user.state_id || null;
+    let districtId = mapped.district_id || user.district_id || null;
+    let cityId = mapped.city_id || user.city_id || null;
 
     // Auto-resolve missing location hierarchy from district
-    if (districtId && (!stateId || !cityId)) {
+    if (districtId) {
       const district = await District.findByPk(districtId, { transaction });
       if (district) {
         stateId = stateId || district.state_id;
-        const city = await City.findOne({ where: { district_id: districtId }, transaction });
-        if (city) {
-          cityId = cityId || city.id;
+        if (!cityId) {
+          const city = await City.findOne({ where: { district_id: districtId }, transaction });
+          if (city) cityId = city.id;
         }
+      } else {
+        districtId = null;
       }
+    }
+
+    if (cityId) {
+      const cityExists = await City.findByPk(cityId, { transaction });
+      if (!cityExists) cityId = null;
+    }
+
+    if (stateId) {
+      const stateExists = await State.findByPk(stateId, { transaction });
+      if (!stateExists) stateId = null;
     }
 
     const carFields = {
@@ -224,16 +306,48 @@ exports.createCar = async (userId, carData, files) => {
         image_url: getFileUrl(files.primary_image[0]),
         is_primary: true,
       });
+    } else if (files && files.images && files.images.length > 0) {
+      imageRecords.push({
+        car_id: car.id,
+        image_url: getFileUrl(files.images[0]),
+        is_primary: true,
+      });
+    } else if (carData.primary_image && typeof carData.primary_image === 'string') {
+      imageRecords.push({
+        car_id: car.id,
+        image_url: carData.primary_image,
+        is_primary: true,
+      });
+    } else if (Array.isArray(carData.images) && carData.images.length > 0) {
+      imageRecords.push({
+        car_id: car.id,
+        image_url: typeof carData.images[0] === 'string' ? carData.images[0] : getFileUrl(carData.images[0]),
+        is_primary: true,
+      });
     }
 
     const secondaryFiles = files ? files.images || [] : [];
-    secondaryFiles.forEach((file) => {
+    const startIdx = (files && (!files.primary_image || !files.primary_image[0]) && files.images && files.images.length > 0) ? 1 : 0;
+    for (let i = startIdx; i < secondaryFiles.length; i++) {
       imageRecords.push({
         car_id: car.id,
-        image_url: getFileUrl(file),
+        image_url: getFileUrl(secondaryFiles[i]),
         is_primary: false,
       });
-    });
+    }
+
+    if ((!files || !files.images || files.images.length === 0) && Array.isArray(carData.images)) {
+      const bodyStartIdx = (!carData.primary_image && carData.images.length > 0) ? 1 : 0;
+      for (let i = bodyStartIdx; i < carData.images.length; i++) {
+        if (typeof carData.images[i] === 'string') {
+          imageRecords.push({
+            car_id: car.id,
+            image_url: carData.images[i],
+            is_primary: false,
+          });
+        }
+      }
+    }
 
     if (imageRecords.length > 0) {
       await CarImage.bulkCreate(imageRecords, { transaction });
@@ -254,13 +368,21 @@ exports.createCar = async (userId, carData, files) => {
       ],
     });
 
-    await clearCache('brands:with_counts');
-    await clearCache('board_type_stats');
-    await clearCachePattern('cars:list:*');
-    return createdCar;
+    await invalidateCarCaches(createdCar.id, userId);
+
+    return transformCarImages(createdCar);
   } catch (error) {
     console.error('❌ CREATE CAR SERVICE ERROR:', error);
     await transaction.rollback();
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      throw new AppError('Foreign key constraint error: Brand, Model, Variant, or Location not found in database.', 400);
+    }
+    if (error.name === 'SequelizeValidationError') {
+      throw new AppError(error.errors?.[0]?.message || 'Database validation error', 400);
+    }
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      throw new AppError('Duplicate record detected for this car listing.', 400);
+    }
     throw error;
   }
 };
@@ -550,6 +672,8 @@ exports.getCarById = async (carId, userId = null) => {
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: Lead, as: 'leads', attributes: ['id'], required: false },
+        { model: CarStat, as: 'stats', required: false },
       ],
     });
     if (!car) throw new AppError('Car not found.', 404);
@@ -562,11 +686,46 @@ exports.getCarById = async (carId, userId = null) => {
     }
 
     const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-    transformedCar = transformCarImages(car, baseUrl);
+    const baseTransformed = transformCarImages(car, baseUrl);
+
+    // Compute live metrics
+    const stats = car.stats || {};
+    const [dbViewsCount, dbWishlistCount] = await Promise.all([
+      View.count({ where: { car_id: car.id } }),
+      Wishlist.count({ where: { car_id: car.id } }),
+    ]);
+
+    const viewsCount = Math.max(stats.views_count || 0, dbViewsCount);
+    const wishlistCount = Math.max(stats.wishlist_count || 0, dbWishlistCount);
+    const enquiriesCount = stats.enquiries_count || (car.leads?.length || 0);
+
+    const metrics = {
+      views: viewsCount,
+      views_count: viewsCount,
+      enquiries: enquiriesCount,
+      enquiry_count: enquiriesCount,
+      calls: stats.calls_count || 0,
+      calls_count: stats.calls_count || 0,
+      whatsapp: stats.whatsapp_count || 0,
+      whatsapp_count: stats.whatsapp_count || 0,
+      messages: stats.messages_count || 0,
+      messages_count: stats.messages_count || 0,
+      wishlist_count: wishlistCount,
+      wishlists: wishlistCount,
+    };
+
+    transformedCar = {
+      ...baseTransformed,
+      views: viewsCount,
+      views_count: viewsCount,
+      wishlist_count: wishlistCount,
+      enquiry_count: enquiriesCount,
+      metrics,
+    };
 
     try {
       if (redisClient.isOpen) {
-        await redisClient.setEx(cacheKey, 300, JSON.stringify(transformedCar));
+        await redisClient.setEx(cacheKey, 60, JSON.stringify(transformedCar));
       }
     } catch (err) {
       console.error('Redis set cache error in getCarById:', err);
@@ -830,10 +989,8 @@ exports.updateCar = async (carId, userId, updateData, files) => {
       ],
     });
 
-    await clearCache('brands:with_counts');
-    await clearCache('board_type_stats');
-    await clearCache(`car:${carId}`);
-    await clearCachePattern('cars:list:*');
+    await invalidateCarCaches(updatedCar.id, userId);
+
     return updatedCar;
   } catch (error) {
     await transaction.rollback();
@@ -868,8 +1025,7 @@ exports.deleteCarImage = async (userId, carId, imageId, userRole) => {
     }
 
     await transaction.commit();
-    await clearCache(`car:${carId}`);
-    await clearCachePattern('cars:list:*');
+    await invalidateCarCaches(carId, userId);
     return { success: true };
   } catch (error) {
     await transaction.rollback();
@@ -905,13 +1061,7 @@ exports.markCarAsSold = async (carId, userId, userRole = null) => {
 
   await car.update({ status: 'sold' });
 
-  // Invalidate Redis cache
-  const { clearCache: clearMiddlewareCache } = require('../middlewares/cacheMiddleware');
-  await clearCache(`car:${carId}`);
-  await clearCachePattern('cars:*');
-  await clearCache('brands:with_counts');
-  await clearCache('board_type_stats');
-  clearMiddlewareCache('/api/v1/cars');
+  await invalidateCarCaches(car.id, car.user_id);
 
   const updatedCar = await Car.findByPk(car.id, {
     include: [
@@ -940,10 +1090,8 @@ exports.deleteCar = async (carId, userId) => {
   // Soft delete: update status and set deleted_at
   await car.update({ status: 'deleted', deleted_at: new Date() });
 
-  await clearCache('brands:with_counts');
-  await clearCache('board_type_stats');
-  await clearCache(`car:${carId}`);
-  await clearCachePattern('cars:list:*');
+  await invalidateCarCaches(carId, userId);
+
   return { success: true };
 };
 
@@ -1025,10 +1173,8 @@ exports.updateCarStatus = async (carId, status, adminId) => {
   if (!car) throw new AppError('Car not found.', 404);
 
   await car.update({ status });
-  await clearCache('brands:with_counts');
-  await clearCache('board_type_stats');
-  await clearCache(`car:${carId}`);
-  await clearCachePattern('cars:list:*');
+  await invalidateCarCaches(carId, car.user_id);
+
   return car;
 };
 
@@ -1040,10 +1186,8 @@ exports.toggleFeatured = async (carId, is_featured) => {
   if (!car) throw new AppError('Car not found.', 404);
   const status = is_featured ? 'active' : 'deleted';
   await car.update({ status });
-  await clearCache('brands:with_counts');
-  await clearCache('board_type_stats');
-  await clearCache(`car:${carId}`);
-  await clearCachePattern('cars:list:*');
+  await invalidateCarCaches(carId, car.user_id);
+
   return car;
 };
 
@@ -1071,16 +1215,19 @@ exports.getBoardTypeStats = async () => {
       group: ['board_type']
     }),
     Car.count({
-      where: { status: 'active', b2b_listing: true }
+      where: {
+        status: 'active',
+        b2b_listing: true,
+      }
     })
   ]);
 
-  const stats = { 'OWN BOARD': 0, 'T-BOARD': 0, 'COMMERCIAL': 0, 'B2B': b2bCount };
+  const stats = { 'OWN BOARD': 0, 'T-BOARD': 0, 'COMMERCIAL': 0, 'B2B': parseInt(b2bCount, 10) || 0 };
   results.forEach(r => {
     if (r.board_type) {
-      const key = r.board_type.toUpperCase();
+      const key = r.board_type.toString().trim().toUpperCase();
       if (stats[key] !== undefined) {
-        stats[key] = parseInt(r.get('count'));
+        stats[key] = parseInt(r.get('count'), 10) || 0;
       }
     }
   });
@@ -1096,11 +1243,31 @@ exports.getBoardTypeStats = async () => {
 };
 
 /**
- * Record a car view (High-scale atomic buffer)
+ * Record a car view (Unique per user tracking & live metrics)
  */
-exports.recordView = async (carId, userId, ipAddress = null) => {
-  const analyticsService = require('./analyticsService');
-  await analyticsService.recordInteraction({ carId, userId, type: 'view', ipAddress });
+exports.recordView = async (carId, userId = null, ipAddress = null) => {
+  if (userId) {
+    const existing = await View.findOne({
+      where: { car_id: carId, user_id: userId },
+    });
+    if (!existing) {
+      await View.create({ car_id: carId, user_id: userId, timestamp: new Date() });
+      const analyticsService = require('./analyticsService');
+      await analyticsService.recordInteraction({ carId, userId, type: 'view', ipAddress });
+    } else {
+      // Update the timestamp to reflect the latest view time without inflating records
+      await existing.update({ timestamp: new Date() });
+    }
+  } else {
+    // Guest view: record aggregated metrics with rate limiting
+    const analyticsService = require('./analyticsService');
+    await analyticsService.recordInteraction({ carId, userId: null, type: 'view', ipAddress });
+  }
+
+  // Invalidate single car cache & HTTP middleware cache
+  await clearCache(`car:${carId}`);
+  const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
+  await clearHttpCache(`/api/v1/cars/${carId}`);
 };
 
 /**
