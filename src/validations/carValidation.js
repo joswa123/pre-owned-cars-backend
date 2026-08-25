@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
 const FUEL_TYPES_IN         = ['petrol', 'diesel', 'electric', 'hybrid', 'cng', 'lpg'];
-const TRANSMISSION_TYPES_IN = ['manual', 'automatic', 'amt', 'cvt', 'dct'];
+const TRANSMISSION_TYPES_IN = ['manual', 'automatic', 'amt', 'imt', 'cvt', 'dct'];
 const OWNERSHIP_TYPES_IN    = ['1st owner', '2nd owner', '3rd owner', '4th+ owner'];
 const INSURANCE_TYPE_IN     = ['comprehensive', 'third party', 'not insured'];
 const BOARD_TYPES_IN        = ['own board', 't-board', 'commercial'];
@@ -114,6 +114,7 @@ const TRANSMISSION_MAP = {
   manual:    'Manual',
   automatic: 'Automatic',
   amt:       'AMT',
+  imt:       'IMT',
   cvt:       'CVT',
   dct:       'DCT',
 };

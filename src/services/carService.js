@@ -1311,10 +1311,13 @@ exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limi
   }
 
   const result = await Car.findAndCountAll({
+    distinct: true,
+    col: 'id',
     where: whereClause,
     attributes: [
-      'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
-      'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
+      'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
+      'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id', 'body_type',
+      'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
     ],
     include: [
       {
@@ -1323,11 +1326,31 @@ exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limi
         attributes: ['id', 'name'],
       },
       {
+        model: Model,
+        as: 'carModel',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: Variant,
+        as: 'carVariant',
+        attributes: ['id', 'name'],
+      },
+      {
         model: CarImage,
         as: 'images',
         attributes: ['id', 'image_url', 'is_primary'],
         where: { is_primary: true },
         required: false,
+      },
+      {
+        model: State,
+        as: 'state',
+        attributes: ['id', 'name'],
+      },
+      {
+        model: District,
+        as: 'district',
+        attributes: ['id', 'name'],
       },
       {
         model: City,
@@ -1340,8 +1363,11 @@ exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limi
     offset,
   });
 
+  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  const transformedCars = result.rows.map((car) => transformCarImages(car, baseUrl));
+
   const responseData = {
-    listings: result.rows,
+    listings: transformedCars,
     pagination: {
       page,
       limit,
