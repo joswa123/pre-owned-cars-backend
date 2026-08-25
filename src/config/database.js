@@ -54,8 +54,8 @@ const sequelize = new Sequelize(
       : false,
     dialectOptions,
     pool: {
-      max: 20,
-      min: 2,
+      max: 4,
+      min: 1,
       acquire: 30000,
       idle: 10000,
       evict: 1000,
