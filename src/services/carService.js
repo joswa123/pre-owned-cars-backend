@@ -1246,6 +1246,18 @@ exports.getBoardTypeStats = async () => {
  * Record a car view (Unique per user tracking & live metrics)
  */
 exports.recordView = async (carId, userId = null, ipAddress = null) => {
+  if (!userId) return; // guests not tracked
+
+  // Fetch the car to check owner
+  const car = await Car.findByPk(carId, { attributes: ['user_id'] });
+  if (!car) return;
+  if (car.user_id === userId) return; // ✅ Don't count seller's own views
+
+  const existing = await View.findOne({ where: { car_id: carId, user_id: userId } });
+  if (!existing) {
+    await View.create({ car_id: carId, user_id: userId });
+  }
+  
   if (userId) {
     const existing = await View.findOne({
       where: { car_id: carId, user_id: userId },

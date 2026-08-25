@@ -34,17 +34,14 @@ exports.getLeadSummary = catchAsync(async (req, res) => {
 /**
  * Get drill-down leads timeline for a specific car
  */
+// In leadController.js
 exports.getCarLeads = catchAsync(async (req, res) => {
-  const sellerId = req.user.id;
   const { carId } = req.params;
-  const { limit = 20, cursor, source } = req.query;
+  const { limit = 20, cursor = null, source = null } = req.query; // ✅ source must be extracted
+  const sellerId = req.user.id; // or req.user.id
 
   const result = await leadService.getCarLeads(sellerId, carId, { limit, cursor, source });
-
-  res.status(200).json({
-    status: 'success',
-    data: result,
-  });
+  res.json({ status: 'success', data: result });
 });
 
 /**
