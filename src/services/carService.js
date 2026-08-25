@@ -989,7 +989,7 @@ exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limi
   const result = await Car.findAndCountAll({
     where: whereClause,
     attributes: [
-      'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven',
+      'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
       'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
     ],
     include: [
