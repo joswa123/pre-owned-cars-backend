@@ -1390,16 +1390,22 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           targetCar.body_type ? { body_type: targetCar.body_type } : null
         ].filter(Boolean)
       },
-      attributes: [
-        'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
-        'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id', 'body_type'
-      ],
-      include: [
-        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-        { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-        { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-        { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
-      ]
+ attributes: [
+  'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+  'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
+  'created_at', 'brand_id', 'body_type',
+  'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
+],
+    include: [
+  { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+  { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+  { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+  { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+  // Add these three:
+  { model: State, as: 'state', attributes: ['name'] },
+  { model: District, as: 'district', attributes: ['name'] },
+  { model: City, as: 'city', attributes: ['name'] }
+]
     });
 
     let scoredCandidates = candidates.map(car => {
@@ -1438,16 +1444,22 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         },
         order: [['created_at', 'DESC']],
         limit: 4,
-        attributes: [
-          'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
-          'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
-        ],
+       attributes: [
+  'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+  'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
+  'created_at', 'brand_id', 'body_type',
+  'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
+],
         include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
-        ]
+  { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+  { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+  { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+  { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+  // Add these three:
+  { model: State, as: 'state', attributes: ['name'] },
+  { model: District, as: 'district', attributes: ['name'] },
+  { model: City, as: 'city', attributes: ['name'] }
+]
       });
       scoredCandidates = fallbackCars.map(car => ({ car, score: 0 }));
     }
@@ -1529,15 +1541,21 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           status: 'active'
         },
         attributes: [
-          'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
-          'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
-        ],
+  'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+  'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
+  'created_at', 'brand_id', 'body_type',
+  'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
+],
         include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },  // Add this
-          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] }, // Add this
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
-        ]
+  { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+  { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+  { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+  { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+  // Add these three:
+  { model: State, as: 'state', attributes: ['name'] },
+  { model: District, as: 'district', attributes: ['name'] },
+  { model: City, as: 'city', attributes: ['name'] }
+]
       });
 
       // Order correctly based on the ids
