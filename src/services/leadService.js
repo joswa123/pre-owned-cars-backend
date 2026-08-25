@@ -442,9 +442,13 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
     car_id: carId,
   };
 
-  if (source && source !== 'all') {
-    whereClause.source = source;
-  }
+  const allowedSources = ['whatsapp', 'call', 'message'];
+if (source && allowedSources.includes(source)) {
+  whereClause.source = source;
+} else if (source) {
+  // Invalid source: ignore or throw validation error
+  throw new AppError('Invalid source filter. Allowed: whatsapp, call, message', 400);
+}
 
   const decodedCursor = decodeCursor(cursor);
   if (decodedCursor) {
