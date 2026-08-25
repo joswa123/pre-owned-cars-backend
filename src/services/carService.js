@@ -1402,12 +1402,12 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           targetCar.body_type ? { body_type: targetCar.body_type } : null
         ].filter(Boolean)
       },
- attributes: [
-  'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
-  'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
-  'created_at', 'brand_id', 'body_type',
-  'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
-],
+      attributes: [
+        'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+        'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
+        'created_at', 'brand_id', 'body_type',
+        'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
+      ],
     include: [
   { model: Brand, as: 'brand', attributes: ['id', 'name'] },
   { model: Model, as: 'carModel', attributes: ['id', 'name'] },
@@ -1456,12 +1456,12 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         },
         order: [['created_at', 'DESC']],
         limit: 4,
-       attributes: [
-  'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
-  'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
-  'created_at', 'brand_id', 'body_type',
-  'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
-],
+        attributes: [
+          'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+          'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
+          'created_at', 'brand_id', 'body_type',
+          'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
+        ],
         include: [
   { model: Brand, as: 'brand', attributes: ['id', 'name'] },
   { model: Model, as: 'carModel', attributes: ['id', 'name'] },
@@ -1553,11 +1553,11 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           status: 'active'
         },
         attributes: [
-  'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
-  'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
-  'created_at', 'brand_id', 'body_type',
-  'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
-],
+          'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+          'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
+          'created_at', 'brand_id', 'body_type',
+          'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
+        ],
         include: [
   { model: Brand, as: 'brand', attributes: ['id', 'name'] },
   { model: Model, as: 'carModel', attributes: ['id', 'name'] },
