@@ -35,7 +35,7 @@ const transformCarImages = (car, baseUrl = null) => {
 
   const getOptimizedImageUrl = (url) => {
     if (!url) return null;
-    
+
     let absUrl = url;
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       absUrl = `${base}${url.startsWith('/') ? '' : '/'}${url}`;
@@ -47,7 +47,7 @@ const transformCarImages = (car, baseUrl = null) => {
         absUrl = absUrl.replace('/upload/', '/upload/f_auto,q_auto,w_800,c_limit/');
       }
     }
-    
+
     return absUrl;
   };
 
@@ -244,7 +244,7 @@ exports.getCars = async (
   userId = null
 ) => {
   const cacheKey = `cars:list:${Buffer.from(JSON.stringify({ filters, page, limit, sortBy, sortOrder })).toString('base64')}`;
-  
+
   let cachedData;
   try {
     const cached = await redisClient.get(cacheKey);
@@ -266,7 +266,7 @@ exports.getCars = async (
     if (filters.b2b_listing !== undefined) {
       where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
     }
-    
+
     if (filters.board_type) {
       if (filters.board_type.toUpperCase() === 'B2B') {
         where.b2b_listing = true;
@@ -274,7 +274,7 @@ exports.getCars = async (
         where.board_type = filters.board_type;
       }
     }
-    
+
     // Price range
     if (filters.min_price) where.price = { [Op.gte]: parseFloat(filters.min_price) };
     if (filters.max_price) {
@@ -400,11 +400,11 @@ exports.getCars = async (
 
     const queryResult = await Car.findAndCountAll({
       attributes: [
-        'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven', 
-        'fuel_type', 'transmission', 'ownership', 'body_type', 'board_type', 
-        'insurance_expiry_date', 'insurance_type', 'b2b_listing', 'posted_by_type', 
-        'status', 'description', 'color', 'number_plate', 'prior_appointemnts', 
-        'state_id', 'district_id', 'city_id', 'brand_id', 'user_id', 
+        'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
+        'fuel_type', 'transmission', 'ownership', 'body_type', 'board_type',
+        'insurance_expiry_date', 'insurance_type', 'b2b_listing', 'posted_by_type',
+        'status', 'description', 'color', 'number_plate', 'prior_appointemnts',
+        'state_id', 'district_id', 'city_id', 'brand_id', 'user_id',
         'created_at', 'updated_at', 'deleted_at'
       ],
       distinct: true,
@@ -427,7 +427,7 @@ exports.getCars = async (
     });
 
     count = queryResult.count;
-    
+
     // Limit images to 6 per car
     queryResult.rows.forEach(car => {
       if (car.images && car.images.length > 6) {
@@ -475,7 +475,7 @@ exports.getCars = async (
  */
 exports.getCarById = async (carId, userId = null) => {
   const cacheKey = `car:${carId}`;
-  
+
   let transformedCar;
   try {
     const cached = await redisClient.get(cacheKey);
@@ -501,7 +501,7 @@ exports.getCarById = async (carId, userId = null) => {
       ],
     });
     if (!car) throw new AppError('Car not found.', 404);
-    
+
     // Limit images to 6 (1 primary + 5 secondary)
     if (car.images && car.images.length > 6) {
       const primary = car.images.find(img => img.is_primary) || car.images[0];
@@ -560,7 +560,7 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
 exports.getUserCars = async (userId, status = null) => {
   const whereClause = { user_id: userId };
   let queryModel = Car;
-  
+
   if (status) {
     whereClause.status = status;
     if (status === 'deleted') {
@@ -689,7 +689,7 @@ exports.updateCar = async (carId, userId, updateData, files) => {
 
     if (files) {
       const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
-      
+
       const imageRecords = [];
 
       if (files.primary_image && files.primary_image[0]) {
@@ -787,7 +787,7 @@ exports.deleteCar = async (carId, userId) => {
 
   // Soft delete: update status and set deleted_at
   await car.update({ status: 'deleted', deleted_at: new Date() });
-  
+
   await clearCache('brands:with_counts');
   await clearCache('board_type_stats');
   await clearCache(`car:${carId}`);
@@ -1043,7 +1043,7 @@ exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limi
 exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
   const cacheKeySimilar = `similar:${carId}:${page}:${limit}`;
   const cacheKeyRecommended = `recommended:${userId || 'trending'}`;
-  
+
   let similarCarsData = null;
   let recommendedCarsData = null;
 
@@ -1051,7 +1051,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
     if (redisClient.isOpen) {
       const cachedSimilar = await redisClient.get(cacheKeySimilar);
       if (cachedSimilar) similarCarsData = JSON.parse(cachedSimilar);
-      
+
       const cachedRec = await redisClient.get(cacheKeyRecommended);
       if (cachedRec) recommendedCarsData = JSON.parse(cachedRec);
     }
@@ -1097,12 +1097,12 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
       if (car.body_type && targetCar.body_type && car.body_type.toLowerCase() === targetCar.body_type.toLowerCase()) score += 15;
       if (car.fuel_type && targetCar.fuel_type && car.fuel_type.toLowerCase() === targetCar.fuel_type.toLowerCase()) score += 5;
       if (car.transmission && targetCar.transmission && car.transmission.toLowerCase() === targetCar.transmission.toLowerCase()) score += 5;
-      
+
       if (targetCar.price && car.price) {
         const diff = Math.abs(parseFloat(car.price) - parseFloat(targetCar.price)) / parseFloat(targetCar.price);
         if (diff <= 0.20) score += 20;
       }
-      
+
       if (targetCar.year && car.year) {
         if (Math.abs(car.year - targetCar.year) <= 3) score += 10;
       }
@@ -1157,7 +1157,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
       if (redisClient.isOpen) {
         await redisClient.setEx(cacheKeySimilar, 300, JSON.stringify(similarCarsData));
       }
-    } catch (err) {}
+    } catch (err) { }
   }
 
   // 2. Fetch Recommended Cars
@@ -1183,7 +1183,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         type: sequelize.QueryTypes.SELECT
       });
       recommendedCarIds = coViewed.map(r => r.car_id);
-    } catch(e) {
+    } catch (e) {
       console.error('Collab filtering error:', e);
     }
 
@@ -1217,15 +1217,17 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           status: 'active'
         },
         attributes: [
-          'id', 'model', 'variant', 'year', 'price', 'price_negotiable', 'km_driven',
+          'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
           'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id'
         ],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: Model, as: 'carModel', attributes: ['id', 'name'] },  // Add this
+          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] }, // Add this
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false }
         ]
       });
-      
+
       // Order correctly based on the ids
       recommendedCarsData = recommendedCarIds.map(id => recCars.find(c => c.id === id)).filter(Boolean);
     } else {
@@ -1236,7 +1238,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
       if (redisClient.isOpen) {
         await redisClient.setEx(cacheKeyRecommended, 300, JSON.stringify(recommendedCarsData));
       }
-    } catch (err) {}
+    } catch (err) { }
   }
 
   // Deduplication: Keep in similar, remove from recommended
