@@ -136,9 +136,9 @@ app.get('/health', async (req, res) => {
 // each replica will return a different pid / hostname.
 app.get('/server-id', (req, res) => {
   res.status(200).json({
-    pid:      process.pid,          // unique per Node.js process
+    pid: process.pid,          // unique per Node.js process
     hostname: os.hostname(),        // unique per container / Render instance
-    env:      process.env.NODE_ENV || 'development',
+    env: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString(),
   });
 });

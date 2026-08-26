@@ -1,4 +1,4 @@
-const { Car, CarImage, User, DealerProfile, Wishlist, Lead, View, State, District, City, Brand, Model, Variant, CarStat } = require('../models');
+const { Car, CarImage, User, DealerProfile, Wishlist, Lead, View, State, District, City, Brand, Model, Variant, CarStat, CarType } = require('../models');
 const { Op, Sequelize, fn, col, where } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -71,6 +71,27 @@ const sellerInclude = {
   ],
 };
 
+const CAR_TYPE_ICONS = {
+  convertible: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720053/convertible_zuiut0.png',
+  suv: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720105/SUV_utci1f.png',
+  coupe: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720117/coupe_dzjsl3.png',
+  crossover: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720132/crossover_udktne.png',
+  hatchback: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720145/hatchback_aye9d4.png',
+  mini_van: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720153/mini_van_t2wn6l.png',
+  'mini van': 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720153/mini_van_t2wn6l.png',
+  'van minivan': 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720153/mini_van_t2wn6l.png',
+  pickup: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720171/pickup_btpxyv.png',
+  sports_sedan: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720582/17709cebb171220991dcca357d428727_ghcvxp.webp',
+  'sports sedan': 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720582/17709cebb171220991dcca357d428727_ghcvxp.webp',
+  notchback: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787721301/notchback_ackoxm.webp',
+  muv: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787722308/muv.webp',
+  estate: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787722588/estate.webp',
+  wagon: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787722588/estate.webp',
+  sedan: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720191/sedan_pskci0.png',
+  sports_car: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787723212/racing-car-side-view-silhouette-svgrepo-com_1_sur8g5.webp',
+  'sports car': 'https://res.cloudinary.com/fub1whjx/image/upload/v1787723212/racing-car-side-view-silhouette-svgrepo-com_1_sur8g5.webp',
+};
+
 /**
  * Helper to transform car images into absolute URLs and flatten seller district & company_name
  */
@@ -112,6 +133,24 @@ const transformCarImages = (car, baseUrl = null) => {
       company_name: sellerCompanyName,
     };
     delete carJson.seller.dealerProfile;
+  }
+
+  // Ensure carType object has icon_url formatted
+  if (carJson.carType) {
+    const typeObj = typeof carJson.carType.toJSON === 'function' ? carJson.carType.toJSON() : carJson.carType;
+    carJson.carType = {
+      ...typeObj,
+      icon_url: getOptimizedImageUrl(typeObj.icon_url),
+    };
+  } else if (carJson.body_type) {
+    const normalizedName = carJson.body_type.toString().toLowerCase().trim();
+    const fallbackIcon = CAR_TYPE_ICONS[normalizedName] || CAR_TYPE_ICONS[normalizedName.replace(/[\s-]+/g, '_')] || null;
+    if (fallbackIcon) {
+      carJson.carType = {
+        name: carJson.body_type,
+        icon_url: getOptimizedImageUrl(fallbackIcon),
+      };
+    }
   }
 
   return {
@@ -362,6 +401,7 @@ exports.createCar = async (userId, carData, files) => {
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+        { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -586,6 +626,7 @@ exports.getCars = async (
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+        { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -669,6 +710,7 @@ exports.getCarById = async (carId, userId = null) => {
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+        { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -749,6 +791,7 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -799,6 +842,7 @@ exports.getUserCars = async (userId, options = {}) => {
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: Model, as: 'carModel', attributes: ['id', 'name'] },
       { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+      { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -983,6 +1027,7 @@ exports.updateCar = async (carId, userId, updateData, files) => {
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+        { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -1125,6 +1170,7 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
@@ -1257,7 +1303,7 @@ exports.recordView = async (carId, userId = null, ipAddress = null) => {
   if (!existing) {
     await View.create({ car_id: carId, user_id: userId });
   }
-  
+
   if (userId) {
     const existing = await View.findOne({
       where: { car_id: carId, user_id: userId },
@@ -1334,6 +1380,11 @@ exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limi
         model: Variant,
         as: 'carVariant',
         attributes: ['id', 'name'],
+      },
+      {
+        model: CarType,
+        as: 'carType',
+        attributes: ['id', 'name', 'icon_url'],
       },
       {
         model: CarImage,
@@ -1434,16 +1485,16 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         'created_at', 'brand_id', 'body_type',
         'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
       ],
-    include: [
-  { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-  { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-  { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-  { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-  // Add these three:
-  { model: State, as: 'state', attributes: ['name'] },
-  { model: District, as: 'district', attributes: ['name'] },
-  { model: City, as: 'city', attributes: ['name'] }
-]
+      include: [
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+        { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+        { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
+        { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+        { model: State, as: 'state', attributes: ['name'] },
+        { model: District, as: 'district', attributes: ['name'] },
+        { model: City, as: 'city', attributes: ['name'] }
+      ]
     });
 
     let scoredCandidates = candidates.map(car => {
@@ -1489,15 +1540,15 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
         ],
         include: [
-  { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-  { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-  { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-  { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-  // Add these three:
-  { model: State, as: 'state', attributes: ['name'] },
-  { model: District, as: 'district', attributes: ['name'] },
-  { model: City, as: 'city', attributes: ['name'] }
-]
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+          { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
+          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+          { model: State, as: 'state', attributes: ['name'] },
+          { model: District, as: 'district', attributes: ['name'] },
+          { model: City, as: 'city', attributes: ['name'] }
+        ]
       });
       scoredCandidates = fallbackCars.map(car => ({ car, score: 0 }));
     }
@@ -1585,15 +1636,15 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
         ],
         include: [
-  { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-  { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-  { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-  { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-  // Add these three:
-  { model: State, as: 'state', attributes: ['name'] },
-  { model: District, as: 'district', attributes: ['name'] },
-  { model: City, as: 'city', attributes: ['name'] }
-]
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+          { model: CarType, as: 'carType', attributes: ['id', 'name', 'icon_url'] },
+          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
+          { model: State, as: 'state', attributes: ['name'] },
+          { model: District, as: 'district', attributes: ['name'] },
+          { model: City, as: 'city', attributes: ['name'] }
+        ]
       });
 
       // Order correctly based on the ids

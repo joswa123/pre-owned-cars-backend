@@ -1,6 +1,7 @@
 const { CarType, FuelType, Transmission } = require('../models');
 const sequelize = require('../config/database');
 const logger = require('./logger');
+const updateCarTypeIcons = require('../../scripts/update-car-type-icons');
 
 const BODY_TYPES = [
   'Sedan',
@@ -87,6 +88,9 @@ async function seedReferenceData() {
         });
       }
     }
+
+    // 4. Update and sync CarType Icons
+    await updateCarTypeIcons();
 
     logger.info('✅ Reference metadata (Body types, Fuel types, Transmissions) verified and seeded.');
   } catch (error) {

@@ -13,6 +13,10 @@ const CarType = sequelize.define('CarType', {
     allowNull: false,
     unique: true,
   },
+  icon_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
 }, {
   tableName: 'car_types',
   timestamps: true,
