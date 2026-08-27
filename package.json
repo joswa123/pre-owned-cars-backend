@@ -8,7 +8,7 @@
     "dev": "nodemon src/server.js",
     "test": "cross-env NODE_ENV=test jest --runInBand --detectOpenHandles",
     "db:init": "node scripts/db-init.js",
-    "db:migrate": "npx sequelize-cli db:migrate",
+    "db:migrate": "npx --yes sequelize-cli db:migrate",
     "catalog:seed": "node scripts/seed-car-catalog.js",
     "vercel-build": "npm ci --omit=dev",
     "render-build": "npm install --legacy-peer-deps && npm run db:migrate",

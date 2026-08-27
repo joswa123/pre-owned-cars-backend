@@ -99,7 +99,7 @@ const Car = sequelize.define('Car', {
     allowNull: false,
   },
   transmission: {
-    type: DataTypes.ENUM('Manual', 'Automatic', 'AMT', 'CVT', 'DCT'),
+    type: DataTypes.ENUM('Manual', 'Automatic', 'Clutchless Manual', 'CVT', 'DCT'),
     allowNull: false,
   },
   ownership: {
