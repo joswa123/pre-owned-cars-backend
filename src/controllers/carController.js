@@ -47,6 +47,9 @@ exports.getCars = catchAsync(async (req, res) => {
   if (filters.include_expired !== undefined) {
     filters.include_expired = filters.include_expired === 'true';
   }
+  if (filters.has_wishlist !== undefined) {
+    filters.has_wishlist = filters.has_wishlist === 'true' || filters.has_wishlist === true;
+  }
 
   const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder, userId);
   res.status(200).json({ status: "success", data: result });

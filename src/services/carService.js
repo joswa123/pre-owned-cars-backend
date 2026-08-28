@@ -607,6 +607,29 @@ exports.getCars = async (
     if (filters.district_id) where.district_id = filters.district_id;
     if (filters.city_id) where.city_id = filters.city_id;
 
+    // Wishlist filters
+    if (filters.has_wishlist !== undefined && filters.has_wishlist !== null && filters.has_wishlist !== '') {
+      const hasWishlist = filters.has_wishlist === 'true' || filters.has_wishlist === true;
+      if (!where[Op.and]) where[Op.and] = [];
+      where[Op.and].push(
+        sequelize.literal(`(
+          SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
+        ) ${hasWishlist ? '> 0' : '= 0'}`)
+      );
+    }
+
+    if (filters.min_wishlist !== undefined && filters.min_wishlist !== null && filters.min_wishlist !== '') {
+      const minCount = parseInt(filters.min_wishlist, 10);
+      if (!isNaN(minCount)) {
+        if (!where[Op.and]) where[Op.and] = [];
+        where[Op.and].push(
+          sequelize.literal(`(
+            SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
+          ) >= ${minCount}`)
+        );
+      }
+    }
+
     const queryResult = await Car.findAndCountAll({
       attributes: [
         'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
@@ -614,7 +637,13 @@ exports.getCars = async (
         'insurance_expiry_date', 'insurance_type', 'b2b_listing', 'posted_by_type',
         'status', 'description', 'color', 'number_plate', 'prior_appointemnts',
         'state_id', 'district_id', 'city_id', 'brand_id', 'user_id',
-        'created_at', 'updated_at', 'deleted_at'
+        'created_at', 'updated_at', 'deleted_at',
+        [
+          sequelize.literal(`(
+            SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
+          )`),
+          'wishlist_count'
+        ]
       ],
       distinct: true,
       col: 'id',
@@ -650,8 +679,10 @@ exports.getCars = async (
     transformedCars = queryResult.rows.map((car) => {
       const transformed = transformCarImages(car, baseUrl);
       const is_expired = transformed.created_at && (Date.now() - new Date(transformed.created_at).getTime()) > 90 * 24 * 60 * 60 * 1000;
+      const wishlistCount = parseInt(car.get('wishlist_count') || car.wishlist_count || transformed.wishlist_count || 0, 10) || 0;
       return {
         ...transformed,
+        wishlist_count: wishlistCount,
         enquiry_count: (userId && userId === car.user_id) ? (car.leads?.length || 0) : null,
         is_expired,
       };
@@ -701,7 +732,18 @@ exports.getCarById = async (carId, userId = null) => {
 
   if (!transformedCar) {
     const car = await Car.findByPk(carId, {
-      attributes: { include: ['created_at', 'deleted_at'] },
+      attributes: {
+        include: [
+          'created_at',
+          'deleted_at',
+          [
+            sequelize.literal(`(
+              SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
+            )`),
+            'wishlist_count'
+          ]
+        ]
+      },
       include: [
         { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
         sellerInclude,
@@ -735,7 +777,8 @@ exports.getCarById = async (carId, userId = null) => {
     ]);
 
     const viewsCount = Math.max(stats.views_count || 0, dbViewsCount);
-    const wishlistCount = Math.max(stats.wishlist_count || 0, dbWishlistCount);
+    const subqueryWishlistCount = parseInt(car.get('wishlist_count') || 0, 10);
+    const wishlistCount = Math.max(stats.wishlist_count || 0, dbWishlistCount, subqueryWishlistCount);
     const enquiriesCount = stats.enquiries_count || (car.leads?.length || 0);
 
     const metrics = {

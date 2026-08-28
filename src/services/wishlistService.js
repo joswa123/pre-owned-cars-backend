@@ -13,6 +13,19 @@ const clearCache = async (key) => {
   }
 };
 
+const clearCacheByPattern = async (pattern) => {
+  try {
+    if (redisClient.isOpen) {
+      const keys = await redisClient.keys(pattern);
+      if (keys && keys.length > 0) {
+        await redisClient.del(keys);
+      }
+    }
+  } catch (err) {
+    console.error(`Redis clear cache pattern error for ${pattern}:`, err);
+  }
+};
+
 const invalidateWishlistCaches = async (userId, carId, sellerId = null) => {
   try {
     const dashboardService = require('./dashboardService');
@@ -21,8 +34,10 @@ const invalidateWishlistCaches = async (userId, carId, sellerId = null) => {
 
     if (carId) {
       await clearCache(`car:${carId}`);
+      await clearCacheByPattern('cars:list:*');
       const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
       await clearHttpCache(`/api/v1/cars/${carId}`);
+      await clearHttpCache('/api/v1/cars');
       await clearHttpCache('/api/v1/wishlist');
     }
   } catch (e) {
