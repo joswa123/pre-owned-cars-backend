@@ -585,6 +585,14 @@ exports.getCars = async (
       where.transmission = filters.transmission;
     }
 
+    // Colors
+    if (filters.colors && filters.colors.length) {
+      const colors = Array.isArray(filters.colors) ? filters.colors : filters.colors.split(',');
+      where.color = { [Op.in]: colors };
+    } else if (filters.color) {
+      where.color = filters.color;
+    }
+
     // Posted within days
     if (filters.posted_within_days) {
       const days = parseInt(filters.posted_within_days);

@@ -256,6 +256,8 @@ const carQuerySchema = Joi.object({
   body_type: Joi.string().optional(),
   board_type: Joi.string().optional(),
   status: Joi.string().optional(),
+  color: Joi.string().optional(),
+  colors: Joi.string().optional(),
   has_wishlist: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   min_wishlist: Joi.number().integer().min(0).optional(),
 }).unknown(true);
