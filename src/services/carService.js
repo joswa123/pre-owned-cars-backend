@@ -1,4 +1,4 @@
-const { Car, CarImage, User, DealerProfile, Wishlist, Lead, View, State, District, City, Brand, Model, Variant, CarStat } = require('../models');
+const { Car, CarImage, User, DealerProfile, Wishlist, Lead, View, State, District, City, Brand, Model, Variant, CarStat, Highlight } = require('../models');
 const { Op, Sequelize, fn, col, where } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -155,6 +155,7 @@ const transformCarImages = (car, baseUrl = null) => {
 
   return {
     ...carJson,
+    highlights: carJson.highlights || [],
     primary_image: primary ? getOptimizedImageUrl(primary.image_url) : null,
     secondary_images: secondary.map((img) => getOptimizedImageUrl(img.image_url)),
     images: images.map((img) => ({
@@ -392,6 +393,11 @@ exports.createCar = async (userId, carData, files) => {
       await CarImage.bulkCreate(imageRecords, { transaction });
     }
 
+    const highlightIds = mapped.highlight_ids || carData.highlight_ids;
+    if (highlightIds && Array.isArray(highlightIds) && highlightIds.length > 0) {
+      await car.setHighlights(highlightIds, { transaction });
+    }
+
     await transaction.commit();
 
     const createdCar = await Car.findByPk(car.id, {
@@ -404,6 +410,7 @@ exports.createCar = async (userId, carData, files) => {
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
       ],
     });
 
@@ -666,6 +673,7 @@ exports.getCars = async (
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
         { model: Lead, as: 'leads', attributes: ['id'] },
+        { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
       ],
       limit,
       offset,
@@ -763,6 +771,7 @@ exports.getCarById = async (carId, userId = null) => {
         { model: City, as: 'city', attributes: ['id', 'name'] },
         { model: Lead, as: 'leads', attributes: ['id'], required: false },
         { model: CarStat, as: 'stats', required: false },
+        { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
       ],
     });
     if (!car) throw new AppError('Car not found.', 404);
@@ -842,6 +851,7 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
       { model: State, as: 'state', attributes: ['id', 'name'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
+      { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
     ],
     order: [['created_at', 'DESC']],
     limit,
@@ -894,6 +904,7 @@ exports.getUserCars = async (userId, options = {}) => {
       { model: City, as: 'city', attributes: ['id', 'name'] },
       { model: Lead, as: 'leads', attributes: ['id'] },
       { model: CarStat, as: 'stats', required: false },
+      { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
     ],
     order: [['created_at', 'DESC']],
     limit: parseInt(limit),
@@ -1064,6 +1075,13 @@ exports.updateCar = async (carId, userId, updateData, files) => {
       }
     }
 
+    const highlightIds = updateData.highlight_ids !== undefined ? (mapped.highlight_ids || updateData.highlight_ids) : mapped.highlight_ids;
+    if (highlightIds !== undefined) {
+      if (Array.isArray(highlightIds)) {
+        await car.setHighlights(highlightIds, { transaction });
+      }
+    }
+
     await transaction.commit();
 
     const updatedCar = await Car.findByPk(car.id, {
@@ -1076,12 +1094,13 @@ exports.updateCar = async (carId, userId, updateData, files) => {
         { model: State, as: 'state', attributes: ['id', 'name'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
       ],
     });
 
     await invalidateCarCaches(updatedCar.id, userId);
 
-    return updatedCar;
+    return transformCarImages(updatedCar);
   } catch (error) {
     await transaction.rollback();
     throw error;

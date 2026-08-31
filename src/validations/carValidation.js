@@ -50,6 +50,10 @@ const createCarSchema = Joi.object({
   city_id:          Joi.string().uuid().allow('', null).optional(),
   primary_image:    Joi.any().optional(),
   images:           Joi.any().optional(),
+  highlight_ids:    Joi.alternatives().try(
+    Joi.array().items(Joi.string().uuid()),
+    Joi.string()
+  ).optional(),
 }).or('brand_id', 'brand')
   .or('model_id', 'model')
   .or('variant_id', 'variant')
@@ -98,6 +102,10 @@ const updateCarSchema = Joi.object({
     Joi.string()
   ).optional(),
   replace_images:   Joi.boolean().optional(),
+  highlight_ids:    Joi.alternatives().try(
+    Joi.array().items(Joi.string().uuid()),
+    Joi.string()
+  ).optional(),
 }).unknown(true).min(1);
 
 // DB Mapping Helpers
@@ -208,6 +216,21 @@ const mapToDbValues = (data) => {
     mapped.board_type = 'Own Board';
   } else if (rawBoard && BOARD_TYPE_MAP[rawBoard]) {
     mapped.board_type = BOARD_TYPE_MAP[rawBoard];
+  }
+
+  if (data.highlight_ids !== undefined) {
+    if (Array.isArray(data.highlight_ids)) {
+      mapped.highlight_ids = data.highlight_ids;
+    } else if (typeof data.highlight_ids === 'string') {
+      try {
+        const parsed = JSON.parse(data.highlight_ids);
+        mapped.highlight_ids = Array.isArray(parsed) ? parsed : [data.highlight_ids];
+      } catch (e) {
+        mapped.highlight_ids = data.highlight_ids.includes(',')
+          ? data.highlight_ids.split(',').map(s => s.trim()).filter(Boolean)
+          : [data.highlight_ids.trim()];
+      }
+    }
   }
 
   return mapped;

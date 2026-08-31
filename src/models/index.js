@@ -23,6 +23,8 @@ const Banner = require('./Banner');
 const Requirement = require('./Requirement');
 const CarStat = require('./CarStat');
 const CarInteraction = require('./CarInteraction');
+const Highlight = require('./Highlight');
+const CarHighlight = require('./CarHighlight');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -163,6 +165,22 @@ CarInteraction.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
 User.hasMany(CarInteraction, { foreignKey: 'user_id', as: 'interactions' });
 CarInteraction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// ==========================================
+// HIGHLIGHTS (Many-to-Many)
+// ==========================================
+Car.belongsToMany(Highlight, {
+  through: CarHighlight,
+  as: 'highlights',
+  foreignKey: 'car_id',
+  otherKey: 'highlight_id',
+});
+Highlight.belongsToMany(Car, {
+  through: CarHighlight,
+  as: 'cars',
+  foreignKey: 'highlight_id',
+  otherKey: 'car_id',
+});
+
 const models = {
   User,
   CustomerProfile,
@@ -188,6 +206,8 @@ const models = {
   Requirement,
   CarStat,
   CarInteraction,
+  Highlight,
+  CarHighlight,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk
