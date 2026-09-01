@@ -17,10 +17,12 @@ const invalidateHighlightCache = async () => {
     console.error('Redis highlight cache invalidation error:', err);
   }
 
-  // Clear HTTP route cache
+  // Clear HTTP route caches
   try {
     const { clearCache } = require('../middlewares/cacheMiddleware');
     await clearCache('/api/v1/highlights');
+    await clearCache('/api/v1/car-highlights');
+    await clearCache('/api/v1/cars');
   } catch (err) {
     // Ignore if cache middleware not loaded
   }

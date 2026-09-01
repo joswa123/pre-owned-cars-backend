@@ -166,7 +166,8 @@ app.use('/api/v1/enquiries', require('./routes/v1/leadRoutes'));
 app.use('/api/v1/subscriptions', require('./routes/v1/subscriptionRoutes'));
 app.use('/api/v1/banners', require('./routes/v1/bannerRoutes'));
 app.use('/api/v1/requirements', require('./routes/v1/requirementRoutes'));
-app.use('/api/v1/highlights', require('./routes/v1/highlightRoutes'));
+app.use('/api/v1/highlights', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/highlightRoutes'));
+app.use('/api/v1/car-highlights', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/highlightRoutes'));
 // ── Admin Routes (protected — admin role required) ───────────────────────────
 app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
 app.use('/api/v1/admin/banners', require('./routes/v1/admin/bannerRoutes'));

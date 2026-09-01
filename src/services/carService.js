@@ -395,6 +395,14 @@ exports.createCar = async (userId, carData, files) => {
 
     const highlightIds = mapped.highlight_ids || carData.highlight_ids;
     if (highlightIds && Array.isArray(highlightIds) && highlightIds.length > 0) {
+      const foundHighlights = await Highlight.findAll({
+        where: { id: { [Op.in]: highlightIds } },
+        attributes: ['id'],
+        transaction,
+      });
+      if (foundHighlights.length !== highlightIds.length) {
+        throw new AppError('One or more highlight IDs are invalid.', 400);
+      }
       await car.setHighlights(highlightIds, { transaction });
     }
 
@@ -1078,6 +1086,16 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     const highlightIds = updateData.highlight_ids !== undefined ? (mapped.highlight_ids || updateData.highlight_ids) : mapped.highlight_ids;
     if (highlightIds !== undefined) {
       if (Array.isArray(highlightIds)) {
+        if (highlightIds.length > 0) {
+          const foundHighlights = await Highlight.findAll({
+            where: { id: { [Op.in]: highlightIds } },
+            attributes: ['id'],
+            transaction,
+          });
+          if (foundHighlights.length !== highlightIds.length) {
+            throw new AppError('One or more highlight IDs are invalid.', 400);
+          }
+        }
         await car.setHighlights(highlightIds, { transaction });
       }
     }

@@ -208,6 +208,7 @@ const models = {
   CarInteraction,
   Highlight,
   CarHighlight,
+  CarHighlightMapping: CarHighlight,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk
