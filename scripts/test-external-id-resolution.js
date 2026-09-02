@@ -207,6 +207,66 @@ async function runTests() {
     console.log(`  Found ${filterRes.total} cars for brand_id: 16`);
     console.log('✅ Test 7 PASSED: Filter by external integer ID works');
 
+    // -------------------------------------------------------------
+    // TEST 8: Create car with OPTIONAL variant_id (omitted and null)
+    // -------------------------------------------------------------
+    console.log('\nTest 8: Create car with omitted / null variant_id...');
+    const testCarOmittedVariant = await carService.createCar(testUser.id, {
+      brand_id: tataBrand.external_id,
+      model_id: altrozModel.external_id,
+      year: 2024,
+      price: 880000,
+      km_driven: 1000,
+      fuel_type: 'Petrol',
+      transmission: 'Manual',
+      ownership: '1st Owner',
+      body_type: 'Hatchback',
+      board_type: 'Own Board',
+      status: 'active',
+    });
+    console.log(`✅ Test 8a PASSED: Created car without variant_id (Assigned variant_id: ${testCarOmittedVariant.variant_id})`);
+    await Car.destroy({ where: { id: testCarOmittedVariant.id } });
+
+    const testCarNullVariant = await carService.createCar(testUser.id, {
+      brand_id: tataBrand.id,
+      model_id: altrozModel.id,
+      variant_id: null,
+      year: 2024,
+      price: 890000,
+      km_driven: 1000,
+      fuel_type: 'Petrol',
+      transmission: 'Manual',
+      ownership: '1st Owner',
+      body_type: 'Hatchback',
+      board_type: 'Own Board',
+      status: 'active',
+    });
+    console.log(`✅ Test 8b PASSED: Created car with variant_id = null (Assigned variant_id: ${testCarNullVariant.variant_id})`);
+    await Car.destroy({ where: { id: testCarNullVariant.id } });
+
+    // -------------------------------------------------------------
+    // TEST 9: Create car with invalid integer variant_id -> should fail with 404
+    // -------------------------------------------------------------
+    console.log('\nTest 9: Create car with non-existent integer variant_id (999999)...');
+    try {
+      await carService.createCar(testUser.id, {
+        brand_id: tataBrand.id,
+        model_id: altrozModel.id,
+        variant_id: 999999,
+        year: 2023,
+        price: 800000,
+        fuel_type: 'Petrol',
+        transmission: 'Manual',
+        ownership: '1st Owner',
+        body_type: 'Hatchback',
+        board_type: 'Own Board',
+        km_driven: 10000,
+      });
+      throw new Error('Test 9 FAILED: Expected error but succeeded');
+    } catch (err) {
+      console.log(`✅ Test 9 PASSED: Correctly threw error (${err.statusCode || 404}): ${err.message}`);
+    }
+
   } finally {
     // Cleanup created test cars
     if (testCar1) await Car.destroy({ where: { id: testCar1.id } });

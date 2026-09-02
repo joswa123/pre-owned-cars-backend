@@ -82,10 +82,10 @@ async function runTests() {
     const noModelResult = createCarSchema.validate(noModel);
     assert('Create: Missing model_id fails validation', !!noModelResult.error, noModelResult.error?.message);
 
-    // 1d: Missing variant_id should fail
+    // 1d: Missing variant_id should be optional and pass
     const { variant_id, ...noVariant } = validCreateData;
     const noVariantResult = createCarSchema.validate(noVariant);
-    assert('Create: Missing variant_id fails validation', !!noVariantResult.error, noVariantResult.error?.message);
+    assert('Create: Missing variant_id is optional and passes validation', !noVariantResult.error, noVariantResult.error?.message);
 
     // 1e: board_type with different cases
     for (const bt of ['Own Board', 'own board', 'OWN BOARD', 'T-Board', 't-board', 'Commercial', 'commercial']) {

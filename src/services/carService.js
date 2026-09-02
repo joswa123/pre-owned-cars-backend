@@ -268,15 +268,39 @@ const resolveModelId = async (input, brandId = null, bodyType = 'SUV', transacti
  * Resolve variant_id from UUID, external integer ID, or name string
  */
 const resolveVariantId = async (input, modelId = null, variantDefaults = {}, transaction = null) => {
-  if (!input) return null;
+  if (!input) {
+    if (modelId) {
+      let defaultVariant = await Variant.findOne({ where: { model_id: modelId }, transaction });
+      if (!defaultVariant) {
+        defaultVariant = await Variant.create(
+          {
+            name: 'Standard',
+            model_id: modelId,
+            fuel_type: variantDefaults.fuel_type || null,
+            transmission: variantDefaults.transmission || null,
+            price: variantDefaults.price || null,
+          },
+          { transaction }
+        );
+      }
+      return defaultVariant ? defaultVariant.id : null;
+    }
+    return null;
+  }
 
   const inputStr = typeof input === 'string' ? input.trim() : String(input);
 
   // 1. If it's a UUID, verify and return
   if (isUuid(inputStr)) {
-    const variant = await Variant.findByPk(inputStr, { transaction });
+    const where = { id: inputStr };
+    if (modelId) where.model_id = modelId;
+
+    let variant = await Variant.findOne({ where, transaction });
+    if (!variant && modelId) {
+      variant = await Variant.findByPk(inputStr, { transaction });
+    }
     if (variant) return variant.id;
-    throw new AppError(`Variant with ID ${inputStr} not found.`, 404);
+    throw new AppError(`Variant with ID ${inputStr} not found for this model.`, 404);
   }
 
   // 2. If it's an integer / numeric string, lookup by external_id
@@ -291,7 +315,7 @@ const resolveVariantId = async (input, modelId = null, variantDefaults = {}, tra
       variant = await Variant.findOne({ where: { external_id: numericId }, transaction });
     }
     if (variant) return variant.id;
-    throw new AppError(`Variant with external ID ${numericId} not found.`, 404);
+    throw new AppError(`Variant with external ID ${numericId} not found for this model.`, 404);
   }
 
   // 3. Lookup by name under modelId or create if not existing
@@ -358,7 +382,6 @@ exports.createCar = async (userId, carData, files) => {
       },
       transaction
     );
-    if (!variantId) throw new AppError('Variant ID or variant name is required.', 400);
 
     const posted_by_type = user.role === 'dealer' ? 'dealer' : 'customer';
     const b2b_listing =

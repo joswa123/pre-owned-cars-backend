@@ -11,22 +11,30 @@ const enumString = (values) =>
 
 const STATUS_TYPES_IN = ['sold', 'active', 'deleted', 'expired'];
 
-const idSchema = Joi.alternatives().try(
+const hybridId = Joi.alternatives().try(
+  Joi.string().guid({ version: ['uuidv4'] }),
   Joi.string().uuid(),
   Joi.number().integer().positive(),
-  Joi.string().regex(/^\d+$/)
+  Joi.string().pattern(/^\d+$/)
 );
+
+const optionalHybridId = Joi.alternatives().try(
+  Joi.string().guid({ version: ['uuidv4'] }),
+  Joi.string().uuid(),
+  Joi.number().integer().positive(),
+  Joi.string().pattern(/^\d+$/)
+).allow('', null).optional();
 
 /**
  * Create Car Joi Schema
  */
 const createCarSchema = Joi.object({
-  brand_id:         idSchema.optional(),
+  brand_id:         hybridId.optional(),
   brand:            Joi.string().trim().max(100).optional(),
-  model_id:         idSchema.optional(),
+  model_id:         hybridId.optional(),
   model:            Joi.string().trim().max(100).optional(),
-  variant_id:       idSchema.optional(),
-  variant:          Joi.string().trim().max(100).optional(),
+  variant_id:       optionalHybridId,
+  variant:          Joi.string().trim().max(100).allow('', null).optional(),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).required(),
   price:            Joi.number().positive().required(),
   price_negotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
@@ -62,7 +70,6 @@ const createCarSchema = Joi.object({
   ).optional(),
 }).or('brand_id', 'brand')
   .or('model_id', 'model')
-  .or('variant_id', 'variant')
   .or('km_driven', 'kmdriven')
   .or('fuel_type', 'fueltype')
   .or('body_type', 'car_type')
@@ -73,12 +80,12 @@ const createCarSchema = Joi.object({
  * Update Car Joi Schema
  */
 const updateCarSchema = Joi.object({
-  brand_id:         idSchema.optional(),
-  brand:            Joi.string().trim().max(50),
-  model_id:         idSchema.optional(),
-  model:            Joi.string().trim().max(50),
-  variant_id:       idSchema.optional(),
-  variant:          Joi.string().trim().max(50),
+  brand_id:         optionalHybridId,
+  brand:            Joi.string().trim().max(50).allow('', null).optional(),
+  model_id:         optionalHybridId,
+  model:            Joi.string().trim().max(50).allow('', null).optional(),
+  variant_id:       optionalHybridId,
+  variant:          Joi.string().trim().max(50).allow('', null).optional(),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1),
   price:            Joi.number().positive(),
   price_negotiable: Joi.boolean(),
@@ -264,12 +271,12 @@ const carQuerySchema = Joi.object({
   transmissions: Joi.string().optional(),
   posted_within_days: Joi.number().integer().min(1).max(90).optional(),
   include_expired: Joi.boolean().optional(),
-  brand_id: idSchema.optional(),
+  brand_id: optionalHybridId,
   brand: Joi.string().optional(),
-  model_id: idSchema.optional(),
+  model_id: optionalHybridId,
   model_ids: Joi.string().optional(),
   model: Joi.string().optional(),
-  variant_id: idSchema.optional(),
+  variant_id: optionalHybridId,
   variant_ids: Joi.string().optional(),
   variant: Joi.string().optional(),
   fuel_type: Joi.string().optional(),
@@ -291,6 +298,9 @@ const carQuerySchema = Joi.object({
 const sellCarSchema = Joi.object({}).unknown(true);
 
 module.exports = {
+  hybridId,
+  optionalHybridId,
+  idSchema: optionalHybridId,
   createCarSchema,
   updateCarSchema,
   mapToDbValues,
