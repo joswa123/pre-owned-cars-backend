@@ -26,10 +26,10 @@ async function runTests() {
     console.log('🔌 Database connected.\n');
 
     // ===== SETUP: Get existing brand/model/variant and user =====
-    const brand = await Brand.findOne();
-    const model = await Model.findOne({ where: { brandId: brand.id } });
-    const variant = await Variant.findOne({ where: { model_id: model.id } });
-    const user = await User.findOne({ where: { role: 'dealer' } });
+    const variant = await Variant.findOne();
+    const model = variant ? await Model.findByPk(variant.model_id) : null;
+    const brand = model ? await Brand.findByPk(model.brandId || model.brand_id) : null;
+    const user = (await User.findOne({ where: { role: 'dealer' } })) || (await User.findOne());
     const city = await City.findOne();
     const district = city ? await District.findByPk(city.district_id) : null;
     const state = district ? await State.findByPk(district.state_id) : null;

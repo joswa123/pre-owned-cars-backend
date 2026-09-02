@@ -32,13 +32,13 @@ const setCache = async (key, data, ttlSeconds = 600) => {
  * Get all active vehicle brands (cached 15 mins)
  */
 exports.getAllBrands = async () => {
-  const cacheKey = 'catalog:brands:v3';
+  const cacheKey = 'catalog:brands:v4';
   const cached = await getCache(cacheKey);
   if (cached) return cached;
 
   let brands = await Brand.findAll({
     where: { is_active: true },
-    attributes: ['id', 'name', 'logo', 'created_at'],
+    attributes: ['id', 'name', 'logo', 'external_id', 'created_at'],
     order: [['name', 'ASC']],
   });
 
@@ -49,7 +49,7 @@ exports.getAllBrands = async () => {
       await exports.syncCatalogData(externalData);
       brands = await Brand.findAll({
         where: { is_active: true },
-        attributes: ['id', 'name', 'logo', 'created_at'],
+        attributes: ['id', 'name', 'logo', 'external_id', 'created_at'],
         order: [['name', 'ASC']],
       });
     }
@@ -58,6 +58,7 @@ exports.getAllBrands = async () => {
   const formattedBrands = brands.map((b) => ({
     id: b.id,
     name: b.name,
+    external_id: b.external_id,
     logo: b.logo,
     logoUrl: b.logoUrl,
     created_at: b.created_at,
@@ -76,24 +77,32 @@ exports.getBrandsWithCarCounts = async () => {
 };
 
 /**
- * Helper to find Brand by UUID or Name/Slug
+ * Helper to find Brand by UUID, Integer External ID, or Name/Slug
  */
 const findBrandByIdentifier = async (brandId) => {
   if (!brandId) return null;
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brandId);
+  const brandIdStr = String(brandId).trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brandIdStr);
   let brand = null;
 
   if (isUuid) {
     brand = await Brand.findOne({
       where: {
-        id: brandId,
+        id: brandIdStr,
+        is_active: { [Op.ne]: false },
+      },
+    });
+  } else if (/^\d+$/.test(brandIdStr)) {
+    brand = await Brand.findOne({
+      where: {
+        external_id: parseInt(brandIdStr, 10),
         is_active: { [Op.ne]: false },
       },
     });
   }
 
   if (!brand) {
-    const searchName = brandId.replace(/-/g, ' ').trim().toLowerCase();
+    const searchName = brandIdStr.replace(/-/g, ' ').trim().toLowerCase();
     brand = await Brand.findOne({
       where: {
         is_active: { [Op.ne]: false },
@@ -109,7 +118,7 @@ const findBrandByIdentifier = async (brandId) => {
  * Get models for a specific brand (cached 15 mins)
  */
 exports.getModelsByBrand = async (brandId) => {
-  const cacheKey = `catalog:brand:${brandId}:models`;
+  const cacheKey = `catalog:brand:${brandId}:models:v4`;
   const cached = await getCache(cacheKey);
   if (cached) return cached;
 
@@ -117,7 +126,7 @@ exports.getModelsByBrand = async (brandId) => {
 
   // If brand is missing from local DB, attempt fallback sync from catalog baseline
   if (!brand) {
-    const searchName = brandId.replace(/-/g, ' ').trim();
+    const searchName = String(brandId).replace(/-/g, ' ').trim();
     const externalData = await externalCatalogApi.fetchExternalCatalogData(searchName);
     if (externalData && externalData.length > 0) {
       await exports.syncCatalogData(externalData);
@@ -131,6 +140,7 @@ exports.getModelsByBrand = async (brandId) => {
     'id',
     'brandId',
     'name',
+    'external_id',
     'body_type',
     'image_url',
     'start_year',
@@ -184,24 +194,32 @@ exports.getModelsByBrand = async (brandId) => {
 };
 
 /**
- * Helper to find Model by UUID or Name/Slug
+ * Helper to find Model by UUID, Integer External ID, or Name/Slug
  */
 const findModelByIdentifier = async (modelId) => {
   if (!modelId) return null;
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(modelId);
+  const modelIdStr = String(modelId).trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(modelIdStr);
   let model = null;
 
   if (isUuid) {
     model = await Model.findOne({
       where: {
-        id: modelId,
+        id: modelIdStr,
+        is_active: { [Op.ne]: false },
+      },
+    });
+  } else if (/^\d+$/.test(modelIdStr)) {
+    model = await Model.findOne({
+      where: {
+        external_id: parseInt(modelIdStr, 10),
         is_active: { [Op.ne]: false },
       },
     });
   }
 
   if (!model) {
-    const searchName = modelId.replace(/-/g, ' ').trim().toLowerCase();
+    const searchName = modelIdStr.replace(/-/g, ' ').trim().toLowerCase();
     model = await Model.findOne({
       where: {
         is_active: { [Op.ne]: false },
@@ -217,7 +235,7 @@ const findModelByIdentifier = async (modelId) => {
  * Get variants for a specific model (cached 15 mins)
  */
 exports.getVariantsByModel = async (modelId) => {
-  const cacheKey = `catalog:model:${modelId}:variants`;
+  const cacheKey = `catalog:model:${modelId}:variants:v4`;
   const cached = await getCache(cacheKey);
   if (cached) return cached;
 
@@ -229,7 +247,7 @@ exports.getVariantsByModel = async (modelId) => {
       model_id: model.id,
       is_active: { [Op.ne]: false },
     },
-    attributes: ['id', 'model_id', 'name', 'fuel_type', 'transmission', 'engine_cc', 'price'],
+    attributes: ['id', 'model_id', 'name', 'external_id', 'fuel_type', 'transmission', 'engine_cc', 'price'],
     order: [['name', 'ASC']],
   });
 
@@ -242,7 +260,7 @@ exports.getVariantsByModel = async (modelId) => {
           model_id: model.id,
           is_active: { [Op.ne]: false },
         },
-        attributes: ['id', 'model_id', 'name', 'fuel_type', 'transmission', 'engine_cc', 'price'],
+        attributes: ['id', 'model_id', 'name', 'external_id', 'fuel_type', 'transmission', 'engine_cc', 'price'],
         order: [['name', 'ASC']],
       });
     }
@@ -277,8 +295,8 @@ exports.searchCatalog = async (query = '', page = 1, limit = 20) => {
       {
         model: Model,
         as: 'model',
-        attributes: ['id', 'name', 'body_type', 'image_url'],
-        include: [{ model: Brand, as: 'brand', attributes: ['id', 'name', 'logoUrl'] }],
+        attributes: ['id', 'name', 'external_id', 'body_type', 'image_url'],
+        include: [{ model: Brand, as: 'brand', attributes: ['id', 'name', 'external_id', 'logoUrl'] }],
       },
     ],
     limit,
@@ -288,15 +306,18 @@ exports.searchCatalog = async (query = '', page = 1, limit = 20) => {
 
   const formattedResults = rows.map((v) => ({
     variant_id: v.id,
+    variant_external_id: v.external_id,
     variant_name: v.name,
     fuel_type: v.fuel_type,
     transmission: v.transmission,
     engine_cc: v.engine_cc,
     model_id: v.model ? v.model.id : null,
+    model_external_id: v.model ? v.model.external_id : null,
     model_name: v.model ? v.model.name : null,
     model_image: v.model ? v.model.image_url : null,
     body_type: v.model ? v.model.body_type : null,
     brand_id: v.model && v.model.brand ? v.model.brand.id : null,
+    brand_external_id: v.model && v.model.brand ? v.model.brand.external_id : null,
     brand_name: v.model && v.model.brand ? v.model.brand.name : null,
     brand_logo: v.model && v.model.brand ? v.model.brand.logoUrl : null,
   }));

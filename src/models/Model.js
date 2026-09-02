@@ -48,12 +48,18 @@ const Model = sequelize.define('Model', {
     allowNull: false,
     comment: 'Soft deletion / active status flag',
   },
+  external_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    unique: true,
+  },
 }, {
   tableName: 'models',
   timestamps: true,
   underscored: true,
   indexes: [
     { unique: true, fields: ['brand_id', 'name'] },
+    { unique: true, fields: ['external_id'] },
     { fields: ['name'] },
     { fields: ['is_active'] },
   ],

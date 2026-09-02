@@ -44,7 +44,14 @@ exports.getAllBrands = async () => {
 };
 
 exports.getBrandById = async (id) => {
-  const brand = await Brand.findByPk(id);
+  const idStr = String(id).trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr);
+  let brand = null;
+  if (isUuid) {
+    brand = await Brand.findByPk(idStr);
+  } else if (/^\d+$/.test(idStr)) {
+    brand = await Brand.findOne({ where: { external_id: parseInt(idStr, 10) } });
+  }
   if (!brand) throw new Error('Brand not found');
   return brand;
 };

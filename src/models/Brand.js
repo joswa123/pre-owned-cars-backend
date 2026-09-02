@@ -27,6 +27,11 @@ const Brand = sequelize.define('Brand', {
     allowNull: false,
     comment: 'Soft deletion / active catalog flag',
   },
+  external_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    unique: true,
+  },
   logoUrl: {
     type: DataTypes.VIRTUAL,
     get() {
@@ -39,6 +44,7 @@ const Brand = sequelize.define('Brand', {
   underscored: true,
   indexes: [
     { unique: true, fields: ['name'] },
+    { unique: true, fields: ['external_id'] },
     { fields: ['is_active'] },
   ],
 });

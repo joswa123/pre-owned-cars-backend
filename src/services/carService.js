@@ -176,6 +176,151 @@ const getWishlistSet = async (userId) => {
   return new Set(wishlist.map((w) => w.car_id));
 };
 
+const isUuid = (val) =>
+  typeof val === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+
+/**
+ * Resolve brand_id from UUID, external integer ID, or name string
+ */
+const resolveBrandId = async (input, transaction = null) => {
+  if (!input) return null;
+
+  const inputStr = typeof input === 'string' ? input.trim() : String(input);
+
+  // 1. If it's a UUID, verify and return
+  if (isUuid(inputStr)) {
+    const brand = await Brand.findByPk(inputStr, { transaction });
+    if (brand) return brand.id;
+    throw new AppError(`Brand with ID ${inputStr} not found.`, 404);
+  }
+
+  // 2. If it's an integer / numeric string, lookup by external_id
+  const numericId = parseInt(inputStr, 10);
+  if (!isNaN(numericId) && /^\d+$/.test(inputStr)) {
+    const brand = await Brand.findOne({
+      where: { external_id: numericId },
+      transaction,
+    });
+    if (brand) return brand.id;
+    throw new AppError(`Brand with external ID ${numericId} not found.`, 404);
+  }
+
+  // 3. Lookup by brand name or create if not existing
+  let brand = await Brand.findOne({
+    where: sequelize.where(fn('LOWER', col('name')), inputStr.toLowerCase()),
+    transaction,
+  });
+  if (!brand) {
+    brand = await Brand.create({ name: inputStr, logo: '' }, { transaction });
+  }
+  return brand.id;
+};
+
+/**
+ * Resolve model_id from UUID, external integer ID, or name string
+ */
+const resolveModelId = async (input, brandId = null, bodyType = 'SUV', transaction = null) => {
+  if (!input) return null;
+
+  const inputStr = typeof input === 'string' ? input.trim() : String(input);
+
+  // 1. If it's a UUID, verify and return
+  if (isUuid(inputStr)) {
+    const model = await Model.findByPk(inputStr, { transaction });
+    if (model) return model.id;
+    throw new AppError(`Model with ID ${inputStr} not found.`, 404);
+  }
+
+  // 2. If it's an integer / numeric string, lookup by external_id
+  const numericId = parseInt(inputStr, 10);
+  if (!isNaN(numericId) && /^\d+$/.test(inputStr)) {
+    const where = { external_id: numericId };
+    if (brandId) where.brandId = brandId;
+
+    let model = await Model.findOne({ where, transaction });
+    if (!model && brandId) {
+      // Fallback: check without brandId constraint
+      model = await Model.findOne({ where: { external_id: numericId }, transaction });
+    }
+    if (model) return model.id;
+    throw new AppError(`Model with external ID ${numericId} not found.`, 404);
+  }
+
+  // 3. Lookup by name under brandId or create if not existing
+  const where = {
+    [Op.and]: [sequelize.where(fn('LOWER', col('name')), inputStr.toLowerCase())],
+  };
+  if (brandId) where.brandId = brandId;
+
+  let model = await Model.findOne({ where, transaction });
+  if (!model) {
+    if (!brandId) throw new AppError('Brand is required to create a new model.', 400);
+    model = await Model.create(
+      { name: inputStr, brandId, body_type: bodyType },
+      { transaction }
+    );
+  }
+  return model.id;
+};
+
+/**
+ * Resolve variant_id from UUID, external integer ID, or name string
+ */
+const resolveVariantId = async (input, modelId = null, variantDefaults = {}, transaction = null) => {
+  if (!input) return null;
+
+  const inputStr = typeof input === 'string' ? input.trim() : String(input);
+
+  // 1. If it's a UUID, verify and return
+  if (isUuid(inputStr)) {
+    const variant = await Variant.findByPk(inputStr, { transaction });
+    if (variant) return variant.id;
+    throw new AppError(`Variant with ID ${inputStr} not found.`, 404);
+  }
+
+  // 2. If it's an integer / numeric string, lookup by external_id
+  const numericId = parseInt(inputStr, 10);
+  if (!isNaN(numericId) && /^\d+$/.test(inputStr)) {
+    const where = { external_id: numericId };
+    if (modelId) where.model_id = modelId;
+
+    let variant = await Variant.findOne({ where, transaction });
+    if (!variant && modelId) {
+      // Fallback: check without modelId constraint
+      variant = await Variant.findOne({ where: { external_id: numericId }, transaction });
+    }
+    if (variant) return variant.id;
+    throw new AppError(`Variant with external ID ${numericId} not found.`, 404);
+  }
+
+  // 3. Lookup by name under modelId or create if not existing
+  const where = {
+    [Op.and]: [sequelize.where(fn('LOWER', col('name')), inputStr.toLowerCase())],
+  };
+  if (modelId) where.model_id = modelId;
+
+  let variant = await Variant.findOne({ where, transaction });
+  if (!variant) {
+    if (!modelId) throw new AppError('Model is required to create a new variant.', 400);
+    variant = await Variant.create(
+      {
+        name: inputStr,
+        model_id: modelId,
+        fuel_type: variantDefaults.fuel_type || null,
+        transmission: variantDefaults.transmission || null,
+        price: variantDefaults.price || null,
+      },
+      { transaction }
+    );
+  }
+  return variant.id;
+};
+
+exports.resolveBrandId = resolveBrandId;
+exports.resolveModelId = resolveModelId;
+exports.resolveVariantId = resolveVariantId;
+
 /**
  * Create a car listing with auto-assigned posted_by_type and b2b_listing logic
  */
@@ -188,91 +333,31 @@ exports.createCar = async (userId, carData, files) => {
 
     const mapped = mapToDbValues(carData);
 
-    let brandId = mapped.brand_id;
-    if (brandId) {
-      const brandExists = await Brand.findByPk(brandId, { transaction });
-      if (!brandExists) brandId = null;
-    }
-    if (!brandId && mapped.brand) {
-      let brandObj = await Brand.findOne({
-        where: sequelize.where(fn('LOWER', col('name')), mapped.brand.trim().toLowerCase()),
-        transaction,
-      });
-      if (!brandObj) {
-        brandObj = await Brand.create({ name: mapped.brand.trim(), logo: '' }, { transaction });
-      }
-      brandId = brandObj.id;
-    }
+    const brandInput = mapped.brand_id !== undefined && mapped.brand_id !== null && mapped.brand_id !== ''
+      ? mapped.brand_id
+      : mapped.brand;
+    const brandId = await resolveBrandId(brandInput, transaction);
     if (!brandId) throw new AppError('Brand ID or brand name is required.', 400);
 
-    let modelId = mapped.model_id;
-    if (modelId) {
-      const modelExists = await Model.findByPk(modelId, { transaction });
-      if (!modelExists) modelId = null;
-    }
-    if (!modelId && mapped.model) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.model);
-      if (isUuid) {
-        const mObj = await Model.findByPk(mapped.model, { transaction });
-        if (mObj) modelId = mObj.id;
-      }
-      if (!modelId) {
-        let modelObj = await Model.findOne({
-          where: {
-            [Op.and]: [
-              sequelize.where(fn('LOWER', col('name')), mapped.model.trim().toLowerCase()),
-              { brandId }
-            ]
-          },
-          transaction
-        });
-        if (!modelObj) {
-          modelObj = await Model.create(
-            { name: mapped.model.trim(), brandId, body_type: mapped.body_type || 'SUV' },
-            { transaction }
-          );
-        }
-        modelId = modelObj.id;
-      }
-    }
+    const modelInput = mapped.model_id !== undefined && mapped.model_id !== null && mapped.model_id !== ''
+      ? mapped.model_id
+      : mapped.model;
+    const modelId = await resolveModelId(modelInput, brandId, mapped.body_type || 'SUV', transaction);
     if (!modelId) throw new AppError('Model ID or model name is required.', 400);
 
-    let variantId = mapped.variant_id;
-    if (variantId) {
-      const variantExists = await Variant.findByPk(variantId, { transaction });
-      if (!variantExists) variantId = null;
-    }
-    if (!variantId && mapped.variant) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.variant);
-      if (isUuid) {
-        const vObj = await Variant.findByPk(mapped.variant, { transaction });
-        if (vObj) variantId = vObj.id;
-      }
-      if (!variantId) {
-        let variantObj = await Variant.findOne({
-          where: {
-            [Op.and]: [
-              sequelize.where(fn('LOWER', col('name')), mapped.variant.trim().toLowerCase()),
-              { model_id: modelId }
-            ]
-          },
-          transaction
-        });
-        if (!variantObj) {
-          variantObj = await Variant.create(
-            {
-              name: mapped.variant.trim(),
-              model_id: modelId,
-              fuel_type: mapped.fuel_type,
-              transmission: mapped.transmission,
-              price: mapped.price
-            },
-            { transaction }
-          );
-        }
-        variantId = variantObj.id;
-      }
-    }
+    const variantInput = mapped.variant_id !== undefined && mapped.variant_id !== null && mapped.variant_id !== ''
+      ? mapped.variant_id
+      : mapped.variant;
+    const variantId = await resolveVariantId(
+      variantInput,
+      modelId,
+      {
+        fuel_type: mapped.fuel_type,
+        transmission: mapped.transmission,
+        price: mapped.price,
+      },
+      transaction
+    );
     if (!variantId) throw new AppError('Variant ID or variant name is required.', 400);
 
     const posted_by_type = user.role === 'dealer' ? 'dealer' : 'customer';
@@ -498,36 +583,87 @@ exports.getCars = async (
 
     // Brands
     if (filters.brands && filters.brands.length) {
-      const brandIds = Array.isArray(filters.brands) ? filters.brands : filters.brands.split(',');
-      where.brand_id = { [Op.in]: brandIds };
-    } else {
-      // Fallback for single brand string (backward compatibility)
-      if (filters.brand_id) where.brand_id = filters.brand_id;
-      if (filters.brand) {
-        const brand = await Brand.findOne({ where: { name: filters.brand } });
+      const brandItems = Array.isArray(filters.brands) ? filters.brands : filters.brands.split(',');
+      const resolvedBrandIds = [];
+      const numericBrandIds = [];
+      for (const item of brandItems) {
+        const trimmed = String(item).trim();
+        if (isUuid(trimmed)) {
+          resolvedBrandIds.push(trimmed);
+        } else if (/^\d+$/.test(trimmed)) {
+          numericBrandIds.push(parseInt(trimmed, 10));
+        }
+      }
+      if (numericBrandIds.length) {
+        const brandsByExt = await Brand.findAll({ where: { external_id: { [Op.in]: numericBrandIds } }, attributes: ['id'] });
+        resolvedBrandIds.push(...brandsByExt.map(b => b.id));
+      }
+      where.brand_id = { [Op.in]: resolvedBrandIds };
+    } else if (filters.brand_id) {
+      const brandStr = String(filters.brand_id).trim();
+      if (isUuid(brandStr)) {
+        where.brand_id = brandStr;
+      } else if (/^\d+$/.test(brandStr)) {
+        const brand = await Brand.findOne({ where: { external_id: parseInt(brandStr, 10) } });
         if (brand) where.brand_id = brand.id;
       }
+    } else if (filters.brand) {
+      const brand = await Brand.findOne({ where: { name: filters.brand } });
+      if (brand) where.brand_id = brand.id;
     }
 
     // Models filter (supports model_id, model_ids, models, model string or array)
     if (filters.model_id) {
-      where.model_id = filters.model_id;
+      const modelStr = String(filters.model_id).trim();
+      if (isUuid(modelStr)) {
+        where.model_id = modelStr;
+      } else if (/^\d+$/.test(modelStr)) {
+        const model = await Model.findOne({ where: { external_id: parseInt(modelStr, 10) } });
+        if (model) where.model_id = model.id;
+      }
     } else if (filters.model_ids && filters.model_ids.length) {
       const ids = Array.isArray(filters.model_ids) ? filters.model_ids : filters.model_ids.split(',');
-      where.model_id = { [Op.in]: ids };
+      const resolvedModelIds = [];
+      const numericModelIds = [];
+      for (const id of ids) {
+        const trimmed = String(id).trim();
+        if (isUuid(trimmed)) {
+          resolvedModelIds.push(trimmed);
+        } else if (/^\d+$/.test(trimmed)) {
+          numericModelIds.push(parseInt(trimmed, 10));
+        }
+      }
+      if (numericModelIds.length) {
+        const modelsByExt = await Model.findAll({ where: { external_id: { [Op.in]: numericModelIds } }, attributes: ['id'] });
+        resolvedModelIds.push(...modelsByExt.map(m => m.id));
+      }
+      where.model_id = { [Op.in]: resolvedModelIds };
     } else if (filters.models && filters.models.length) {
       const modelItems = Array.isArray(filters.models) ? filters.models : filters.models.split(',');
-      const isUuidList = modelItems.every(m => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m.trim()));
+      const isUuidList = modelItems.every(m => isUuid(String(m).trim()));
       if (isUuidList) {
-        where.model_id = { [Op.in]: modelItems.map(m => m.trim()) };
+        where.model_id = { [Op.in]: modelItems.map(m => String(m).trim()) };
       } else {
-        const foundModels = await Model.findAll({ where: { name: { [Op.in]: modelItems } }, attributes: ['id'] });
+        const numericModelIds = modelItems.filter(m => /^\d+$/.test(String(m).trim())).map(m => parseInt(m, 10));
+        const nameItems = modelItems.filter(m => !/^\d+$/.test(String(m).trim()));
+        const foundModels = await Model.findAll({
+          where: {
+            [Op.or]: [
+              ...(nameItems.length ? [{ name: { [Op.in]: nameItems } }] : []),
+              ...(numericModelIds.length ? [{ external_id: { [Op.in]: numericModelIds } }] : []),
+            ],
+          },
+          attributes: ['id'],
+        });
         if (foundModels.length) where.model_id = { [Op.in]: foundModels.map(m => m.id) };
       }
     } else if (filters.model) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.model);
-      if (isUuid) {
-        where.model_id = filters.model;
+      const modelStr = String(filters.model).trim();
+      if (isUuid(modelStr)) {
+        where.model_id = modelStr;
+      } else if (/^\d+$/.test(modelStr)) {
+        const model = await Model.findOne({ where: { external_id: parseInt(modelStr, 10) } });
+        if (model) where.model_id = model.id;
       } else {
         const foundModel = await Model.findOne({ where: { name: { [Op.like]: `${filters.model}%` } } });
         if (foundModel) where.model_id = foundModel.id;
@@ -536,14 +672,37 @@ exports.getCars = async (
 
     // Variants filter (supports variant_id, variant_ids, variants, variant)
     if (filters.variant_id) {
-      where.variant_id = filters.variant_id;
+      const variantStr = String(filters.variant_id).trim();
+      if (isUuid(variantStr)) {
+        where.variant_id = variantStr;
+      } else if (/^\d+$/.test(variantStr)) {
+        const variant = await Variant.findOne({ where: { external_id: parseInt(variantStr, 10) } });
+        if (variant) where.variant_id = variant.id;
+      }
     } else if (filters.variant_ids && filters.variant_ids.length) {
       const ids = Array.isArray(filters.variant_ids) ? filters.variant_ids : filters.variant_ids.split(',');
-      where.variant_id = { [Op.in]: ids };
+      const resolvedVariantIds = [];
+      const numericVariantIds = [];
+      for (const id of ids) {
+        const trimmed = String(id).trim();
+        if (isUuid(trimmed)) {
+          resolvedVariantIds.push(trimmed);
+        } else if (/^\d+$/.test(trimmed)) {
+          numericVariantIds.push(parseInt(trimmed, 10));
+        }
+      }
+      if (numericVariantIds.length) {
+        const variantsByExt = await Variant.findAll({ where: { external_id: { [Op.in]: numericVariantIds } }, attributes: ['id'] });
+        resolvedVariantIds.push(...variantsByExt.map(v => v.id));
+      }
+      where.variant_id = { [Op.in]: resolvedVariantIds };
     } else if (filters.variant) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.variant);
-      if (isUuid) {
-        where.variant_id = filters.variant;
+      const variantStr = String(filters.variant).trim();
+      if (isUuid(variantStr)) {
+        where.variant_id = variantStr;
+      } else if (/^\d+$/.test(variantStr)) {
+        const variant = await Variant.findOne({ where: { external_id: parseInt(variantStr, 10) } });
+        if (variant) where.variant_id = variant.id;
       } else {
         const foundVariant = await Variant.findOne({ where: { name: { [Op.like]: `${filters.variant}%` } } });
         if (foundVariant) where.variant_id = foundVariant.id;
@@ -972,41 +1131,43 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (!car) throw new AppError('Car not found or unauthorized.', 404);
 
     const mapped = mapToDbValues(updateData || {});
-    let brandId = mapped.brand_id;
-    if (!brandId && mapped.brand) {
-      let brandObj = await Brand.findOne({ where: { name: mapped.brand }, transaction });
-      if (!brandObj) {
-        brandObj = await Brand.create({ name: mapped.brand, logo: '' }, { transaction });
-      }
-      brandId = brandObj.id;
+
+    let brandId = car.brand_id;
+    const brandInput = mapped.brand_id !== undefined && mapped.brand_id !== null && mapped.brand_id !== ''
+      ? mapped.brand_id
+      : mapped.brand;
+    if (brandInput) {
+      brandId = await resolveBrandId(brandInput, transaction);
     }
 
-    let modelId = mapped.model_id;
-    if (!modelId && mapped.model) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.model);
-      if (isUuid) {
-        modelId = mapped.model;
-      } else {
-        let modelObj = await Model.findOne({ where: { name: mapped.model }, transaction });
-        if (!modelObj && brandId) {
-          modelObj = await Model.create({ name: mapped.model, brandId, body_type: mapped.body_type || 'SUV' }, { transaction });
-        }
-        if (modelObj) modelId = modelObj.id;
-      }
+    let modelId = car.model_id;
+    const modelInput = mapped.model_id !== undefined && mapped.model_id !== null && mapped.model_id !== ''
+      ? mapped.model_id
+      : mapped.model;
+    if (modelInput) {
+      modelId = await resolveModelId(
+        modelInput,
+        brandId,
+        mapped.body_type || car.body_type || 'SUV',
+        transaction
+      );
     }
 
-    let variantId = mapped.variant_id;
-    if (!variantId && mapped.variant) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapped.variant);
-      if (isUuid) {
-        variantId = mapped.variant;
-      } else {
-        let variantObj = await Variant.findOne({ where: { name: mapped.variant }, transaction });
-        if (!variantObj && modelId) {
-          variantObj = await Variant.create({ name: mapped.variant, model_id: modelId }, { transaction });
-        }
-        if (variantObj) variantId = variantObj.id;
-      }
+    let variantId = car.variant_id;
+    const variantInput = mapped.variant_id !== undefined && mapped.variant_id !== null && mapped.variant_id !== ''
+      ? mapped.variant_id
+      : mapped.variant;
+    if (variantInput) {
+      variantId = await resolveVariantId(
+        variantInput,
+        modelId,
+        {
+          fuel_type: mapped.fuel_type || car.fuel_type,
+          transmission: mapped.transmission || car.transmission,
+          price: mapped.price || car.price,
+        },
+        transaction
+      );
     }
 
     const filteredData = {};

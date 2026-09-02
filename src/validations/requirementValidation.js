@@ -1,8 +1,14 @@
 const Joi = require('joi');
 
+const idSchema = Joi.alternatives().try(
+  Joi.string().uuid(),
+  Joi.number().integer().positive(),
+  Joi.string().regex(/^\d+$/)
+);
+
 const createRequirementSchema = Joi.object({
-  brand_id: Joi.string().uuid().required(),
-  model_id: Joi.string().uuid().required(),
+  brand_id: idSchema.required(),
+  model_id: idSchema.required(),
   year: Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).optional().allow(null, ''),
   price: Joi.number().min(0).optional().allow(null, ''),
   km_driven: Joi.number().integer().min(0).optional().allow(null, ''),
@@ -25,8 +31,8 @@ const updateRequirementStatusSchema = Joi.object({
 }).unknown(true);
 
 const updateRequirementSchema = Joi.object({
-  brand_id: Joi.string().uuid().optional(),
-  model_id: Joi.string().uuid().optional(),
+  brand_id: idSchema.optional(),
+  model_id: idSchema.optional(),
   year: Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).optional().allow(null, ''),
   price: Joi.number().min(0).optional().allow(null, ''),
   km_driven: Joi.number().integer().min(0).optional().allow(null, ''),

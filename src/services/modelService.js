@@ -5,10 +5,22 @@ const sequelize= require('../config/database')
 exports.getAllModels = async (brandId = null) => {
   const where = {};
   if (brandId) {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brandId);
-    let targetBrandId = brandId;
-    if (!isUuid) {
-      const searchName = brandId.replace(/-/g, ' ').trim().toLowerCase();
+    const brandIdStr = String(brandId).trim();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brandIdStr);
+    let targetBrandId = brandIdStr;
+    if (isUuid) {
+      targetBrandId = brandIdStr;
+    } else if (/^\d+$/.test(brandIdStr)) {
+      const brand = await Brand.findOne({
+        where: { external_id: parseInt(brandIdStr, 10) },
+      });
+      if (brand) {
+        targetBrandId = brand.id;
+      } else {
+        return [];
+      }
+    } else {
+      const searchName = brandIdStr.replace(/-/g, ' ').trim().toLowerCase();
       const brand = await Brand.findOne({
         where: sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), searchName),
       });
@@ -26,6 +38,7 @@ exports.getAllModels = async (brandId = null) => {
       'id',
       'brandId',
       'name',
+      'external_id',
       'body_type',
       'image_url',
       'start_year',
@@ -43,7 +56,7 @@ exports.getAllModels = async (brandId = null) => {
         'car_count',
       ],
     ],
-    include: [{ model: Brand, as: 'brand', attributes: ['id', 'name', 'logo'] }],
+    include: [{ model: Brand, as: 'brand', attributes: ['id', 'name', 'external_id', 'logo'] }],
     order: [['name', 'ASC']],
   });
 
@@ -57,11 +70,17 @@ exports.getAllModels = async (brandId = null) => {
 };
 
 exports.getModelById = async (id) => {
-  const model = await Model.findByPk(id, {
+  const idStr = String(id).trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr);
+  const where = isUuid ? { id: idStr } : (/^\d+$/.test(idStr) ? { external_id: parseInt(idStr, 10) } : { id: idStr });
+
+  const model = await Model.findOne({
+    where,
     attributes: [
       'id',
       'brandId',
       'name',
+      'external_id',
       'body_type',
       'image_url',
       'start_year',
@@ -81,8 +100,8 @@ exports.getModelById = async (id) => {
     ],
     include: [{ 
       model: Brand, 
-      as: 'brand',
-      attributes: ['id', 'name', 'logo'] 
+      as: 'brand', 
+      attributes: ['id', 'name', 'external_id', 'logo'] 
     }],
   });
   if (!model) throw new AppError('Model not found', 404);

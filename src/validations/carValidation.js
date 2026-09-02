@@ -11,15 +11,21 @@ const enumString = (values) =>
 
 const STATUS_TYPES_IN = ['sold', 'active', 'deleted', 'expired'];
 
+const idSchema = Joi.alternatives().try(
+  Joi.string().uuid(),
+  Joi.number().integer().positive(),
+  Joi.string().regex(/^\d+$/)
+);
+
 /**
  * Create Car Joi Schema
  */
 const createCarSchema = Joi.object({
-  brand_id:         Joi.string().uuid().optional(),
+  brand_id:         idSchema.optional(),
   brand:            Joi.string().trim().max(100).optional(),
-  model_id:         Joi.string().uuid().optional(),
+  model_id:         idSchema.optional(),
   model:            Joi.string().trim().max(100).optional(),
-  variant_id:       Joi.string().uuid().optional(),
+  variant_id:       idSchema.optional(),
   variant:          Joi.string().trim().max(100).optional(),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1).required(),
   price:            Joi.number().positive().required(),
@@ -67,11 +73,11 @@ const createCarSchema = Joi.object({
  * Update Car Joi Schema
  */
 const updateCarSchema = Joi.object({
-  brand_id:         Joi.string().uuid().optional(),
+  brand_id:         idSchema.optional(),
   brand:            Joi.string().trim().max(50),
-  model_id:         Joi.string().uuid().optional(),
+  model_id:         idSchema.optional(),
   model:            Joi.string().trim().max(50),
-  variant_id:       Joi.string().uuid().optional(),
+  variant_id:       idSchema.optional(),
   variant:          Joi.string().trim().max(50),
   year:             Joi.number().integer().min(1900).max(new Date().getFullYear() + 1),
   price:            Joi.number().positive(),
@@ -258,12 +264,12 @@ const carQuerySchema = Joi.object({
   transmissions: Joi.string().optional(),
   posted_within_days: Joi.number().integer().min(1).max(90).optional(),
   include_expired: Joi.boolean().optional(),
-  brand_id: Joi.string().uuid().optional(),
+  brand_id: idSchema.optional(),
   brand: Joi.string().optional(),
-  model_id: Joi.string().uuid().optional(),
+  model_id: idSchema.optional(),
   model_ids: Joi.string().optional(),
   model: Joi.string().optional(),
-  variant_id: Joi.string().uuid().optional(),
+  variant_id: idSchema.optional(),
   variant_ids: Joi.string().optional(),
   variant: Joi.string().optional(),
   fuel_type: Joi.string().optional(),

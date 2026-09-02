@@ -46,12 +46,18 @@ const Variant = sequelize.define('Variant', {
     defaultValue: true,
     allowNull: false,
   },
+  external_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    unique: true,
+  },
 }, {
   tableName: 'variants',
   timestamps: true,
   underscored: true,
   indexes: [
     { unique: true, fields: ['model_id', 'name'] },
+    { unique: true, fields: ['external_id'] },
     { fields: ['name'] },
     { fields: ['is_active'] },
   ],

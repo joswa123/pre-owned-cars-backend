@@ -7,18 +7,22 @@ const { AppError } = require('../utils/errorHandler');
  * Create a new Buying Requirement
  */
 exports.createRequirement = async (userId, data) => {
-  // 1. Validate Brand exists
-  const brand = await Brand.findByPk(data.brand_id);
-  if (!brand) {
+  const { resolveBrandId, resolveModelId } = require('./carService');
+
+  // 1. Resolve Brand
+  const brandId = await resolveBrandId(data.brand_id);
+  if (!brandId) {
     throw new AppError('Brand not found', 404);
   }
 
-  // 2. Validate Model exists and belongs to the selected Brand
-  const model = await Model.findByPk(data.model_id);
-  if (!model) {
+  // 2. Resolve Model and check brand association
+  const modelId = await resolveModelId(data.model_id, brandId);
+  if (!modelId) {
     throw new AppError('Model not found', 404);
   }
-  if (model.brandId !== data.brand_id) {
+  const model = await Model.findByPk(modelId);
+  const modelBrandId = model ? (model.brandId || model.brand_id) : null;
+  if (model && modelBrandId && modelBrandId !== brandId) {
     throw new AppError('Model does not belong to the selected brand', 400);
   }
 
@@ -33,8 +37,8 @@ exports.createRequirement = async (userId, data) => {
   // 4. Create requirement
   const requirement = await Requirement.create({
     user_id: userId,
-    brand_id: data.brand_id,
-    model_id: data.model_id,
+    brand_id: brandId,
+    model_id: modelId,
     year: data.year || null,
     price: data.price || null,
     km_driven: kmValue,
@@ -158,39 +162,32 @@ exports.updateRequirement = async (requirementId, userId, data) => {
     }
 
     // Determine target brandId
-    const targetBrandId = data.brand_id || requirement.brand_id;
-
-    // 2. Validate brand_id if provided
+    const { resolveBrandId, resolveModelId } = require('./carService');
+    let resolvedBrandId = requirement.brand_id;
     if (data.brand_id) {
-      const brand = await Brand.findByPk(data.brand_id, { transaction });
-      if (!brand) {
-        throw new AppError('Brand not found', 404);
-      }
+      resolvedBrandId = await resolveBrandId(data.brand_id, transaction);
+      if (!resolvedBrandId) throw new AppError('Brand not found', 404);
     }
 
-    // 3. Validate model_id if provided (and belongs to brand)
+    let resolvedModelId = requirement.model_id;
     if (data.model_id) {
-      const model = await Model.findByPk(data.model_id, { transaction });
-      if (!model) {
-        throw new AppError('Model not found', 404);
-      }
-      const modelBrandId = model.brandId || model.brand_id;
-      if (modelBrandId !== targetBrandId) {
+      resolvedModelId = await resolveModelId(data.model_id, resolvedBrandId, data.body_type || requirement.body_type || 'SUV', transaction);
+      if (!resolvedModelId) throw new AppError('Model not found', 404);
+      const model = await Model.findByPk(resolvedModelId, { transaction });
+      const modelBrandId = model ? (model.brandId || model.brand_id) : null;
+      if (model && modelBrandId && modelBrandId !== resolvedBrandId) {
         throw new AppError('Model does not belong to the selected brand', 400);
       }
-    } else if (data.brand_id && data.brand_id !== requirement.brand_id) {
-      // If brand_id changed without providing a new model_id, check if existing model belongs to new brand
+    } else if (data.brand_id && resolvedBrandId !== requirement.brand_id) {
       const currentModel = await Model.findByPk(requirement.model_id, { transaction });
       const currentModelBrandId = currentModel ? (currentModel.brandId || currentModel.brand_id) : null;
-      if (currentModelBrandId !== data.brand_id) {
+      if (currentModelBrandId !== resolvedBrandId) {
         throw new AppError('Model does not belong to the selected brand', 400);
       }
     }
 
     // 4. Prepare update fields (only allowed ones)
     const allowedFields = [
-      'brand_id',
-      'model_id',
       'year',
       'price',
       'km_driven',
@@ -202,6 +199,8 @@ exports.updateRequirement = async (requirementId, userId, data) => {
     ];
 
     const updateData = {};
+    if (data.brand_id) updateData.brand_id = resolvedBrandId;
+    if (data.model_id) updateData.model_id = resolvedModelId;
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
         updateData[field] = data[field];

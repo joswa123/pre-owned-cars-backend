@@ -5,18 +5,38 @@ const sequelize = require('../config/database');
 exports.getAllVariants = async (modelId = null) => {
   const where = {};
   if (modelId) {
-    where.model_id = modelId;
+    const modelIdStr = String(modelId).trim();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(modelIdStr);
+    let targetModelId = modelIdStr;
+    if (isUuid) {
+      targetModelId = modelIdStr;
+    } else if (/^\d+$/.test(modelIdStr)) {
+      const model = await Model.findOne({
+        where: { external_id: parseInt(modelIdStr, 10) },
+      });
+      if (model) {
+        targetModelId = model.id;
+      } else {
+        return [];
+      }
+    }
+    where.model_id = targetModelId;
   }
   return await Variant.findAll({
     where,
-    include: [{ model: Model, as: 'model', attributes: ['id', 'name'] }],
+    include: [{ model: Model, as: 'model', attributes: ['id', 'name', 'external_id'] }],
     order: [['name', 'ASC']],
   });
 };
 
 exports.getVariantById = async (id) => {
-  const variant = await Variant.findByPk(id, {
-    include: [{ model: Model, as: 'model', attributes: ['id', 'name'] }],
+  const idStr = String(id).trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr);
+  const where = isUuid ? { id: idStr } : (/^\d+$/.test(idStr) ? { external_id: parseInt(idStr, 10) } : { id: idStr });
+
+  const variant = await Variant.findOne({
+    where,
+    include: [{ model: Model, as: 'model', attributes: ['id', 'name', 'external_id'] }],
   });
   if (!variant) throw new AppError('Variant not found', 404);
   return variant;
