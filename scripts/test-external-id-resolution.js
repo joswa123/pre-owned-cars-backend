@@ -267,6 +267,26 @@ async function runTests() {
       console.log(`✅ Test 9 PASSED: Correctly threw error (${err.statusCode || 404}): ${err.message}`);
     }
 
+    // -------------------------------------------------------------
+    // TEST 10: Create car with external model_id 1633 (Baleno)
+    // -------------------------------------------------------------
+    console.log('\nTest 10: Create car with model_id: 1633 (Baleno)...');
+    const testCar1633 = await carService.createCar(testUser.id, {
+      brand_id: 10,
+      model_id: 1633,
+      year: 2024,
+      price: 900000,
+      km_driven: 10000,
+      fuel_type: 'Petrol',
+      transmission: 'Automatic',
+      ownership: '1st Owner',
+      body_type: 'Hatchback',
+      board_type: 'Own Board',
+      status: 'active',
+    });
+    console.log(`✅ Test 10 PASSED: Created car with model_id: 1633 (Car ID: ${testCar1633.id}, Brand: ${testCar1633.brand_id}, Model: ${testCar1633.model_id})`);
+    await Car.destroy({ where: { id: testCar1633.id } });
+
   } finally {
     // Cleanup created test cars
     if (testCar1) await Car.destroy({ where: { id: testCar1.id } });
