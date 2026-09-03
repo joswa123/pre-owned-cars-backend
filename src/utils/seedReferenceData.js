@@ -43,6 +43,13 @@ const TRANSMISSIONS = [
 async function seedReferenceData() {
   try {
     // 1. Seed Body Types (CarType)
+    const BODY_TYPE_ORDERS = {
+      hatchback: 1,
+      sedan: 2,
+      suv: 3,
+      muv: 4,
+    };
+
     for (const typeName of BODY_TYPES) {
       const existing = await CarType.findOne({
         where: sequelize.where(
@@ -50,8 +57,11 @@ async function seedReferenceData() {
           typeName.toLowerCase()
         ),
       });
+      const order = BODY_TYPE_ORDERS[typeName.toLowerCase()] || 999;
       if (!existing) {
-        await CarType.create({ name: typeName });
+        await CarType.create({ name: typeName, order });
+      } else if (existing.order !== order && BODY_TYPE_ORDERS[typeName.toLowerCase()]) {
+        await existing.update({ order });
       }
     }
 

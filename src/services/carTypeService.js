@@ -2,11 +2,21 @@ const { CarType } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const sequelize =require('../config/database')
 exports.getAllCarTypes = async () => {
-  let carTypes = await CarType.findAll({ order: [['name', 'ASC']] });
+  let carTypes = await CarType.findAll({
+    order: [
+      ['order', 'ASC'],
+      ['name', 'ASC'],
+    ],
+  });
   if (carTypes.length === 0) {
     const seedReferenceData = require('../utils/seedReferenceData');
     await seedReferenceData();
-    carTypes = await CarType.findAll({ order: [['name', 'ASC']] });
+    carTypes = await CarType.findAll({
+      order: [
+        ['order', 'ASC'],
+        ['name', 'ASC'],
+      ],
+    });
   }
   return carTypes;
 };

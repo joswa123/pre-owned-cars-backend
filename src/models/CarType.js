@@ -17,6 +17,11 @@ const CarType = sequelize.define('CarType', {
     type: DataTypes.STRING(500),
     allowNull: true,
   },
+  order: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 999,
+  },
 }, {
   tableName: 'car_types',
   timestamps: true,
