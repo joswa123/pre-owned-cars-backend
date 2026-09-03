@@ -72,20 +72,39 @@ exports.recordInteraction = async ({ carId, userId = null, type = 'view', ipAddr
 };
 
 /**
- * High-Scale Multi-Row Bulk Flusher (Runs periodically, e.g. every 60s)
- * Aggregates all dirty metrics into a single multi-row UPSERT query.
+ * High-Scale Multi-Row Bulk Flusher with Atomic Staging
+ * Eliminates race condition data loss by staging dirty keys before processing.
  */
 exports.flushMetricsToDb = async () => {
   if (!redisClient.isOpen) return;
 
   try {
-    const dirtyItems = await redisClient.sMembers('dirty:car_metrics');
-    if (!dirtyItems || dirtyItems.length === 0) return;
+    const activeKey = 'dirty:car_metrics';
+    const processingKey = 'dirty:car_metrics:processing';
 
-    // Clear dirty set atomically
-    await redisClient.del('dirty:car_metrics');
+    // 1. If a prior batch is still in processing (e.g. from an earlier crash), resume it.
+    // Otherwise, atomically promote the active dirty set to the processing set.
+    const hasProcessing = await redisClient.exists(processingKey);
 
-    // Aggregate counts by carId in memory before hitting DB
+    if (!hasProcessing) {
+      const hasActive = await redisClient.exists(activeKey);
+      if (!hasActive) return;
+
+      try {
+        await redisClient.rename(activeKey, processingKey);
+      } catch (renameErr) {
+        // If key did not exist or was renamed concurrently, safely return
+        return;
+      }
+    }
+
+    const dirtyItems = await redisClient.sMembers(processingKey);
+    if (!dirtyItems || dirtyItems.length === 0) {
+      await redisClient.del(processingKey).catch(() => {});
+      return;
+    }
+
+    // 2. Aggregate counts by carId in memory
     const aggregatedByCar = {};
 
     for (const item of dirtyItems) {
@@ -114,52 +133,56 @@ exports.flushMetricsToDb = async () => {
     }
 
     const carIds = Object.keys(aggregatedByCar);
-    if (carIds.length === 0) return;
 
-    // Construct multi-row bulk INSERT ... ON DUPLICATE KEY UPDATE query
-    const valuePlaceholders = [];
-    const replacements = {};
+    // 3. If there are positive counts, perform the atomic bulk UPSERT in MySQL
+    if (carIds.length > 0) {
+      const valuePlaceholders = [];
+      const replacements = {};
 
-    carIds.forEach((cId, idx) => {
-      const metrics = aggregatedByCar[cId];
-      const pCarId = `carId_${idx}`;
-      const pViews = `views_${idx}`;
-      const pCalls = `calls_${idx}`;
-      const pWa = `wa_${idx}`;
-      const pMsg = `msg_${idx}`;
-      const pEnq = `enq_${idx}`;
-      const pWish = `wish_${idx}`;
+      carIds.forEach((cId, idx) => {
+        const metrics = aggregatedByCar[cId];
+        const pCarId = `carId_${idx}`;
+        const pViews = `views_${idx}`;
+        const pCalls = `calls_${idx}`;
+        const pWa = `wa_${idx}`;
+        const pMsg = `msg_${idx}`;
+        const pEnq = `enq_${idx}`;
+        const pWish = `wish_${idx}`;
 
-      replacements[pCarId] = cId;
-      replacements[pViews] = metrics.view || 0;
-      replacements[pCalls] = metrics.call || 0;
-      replacements[pWa] = metrics.whatsapp || 0;
-      replacements[pMsg] = metrics.message || 0;
-      replacements[pEnq] = metrics.enquiry || 0;
-      replacements[pWish] = metrics.wishlist || 0;
+        replacements[pCarId] = cId;
+        replacements[pViews] = metrics.view || 0;
+        replacements[pCalls] = metrics.call || 0;
+        replacements[pWa] = metrics.whatsapp || 0;
+        replacements[pMsg] = metrics.message || 0;
+        replacements[pEnq] = metrics.enquiry || 0;
+        replacements[pWish] = metrics.wishlist || 0;
 
-      valuePlaceholders.push(
-        `(:${pCarId}, :${pViews}, :${pCalls}, :${pWa}, :${pMsg}, :${pEnq}, :${pWish}, NOW(), NOW())`
-      );
-    });
+        valuePlaceholders.push(
+          `(:${pCarId}, :${pViews}, :${pCalls}, :${pWa}, :${pMsg}, :${pEnq}, :${pWish}, NOW(), NOW())`
+        );
+      });
 
-    const bulkSql = `
-      INSERT INTO car_stats (
-        car_id, views_count, calls_count, whatsapp_count, messages_count, enquiries_count, wishlist_count, created_at, updated_at
-      )
-      VALUES ${valuePlaceholders.join(', ')}
-      ON DUPLICATE KEY UPDATE
-        views_count = views_count + VALUES(views_count),
-        calls_count = calls_count + VALUES(calls_count),
-        whatsapp_count = whatsapp_count + VALUES(whatsapp_count),
-        messages_count = messages_count + VALUES(messages_count),
-        enquiries_count = enquiries_count + VALUES(enquiries_count),
-        wishlist_count = wishlist_count + VALUES(wishlist_count),
-        updated_at = NOW();
-    `;
+      const bulkSql = `
+        INSERT INTO car_stats (
+          car_id, views_count, calls_count, whatsapp_count, messages_count, enquiries_count, wishlist_count, created_at, updated_at
+        )
+        VALUES ${valuePlaceholders.join(', ')}
+        ON DUPLICATE KEY UPDATE
+          views_count = views_count + VALUES(views_count),
+          calls_count = calls_count + VALUES(calls_count),
+          whatsapp_count = whatsapp_count + VALUES(whatsapp_count),
+          messages_count = messages_count + VALUES(messages_count),
+          enquiries_count = enquiries_count + VALUES(enquiries_count),
+          wishlist_count = wishlist_count + VALUES(wishlist_count),
+          updated_at = NOW();
+      `;
 
-    await sequelize.query(bulkSql, { replacements });
-    logger.info(`⚡ Successfully flushed live metrics for ${carIds.length} cars in a single bulk query.`);
+      await sequelize.query(bulkSql, { replacements });
+      logger.info(`⚡ Successfully flushed live metrics for ${carIds.length} cars in a single bulk query.`);
+    }
+
+    // 4. Delete processing staging key ONLY AFTER successful database persistence
+    await redisClient.del(processingKey);
 
   } catch (err) {
     logger.error(`flushMetricsToDb error: ${err.message}`);

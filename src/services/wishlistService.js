@@ -16,8 +16,11 @@ const clearCache = async (key) => {
 const clearCacheByPattern = async (pattern) => {
   try {
     if (redisClient.isOpen) {
-      const keys = await redisClient.keys(pattern);
-      if (keys && keys.length > 0) {
+      const keys = [];
+      for await (const key of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+        keys.push(key);
+      }
+      if (keys.length > 0) {
         await redisClient.del(keys);
       }
     }

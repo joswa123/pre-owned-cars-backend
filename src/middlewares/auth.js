@@ -20,6 +20,10 @@ exports.protect = async (req, res, next) => {
       throw new AppError('User account no longer exists. Please log in or register.', 401);
     }
 
+    if (user.status && user.status !== 'approved') {
+      throw new AppError('Your account is not approved or has been suspended. Please contact support.', 403);
+    }
+
     req.user = user;
     next();
   } catch (err) {

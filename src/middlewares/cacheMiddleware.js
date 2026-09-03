@@ -1,10 +1,15 @@
 const redisClient = require('../config/redis');
 const logger = require('../utils/logger');
 
+let isRedisDegraded = false;
+let nextRedisProbeTime = 0;
+const CIRCUIT_BREAKER_COOLDOWN_MS = 30000; // 30-second cooldown window
+
 /**
  * Middleware to check cache before hitting the database.
  * Use this on GET requests that benefit from caching.
  * @param {number} duration - Time to live in seconds
+ * @param {object} options - Cache options (e.g. ignoreAuth)
  */
 const cacheMiddleware = (duration = 300, options = {}) => {
   return async (req, res, next) => {
@@ -13,17 +18,30 @@ const cacheMiddleware = (duration = 300, options = {}) => {
       return next();
     }
 
+    // Circuit Breaker: If Redis is degraded, bypass unless cooldown elapsed for a probe
+    if (isRedisDegraded) {
+      if (Date.now() < nextRedisProbeTime) {
+        return next();
+      }
+      // Cooldown elapsed: Allow this request through as a health probe
+    }
+
+    if (!redisClient.isOpen) {
+      return next();
+    }
+
     // Construct cache key based on URL, query params, and authorization header (if not ignored)
     const authHeader = options.ignoreAuth ? '' : (req.headers.authorization || '');
     const key = `__express__${req.originalUrl || req.url}__${authHeader}`;
 
     try {
-      if (!redisClient.isOpen) {
-        // If Redis is not connected yet or down, bypass cache safely
-        return next();
-      }
-
       const cachedResponse = await redisClient.get(key);
+
+      // Successful call: Reset circuit breaker if it was previously tripped
+      if (isRedisDegraded) {
+        isRedisDegraded = false;
+        logger.info('✅ Redis cache connection restored. Circuit breaker reset.');
+      }
 
       if (cachedResponse) {
         // Cache HIT
@@ -37,9 +55,11 @@ const cacheMiddleware = (duration = 300, options = {}) => {
             try {
               const stringified = JSON.stringify(body);
               // Save to Redis with expiry (fire and forget)
-              redisClient.setEx(key, duration, stringified).catch(err => {
-                logger.error(`Redis cache set error: ${err.message}`);
-              });
+              if (redisClient.isOpen && !isRedisDegraded) {
+                redisClient.setEx(key, duration, stringified).catch(err => {
+                  logger.warn(`Redis cache set warning: ${err.message}`);
+                });
+              }
             } catch (e) {
               logger.error(`Cache serialization error: ${e.message}`);
             }
@@ -49,8 +69,16 @@ const cacheMiddleware = (duration = 300, options = {}) => {
         next();
       }
     } catch (error) {
-      logger.error(`Redis error in cacheMiddleware: ${error.message}`);
-      // On error, just bypass cache
+      // Trip circuit breaker on error
+      if (!isRedisDegraded) {
+        isRedisDegraded = true;
+        nextRedisProbeTime = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
+        logger.warn(`⚠️ Redis error in cacheMiddleware. Circuit breaker active for ${CIRCUIT_BREAKER_COOLDOWN_MS / 1000}s: ${error.message}`);
+      } else {
+        // Probe failed, extend cooldown
+        nextRedisProbeTime = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
+      }
+      // Bypass cache safely
       next();
     }
   };
@@ -64,10 +92,11 @@ const clearCache = async (prefix) => {
   try {
     if (!redisClient.isOpen) return;
 
-    // In Redis, we can use KEYS to find all matching keys.
-    // For larger production datasets, SCAN is preferred over KEYS.
     const pattern = `__express__${prefix}*`;
-    const keys = await redisClient.keys(pattern);
+    const keys = [];
+    for await (const key of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+      keys.push(key);
+    }
     
     if (keys.length > 0) {
       await redisClient.del(keys);

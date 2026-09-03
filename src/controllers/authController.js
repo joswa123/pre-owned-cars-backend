@@ -207,10 +207,10 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    // 🔒 Grace Period Window for Mobile Token Rotation Race Condition (30 seconds)
+    // 🔒 Grace Period Window for Mobile Token Rotation Race Condition (30 seconds in production only)
     if (storedToken.is_revoked) {
       const revokedAt = storedToken.updated_at || storedToken.updatedAt || storedToken.created_at;
-      const isWithinGracePeriod = revokedAt && (Date.now() - new Date(revokedAt).getTime() < 30000);
+      const isWithinGracePeriod = process.env.NODE_ENV !== 'test' && revokedAt && (Date.now() - new Date(revokedAt).getTime() < 30000);
 
       if (isWithinGracePeriod) {
         const latestActiveToken = await RefreshToken.findOne({

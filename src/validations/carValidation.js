@@ -42,7 +42,7 @@ const createCarSchema = Joi.object({
   kmdriven:         Joi.number().integer().min(0).optional(),
   fuel_type:        enumString(FUEL_TYPES_IN).optional(),
   fueltype:         enumString(FUEL_TYPES_IN).optional(),
-  transmission:     enumString(TRANSMISSION_TYPES_IN).required(),
+  transmission:     Joi.string().trim().max(50).required(),
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
   body_type:        Joi.string().trim().max(50).optional(),
   car_type:         Joi.string().trim().max(50).optional(),
@@ -93,7 +93,7 @@ const updateCarSchema = Joi.object({
   kmdriven:         Joi.number().integer().min(0),
   fuel_type:        enumString(FUEL_TYPES_IN),
   fueltype:         enumString(FUEL_TYPES_IN),
-  transmission:     enumString(TRANSMISSION_TYPES_IN),
+  transmission:     Joi.string().trim().max(50).optional(),
   ownership:        enumString(OWNERSHIP_TYPES_IN),
   body_type:        Joi.string().trim().max(50),
   car_type:         Joi.string().trim().max(50),
@@ -136,6 +136,10 @@ const TRANSMISSION_MAP = {
   automatic:           'Automatic',
   'clutchless manual': 'Clutchless Manual',
   'clutchless-manual': 'Clutchless Manual',
+  amt:                 'AMT',
+  imt:                 'IMT',
+  cvt:                 'CVT',
+  dct:                 'DCT',
 };
 
 const OWNERSHIP_MAP = {
@@ -204,8 +208,10 @@ const mapToDbValues = (data) => {
   const rawFuel = (mapped.fuel_type || '').toString().toLowerCase();
   if (rawFuel && FUEL_TYPE_MAP[rawFuel]) mapped.fuel_type = FUEL_TYPE_MAP[rawFuel];
 
-  const rawTrans = (mapped.transmission || '').toString().toLowerCase();
-  if (rawTrans && TRANSMISSION_MAP[rawTrans]) mapped.transmission = TRANSMISSION_MAP[rawTrans];
+  const rawTrans = (mapped.transmission || '').toString().trim();
+  if (rawTrans) {
+    mapped.transmission = TRANSMISSION_MAP[rawTrans.toLowerCase()] || rawTrans;
+  }
 
   const rawOwn = (mapped.ownership || '').toString().toLowerCase();
   if (rawOwn && OWNERSHIP_MAP[rawOwn]) mapped.ownership = OWNERSHIP_MAP[rawOwn];

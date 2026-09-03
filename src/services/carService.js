@@ -17,7 +17,10 @@ const clearCache = async (key) => {
 const clearCachePattern = async (pattern) => {
   try {
     if (redisClient.isOpen) {
-      const keys = await redisClient.keys(pattern);
+      const keys = [];
+      for await (const key of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+        keys.push(key);
+      }
       if (keys.length > 0) {
         await redisClient.del(keys);
       }
@@ -205,12 +208,14 @@ const fetchExternalJson = (url) => {
 const normalizeTransmission = (t) => {
   if (!t) return null;
   const lower = t.toLowerCase();
-  if (lower.includes('manual') && !lower.includes('automatic') && !lower.includes('auto')) return 'Manual';
   if (lower.includes('amt')) return 'AMT';
+  if (lower.includes('imt')) return 'IMT';
   if (lower.includes('cvt')) return 'CVT';
   if (lower.includes('dct') || lower.includes('dsg')) return 'DCT';
+  if (lower.includes('clutchless')) return 'Clutchless Manual';
   if (lower.includes('auto')) return 'Automatic';
-  return 'Manual';
+  if (lower.includes('manual')) return 'Manual';
+  return t.trim();
 };
 
 const normalizeFuelType = (f) => {

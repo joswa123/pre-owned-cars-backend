@@ -1,18 +1,36 @@
 const dotenv = require('dotenv');
-dotenv.config({ override: true });
+dotenv.config();
 
 const app = require('./app');
 const sequelize = require('./config/database');
 const logger = require('./utils/logger');
 const PORT = process.env.PORT || 5000;
 
+// ─── Database Connection with Exponential Backoff Retry ───────────────────
+const connectWithRetry = async (maxRetries = 5, initialDelayMs = 1000) => {
+  let delay = initialDelayMs;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      logger.info(`⏳ [Attempt ${attempt}/${maxRetries}] Connecting to database...`);
+      await sequelize.authenticate();
+      logger.info('✅ Database connected successfully');
+      return;
+    } catch (err) {
+      logger.warn(`⚠️ DB connection failed (attempt ${attempt}/${maxRetries}): ${err.message}`);
+      if (attempt === maxRetries) {
+        throw new Error(`Failed to connect to database after ${maxRetries} attempts: ${err.message}`);
+      }
+      await new Promise(res => setTimeout(res, delay));
+      delay *= 2; // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+    }
+  }
+};
+
 // ─── Startup Sequence ────────────────────────────────────────────────────────
 (async () => {
   try {
-    // 1. Verify DB connectivity
-    logger.info('⏳ Connecting to database...');
-    await sequelize.authenticate();
-    logger.info('✅ Database connected successfully');
+    // 1. Verify DB connectivity with retry
+    await connectWithRetry();
 
     // 2. We no longer sync schema automatically in production/development
     // to prevent accidental data wipes via alter: true.
@@ -56,15 +74,50 @@ const PORT = process.env.PORT || 5000;
       logger.info(`🆔 Process ID: ${process.pid}`);
     });
 
-    // Graceful Shutdown
+    // 5. Zero-Leak Graceful Shutdown
     const gracefulShutdown = async (signal) => {
-      logger.info(`🛑 ${signal} received. Closing server and flushing live metrics...`);
+      logger.info(`🛑 ${signal} received. Starting graceful shutdown sequence...`);
+
+      // Fallback safety timer (force exit after 10s if hanging)
+      const forceExitTimer = setTimeout(() => {
+        logger.error('⚠️ Graceful shutdown timed out (10s). Forcing process exit.');
+        process.exit(1);
+      }, 10000);
+      if (forceExitTimer.unref) forceExitTimer.unref();
+
+      // Stop analytics background flusher and flush remaining counts
       clearInterval(flusherInterval);
       try {
         await analyticsService.flushMetricsToDb();
-      } catch (e) {}
-      server.close(() => {
-        logger.info('HTTP server closed.');
+        logger.info('✅ Live analytics metrics flushed.');
+      } catch (e) {
+        logger.warn('⚠️ Metrics flush on shutdown warning:', e.message);
+      }
+
+      // Stop accepting new HTTP requests
+      server.close(async () => {
+        logger.info('✅ HTTP server closed.');
+
+        // Close Redis connection
+        try {
+          if (redisClient.isOpen) {
+            await redisClient.quit();
+            logger.info('✅ Redis connection closed.');
+          }
+        } catch (redisErr) {
+          logger.warn('⚠️ Redis close warning:', redisErr.message);
+        }
+
+        // Close Sequelize MySQL pool
+        try {
+          await sequelize.close();
+          logger.info('✅ Database connections closed.');
+        } catch (dbErr) {
+          logger.warn('⚠️ Database pool close warning:', dbErr.message);
+        }
+
+        clearTimeout(forceExitTimer);
+        logger.info('🏁 Clean shutdown complete.');
         process.exit(0);
       });
     };

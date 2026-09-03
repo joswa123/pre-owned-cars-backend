@@ -38,12 +38,42 @@ app.set('trust proxy', 1);
 app.use(helmet());
 
 // Single, correctly configured CORS (don't use cors() twice)
+const configuredOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+  : [];
+
+const defaultOrigins = [
+  'https://dreamstarz.in',
+  'http://dreamstarz.in',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:8080',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+];
+
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...configuredOrigins]));
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, Flutter, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    // Normalize origin (remove trailing slashes)
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+
+    // Allow wildcard or matching origin
+    const isAllowed = allowedOrigins.includes('*') ||
+      allowedOrigins.some(allowed => allowed.replace(/\/+$/, '') === normalizedOrigin) ||
+      normalizedOrigin.endsWith('dreamstarz.in');
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS policy does not allow access from origin: ${origin}`));
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning', 'X-Requested-With', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning', 'X-Requested-With', 'Accept', 'x-refresh-token'],
   credentials: true,
 }));
 
@@ -111,24 +141,43 @@ app.get('/api/debug/uploads', (req, res) => {
   });
 });
 
-// ─── Diagnostic Routes ───────────────────────────────────────────────────────
-// GET /health — Used by Render and monitoring services to check API and DB connectivity.
-app.get('/health', async (req, res) => {
+// ─── Diagnostic & Health Routes ──────────────────────────────────────────────
+// GET /health & GET /health/live — Fast Liveness Probe (Used by Render/Nginx without hitting DB)
+const livenessHandler = (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    pid: process.pid,
+  });
+};
+app.get('/health', livenessHandler);
+app.get('/health/live', livenessHandler);
+
+// GET /health/ready — Deep Readiness Probe (Verifies DB & Redis connectivity)
+app.get('/health/ready', async (req, res) => {
+  const redisClient = require('./config/redis');
+  let dbStatus = 'disconnected';
+  let redisStatus = redisClient.isOpen ? 'connected' : 'disconnected';
+
   try {
     await sequelize.authenticate();
-    res.status(200).json({
-      status: 'ok',
-      db: 'connected',
-      timestamp: new Date().toISOString(),
-      uptime: Math.floor(process.uptime()),
-    });
+    dbStatus = 'connected';
   } catch (err) {
-    res.status(503).json({
-      status: 'db_unavailable',
-      error: err.message,
-      timestamp: new Date().toISOString(),
-    });
+    dbStatus = `error: ${err.message}`;
   }
+
+  const isHealthy = dbStatus === 'connected';
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'ready' : 'unhealthy',
+    services: {
+      database: dbStatus,
+      redis: redisStatus,
+    },
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // GET /server-id — Shows which instance handled this request.

@@ -14,16 +14,12 @@ cloudinary.config({
 
 // ─── File Filter ────────────────────────────────────────
 const fileFilter = (req, file, cb) => {
-  const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",'application/octet-stream'];
+  const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
     cb(new Error('Only image files are allowed'));
-  } 
-  // const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-  // const mime = allowed.test(file.mimetype);
-  // if (mime && ext) return cb(null, true);
-  // cb(new Error('Only image files are allowed'), false);
+  }
 };  
 
 // ─── Factory: Create a Cloudinary-backed Multer instance ─

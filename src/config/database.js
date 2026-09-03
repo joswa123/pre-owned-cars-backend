@@ -1,5 +1,5 @@
 const { Sequelize } = require('sequelize');
-require('dotenv').config({ override: true });
+require('dotenv').config();
 
 // ─── POLYFILL Sequelize.Op for v3 compatibility ─────────────────────────────
 Sequelize.Op = {
@@ -37,8 +37,8 @@ if (process.env.DB_SSL === 'true') {
 }
 
 // ─── Sequelize Instance ───────────────────────────────────────────────────────
-const dbName = process.env.NODE_ENV === 'test'
-  ? `${process.env.DB_NAME}_test`
+const dbName = (process.env.NODE_ENV === 'test' && process.env.TEST_DB_NAME)
+  ? process.env.TEST_DB_NAME
   : process.env.DB_NAME;
 
 const sequelize = new Sequelize(
@@ -54,8 +54,8 @@ const sequelize = new Sequelize(
       : false,
     dialectOptions,
     pool: {
-      max: 4,
-      min: 1,
+      max: parseInt(process.env.DB_POOL_MAX) || 3,
+      min: parseInt(process.env.DB_POOL_MIN) || 1,
       acquire: 30000,
       idle: 10000,
       evict: 1000,
