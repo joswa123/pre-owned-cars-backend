@@ -12,14 +12,44 @@ cloudinary.config({
 });
 
 
-// ─── File Filter ────────────────────────────────────────
+// ─── File Filter & MIME Normalization ────────────────────
+const ALLOWED_MIMES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/heic',
+  'image/bmp',
+];
+
+const EXT_TO_MIME = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
+  '.bmp': 'image/bmp',
+};
+
 const fileFilter = (req, file, cb) => {
-  const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-  if (allowedMimes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only image files are allowed'));
+  const mimetype = (file.mimetype || '').toLowerCase();
+  const ext = path.extname(file.originalname || '').toLowerCase();
+
+  // 1. If mimetype is already a valid image MIME, accept directly
+  if (ALLOWED_MIMES.includes(mimetype)) {
+    return cb(null, true);
   }
+
+  // 2. If client/external API sends generic application/octet-stream or missing MIME,
+  // validate against known image extensions and normalize the MIME type
+  if (EXT_TO_MIME[ext]) {
+    file.mimetype = EXT_TO_MIME[ext];
+    return cb(null, true);
+  }
+
+  return cb(new Error('Only image files are allowed'), false);
 };  
 
 // ─── Factory: Create a Cloudinary-backed Multer instance ─
