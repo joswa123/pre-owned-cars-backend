@@ -10,6 +10,7 @@
     "db:init": "node scripts/db-init.js",
     "db:migrate": "npx --yes sequelize-cli db:migrate",
     "catalog:seed": "node scripts/seed-car-catalog.js",
+    "seed:locations": "node scripts/seed-locations-from-package.js",
     "vercel-build": "npm ci --omit=dev",
     "render-build": "npm install --legacy-peer-deps && npm run db:migrate",
     "postinstall": "npm run db:migrate"
@@ -30,6 +31,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
+    "indian-states-cities-geolocation": "^1.0.5",
     "joi": "^18.2.3",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.11.0",
