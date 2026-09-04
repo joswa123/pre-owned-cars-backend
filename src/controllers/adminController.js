@@ -183,3 +183,124 @@ exports.getPayments = catchAsync(async (req, res) => {
   });
   res.json({ success: true, data: payments });
 });
+
+// ── Pending Users Approval Flow ───────────────────────────────────────────────
+// GET /api/v1/admin/users/pending/count
+// Returns total count of users with status = 'pending'
+exports.getPendingUsersCount = catchAsync(async (req, res) => {
+  const count = await User.count({
+    where: { status: 'pending' },
+  });
+  res.json({
+    status: 'success',
+    data: { count },
+  });
+});
+
+// GET /api/v1/admin/users/pending
+// Returns paginated list of pending users with optional search filter
+exports.getPendingUsers = catchAsync(async (req, res) => {
+  const { page = 1, limit = 20, search } = req.query;
+  const where = { status: 'pending' };
+
+  if (search) {
+    where[Op.or] = [
+      { full_name: { [Op.like]: `%${search}%` } },
+      { phone:     { [Op.like]: `%${search}%` } },
+      { email:     { [Op.like]: `%${search}%` } },
+    ];
+  }
+
+  const { count, rows } = await User.findAndCountAll({
+    where,
+    include: [
+      {
+        model: CustomerProfile,
+        as: 'customerProfile',
+        required: false,
+      },
+      {
+        model: DealerProfile,
+        as: 'dealerProfile',
+        required: false,
+      },
+    ],
+    attributes: { exclude: ['password_hash'] },
+    order: [['created_at', 'DESC']],
+    limit: parseInt(limit),
+    offset: (parseInt(page) - 1) * parseInt(limit),
+    distinct: true,
+  });
+
+  res.json({
+    status: 'success',
+    data: {
+      users: rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    },
+  });
+});
+
+// PATCH /api/v1/admin/users/:id/approve (also supports :userId)
+// Approves a user account
+exports.approveUser = catchAsync(async (req, res) => {
+  const userId = req.params.id || req.params.userId;
+  const user = await User.findByPk(userId, {
+    include: [
+      { model: CustomerProfile, as: 'customerProfile', required: false },
+      { model: DealerProfile, as: 'dealerProfile', required: false },
+    ],
+  });
+
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  await user.update({ status: 'approved' });
+
+  const userData = user.toJSON();
+  delete userData.password_hash;
+
+  res.json({
+    status: 'success',
+    message: 'User approved successfully',
+    data: { user: userData },
+  });
+});
+
+// PATCH /api/v1/admin/users/:id/reject (also supports :userId)
+// Rejects a user account with optional reason
+exports.rejectUser = catchAsync(async (req, res) => {
+  const userId = req.params.id || req.params.userId;
+  const { reason } = req.body || {};
+
+  const user = await User.findByPk(userId, {
+    include: [
+      { model: CustomerProfile, as: 'customerProfile', required: false },
+      { model: DealerProfile, as: 'dealerProfile', required: false },
+    ],
+  });
+
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  await user.update({ status: 'rejected' });
+
+  const userData = user.toJSON();
+  delete userData.password_hash;
+
+  res.json({
+    status: 'success',
+    message: 'User rejected successfully',
+    data: {
+      user: userData,
+      ...(reason && { rejection_reason: reason }),
+    },
+  });
+});

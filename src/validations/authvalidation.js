@@ -47,6 +47,9 @@ const registerSchema = Joi.object({
   license_no: Joi.string().max(100).optional().allow('', null),
   contact_person: Joi.string().max(100).optional().allow('', null),
   seller_type: Joi.string().valid('individual', 'company', 'private', 'dealer').optional().allow('', null),
+  // Security: Client cannot set status or is_verified
+  status: Joi.forbidden(),
+  is_verified: Joi.forbidden(),
 }).unknown(true);
 
 /**

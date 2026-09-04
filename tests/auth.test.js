@@ -56,7 +56,7 @@ describe('Auth Flow Integration Tests', () => {
   });
 
   // -------- 3. Login (Happy Path) --------
-  test('POST /api/v1/auth/login - should authenticate verified user', async () => {
+  test('POST /api/v1/auth/login - should authenticate verified user after approval', async () => {
     const customer = getTestCustomer();
     const regRes = await request(app)
       .post('/api/v1/auth/register')
@@ -64,6 +64,9 @@ describe('Auth Flow Integration Tests', () => {
     await request(app)
       .post('/api/v1/auth/verify')
       .send({ email: customer.email, code: regRes.body.data.otp });
+
+    // Approve user
+    await User.update({ status: 'approved' }, { where: { email: customer.email } });
 
     const res = await request(app)
       .post('/api/v1/auth/login')

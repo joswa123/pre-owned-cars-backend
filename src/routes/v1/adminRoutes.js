@@ -24,6 +24,16 @@ router.get("/dealers", adminController.getDealers);
 router.get("/dealers/:id", adminController.getDealerById);
 router.get("/dealers/:dealerId/cars", adminController.getDealerCars);
 
+// ── Users Approval Flow ──────────────────────────────────────────────────────
+// GET   /api/v1/admin/users/pending/count — count of pending users
+// GET   /api/v1/admin/users/pending       — paginated pending users list
+// PATCH /api/v1/admin/users/:id/approve   — approve pending user
+// PATCH /api/v1/admin/users/:id/reject    — reject user account
+router.get("/users/pending/count", adminController.getPendingUsersCount);
+router.get("/users/pending", adminController.getPendingUsers);
+router.patch("/users/:id/approve", adminController.approveUser);
+router.patch("/users/:id/reject", adminController.rejectUser);
+
 // ── Subscriptions & Payments (future) ────────────────────────────────────────
 router.get("/subscriptions", adminController.getSubscriptions);
 router.get("/payments", adminController.getPayments);

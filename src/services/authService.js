@@ -178,6 +178,7 @@ exports.registerUser = async (userData) => {
         email: email || null,
         password_hash: passwordHash,
         role,
+        status: 'pending',
         is_verified: false,
         state_id: location.state_id,
         district_id: location.district_id,
@@ -388,6 +389,18 @@ exports.loginUser = async ({ phone, email }, password) => {
 
   if (!user.is_verified) {
     throw new AppError('Account is not verified. Please verify your phone/email first.', 401);
+  }
+
+  if (user.status === 'pending') {
+    throw new AppError('Your account is pending admin approval. Please wait.', 403);
+  }
+
+  if (user.status === 'rejected') {
+    throw new AppError('Your account has been rejected. Contact support.', 403);
+  }
+
+  if (user.status !== 'approved') {
+    throw new AppError('Your account is not approved. Please contact support.', 403);
   }
 
   // Update last login timestamp
