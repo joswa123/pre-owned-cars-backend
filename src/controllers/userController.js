@@ -35,7 +35,11 @@ exports.getProfile = catchAsync(async (req, res) => {
  * Get Seller Listings (Public)
  */
 exports.getSellerListings = catchAsync(async (req, res) => {
-  const { userId } = req.params;
+  let { userId } = req.params;
+  if (userId === 'me') {
+    if (!req.user?.id) throw new AppError('You are not logged in. Please log in.', 401);
+    userId = req.user.id;
+  }
   const { excludeCarId, page = 1, limit = 10 } = req.query;
   const carService = require('../services/carService');
 

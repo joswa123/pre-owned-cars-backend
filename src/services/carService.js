@@ -17,11 +17,8 @@ const clearCache = async (key) => {
 const clearCachePattern = async (pattern) => {
   try {
     if (redisClient.isOpen) {
-      const keys = [];
-      for await (const key of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
-        keys.push(key);
-      }
-      if (keys.length > 0) {
+      const keys = await redisClient.keys(pattern);
+      if (keys && keys.length > 0) {
         await redisClient.del(keys);
       }
     }
@@ -1041,6 +1038,17 @@ exports.getCars = async (
     if (filters.district_id) where.district_id = filters.district_id;
     if (filters.city_id) where.city_id = filters.city_id;
 
+    // User / Seller / Posted by me filters
+    if (filters.user_id) {
+      const targetUserId = filters.user_id === 'me' ? userId : filters.user_id;
+      if (targetUserId) where.user_id = targetUserId;
+    } else if (filters.seller_id) {
+      const targetSellerId = filters.seller_id === 'me' ? userId : filters.seller_id;
+      if (targetSellerId) where.user_id = targetSellerId;
+    } else if (filters.posted_by_me === true || filters.posted_by_me === 'true' || filters.mine === true || filters.mine === 'true') {
+      if (userId) where.user_id = userId;
+    }
+
     // Wishlist filters
     if (filters.has_wishlist !== undefined && filters.has_wishlist !== null && filters.has_wishlist !== '') {
       const hasWishlist = filters.has_wishlist === 'true' || filters.has_wishlist === true;
@@ -1290,6 +1298,10 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
  * Get listings belonging to logged-in user with high-scale metrics aggregation
  */
 exports.getUserCars = async (userId, options = {}) => {
+  if (!userId) {
+    throw new AppError('User ID is required to fetch user listings', 400);
+  }
+
   const status = typeof options === 'string' ? options : options.status;
   const page = typeof options === 'object' && options.page ? parseInt(options.page) : 1;
   const limit = typeof options === 'object' && options.limit ? parseInt(options.limit) : 20;
@@ -1302,6 +1314,20 @@ exports.getUserCars = async (userId, options = {}) => {
     whereClause.status = status;
     if (status === 'deleted') {
       queryModel = Car.unscoped();
+    }
+  } else if (status === 'all') {
+    queryModel = Car.unscoped();
+  }
+
+  if (typeof options === 'object') {
+    if (options.brand_id) whereClause.brand_id = options.brand_id;
+    if (options.model_id) whereClause.model_id = options.model_id;
+    if (options.board_type) whereClause.board_type = options.board_type;
+    if (options.fuel_type) whereClause.fuel_type = options.fuel_type;
+    if (options.transmission) whereClause.transmission = options.transmission;
+    if (options.body_type) whereClause.body_type = options.body_type;
+    if (options.b2b_listing !== undefined) {
+      whereClause.b2b_listing = options.b2b_listing === true || options.b2b_listing === 'true';
     }
   }
 

@@ -94,9 +94,7 @@ exports.getFeaturedCars = catchAsync(async (req, res) => {
  */
 exports.getUserCars = catchAsync(async (req, res) => {
   const userId = req.user.id;
-  const { status, page, limit, cursor } = req.query;
-  
-  const result = await carService.getUserCars(userId, { status, page, limit, cursor });
+  const result = await carService.getUserCars(userId, req.query);
   const cars = result.cars || result;
 
   res.status(200).json({
