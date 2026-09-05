@@ -94,6 +94,32 @@ describe('Car Filters', () => {
     expect(res.body.status).toBe('success');
   });
 
+  test('Should filter by status=sold', async () => {
+    const res = await request(app).get('/api/v1/cars?status=sold');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.data.cars).toBeInstanceOf(Array);
+    res.body.data.cars.forEach(car => {
+      expect(car.status).toBe('sold');
+    });
+  });
+
+  test('Should default to status=active when status is omitted', async () => {
+    const res = await request(app).get('/api/v1/cars');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.data.cars).toBeInstanceOf(Array);
+    res.body.data.cars.forEach(car => {
+      expect(car.status).toBe('active');
+    });
+  });
+
+  test('Should return 400 Bad Request for invalid status value', async () => {
+    const res = await request(app).get('/api/v1/cars?status=invalid_status_xyz');
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
   test('Edge case: no cars match returns empty array', async () => {
     const res = await request(app).get('/api/v1/cars?min_year=2030');
     expect(res.statusCode).toBe(200);

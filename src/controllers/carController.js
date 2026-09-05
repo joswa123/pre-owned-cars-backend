@@ -1,5 +1,6 @@
 const carService = require("../services/carService");
 const { catchAsync } = require("../utils/errorHandler");
+const { carQuerySchema } = require("../validations/carValidation");
 
 /**
  * Create Car Listing
@@ -30,6 +31,15 @@ exports.createCar = catchAsync(async (req, res) => {
  * Get Public Cars List with Filters
  */
 exports.getCars = catchAsync(async (req, res) => {
+  const { error } = carQuerySchema.validate(req.query, { allowUnknown: true });
+  if (error) {
+    return res.status(400).json({
+      status: "error",
+      success: false,
+      message: error.details[0].message,
+    });
+  }
+
   const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...rawFilters } = req.query;
   const userId = req.user?.id;
 

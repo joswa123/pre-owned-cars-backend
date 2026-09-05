@@ -798,7 +798,14 @@ exports.getCars = async (
     transformedCars = cachedData.transformedCars;
   } else {
     const offset = (page - 1) * limit;
-    const where = { status: 'active' };
+    const where = {};
+
+    // Apply status filter if provided, else default to 'active'
+    if (filters.status && typeof filters.status === 'string' && filters.status.trim() !== '') {
+      where.status = filters.status.trim().toLowerCase();
+    } else {
+      where.status = 'active';
+    }
 
     if (filters.posted_by_type) where.posted_by_type = filters.posted_by_type;
     if (filters.b2b_listing !== undefined) {

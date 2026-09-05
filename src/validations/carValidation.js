@@ -294,7 +294,7 @@ const carQuerySchema = Joi.object({
   b2b_listing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   body_type: Joi.string().optional(),
   board_type: Joi.string().optional(),
-  status: Joi.string().optional(),
+  status: enumString(STATUS_TYPES_IN).allow('', null).optional(),
   color: Joi.string().optional(),
   colors: Joi.string().optional(),
   has_wishlist: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
