@@ -93,7 +93,7 @@ const User = sequelize.define('User', {
   },
   status: {
     type: DataTypes.ENUM('approved', 'pending', 'rejected'),
-    defaultValue: 'pending',
+    defaultValue: 'approved',
   },
   profile_picture: {
     type: DataTypes.STRING(255),

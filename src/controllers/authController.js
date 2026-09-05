@@ -9,21 +9,18 @@ const { RefreshToken, User } = require('../models');
 exports.register = catchAsync(async (req, res) => {
   const result = await authService.registerUser(req.body);
 
-  const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
-  const message = isDev
-    ? `✅ Registration successful. OTP sent (dev mode): ${result.otp}`
-    : 'Registration successful. OTP sent to your registered phone/email.';
-
   res.status(200).json({
     status: 'success',
-    message,
+    message: result.otp
+      ? `Registration successful. OTP: ${result.otp}`
+      : 'Registration successful. OTP sent to your registered phone/email.',
     data: {
       userId: result.userId,
       phone: result.phone,
       email: result.email,
       role: result.role,
       profile: result.profile,
-      ...(isDev && { otp: result.otp }),
+      otp: result.otp,
     },
   });
 });
@@ -70,19 +67,16 @@ exports.verifyOtp = catchAsync(async (req, res) => {
 exports.resendOtp = catchAsync(async (req, res) => {
   const result = await authService.resendOtp(req.body);
 
-  const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
-  const message = isDev
-    ? `✅ OTP resent (dev mode). Your OTP: ${result.otp}`
-    : 'Verification code resent successfully.';
-
   res.status(200).json({
     status: 'success',
-    message,
+    message: result.otp
+      ? `OTP resent: ${result.otp}`
+      : 'Verification code resent successfully.',
     data: {
       userId: result.userId,
       phone: result.phone,
       email: result.email,
-      ...(isDev && { otp: result.otp }),
+      otp: result.otp,
     },
   });
 });
@@ -111,19 +105,16 @@ exports.login = catchAsync(async (req, res) => {
 exports.forgotPassword = catchAsync(async (req, res) => {
   const result = await authService.forgotPassword(req.body);
 
-  const isDev = process.env.NODE_ENV === 'development';
-  const message = isDev
-    ? `✅ OTP sent (dev mode). Your OTP: ${result.otp}`
-    : 'Reset code sent to your registered phone/email.';
-
   res.status(200).json({
     status: 'success',
-    message,
+    message: result.otp
+      ? `Reset OTP: ${result.otp}`
+      : 'Reset code sent to your registered phone/email.',
     data: {
       userId: result.userId,
       phone: result.phone,
       email: result.email,
-      ...(isDev && { otp: result.otp }),
+      otp: result.otp,
     },
   });
 });

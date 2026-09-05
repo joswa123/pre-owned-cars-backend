@@ -178,7 +178,7 @@ exports.registerUser = async (userData) => {
         email: email || null,
         password_hash: passwordHash,
         role,
-        status: 'pending',
+        status: 'approved',
         is_verified: false,
         state_id: location.state_id,
         district_id: location.district_id,
@@ -252,11 +252,8 @@ exports.registerUser = async (userData) => {
       email: user.email,
       role: user.role,
       profile: profileData,
+      otp,
     };
-
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
-      response.otp = otp;
-    }
 
     return response;
   } catch (error) {
@@ -350,10 +347,7 @@ exports.resendOtp = async ({ phone, email }) => {
     await sendOtpViaSms(user.phone, otp);
   }
 
-  const response = { userId: user.id, phone: user.phone, email: user.email };
-  if (process.env.NODE_ENV === 'development') {
-    response.otp = otp;
-  }
+  const response = { userId: user.id, phone: user.phone, email: user.email, otp };
   return response;
 };
 
@@ -389,18 +383,6 @@ exports.loginUser = async ({ phone, email }, password) => {
 
   if (!user.is_verified) {
     throw new AppError('Account is not verified. Please verify your phone/email first.', 401);
-  }
-
-  if (user.status === 'pending') {
-    throw new AppError('Your account is pending admin approval. Please wait.', 403);
-  }
-
-  if (user.status === 'rejected') {
-    throw new AppError('Your account has been rejected. Contact support.', 403);
-  }
-
-  if (user.status !== 'approved') {
-    throw new AppError('Your account is not approved. Please contact support.', 403);
   }
 
   // Update last login timestamp
@@ -461,10 +443,7 @@ exports.forgotPassword = async ({ phone, email }) => {
     await sendOtpViaSms(user.phone, otp);
   }
 
-  const response = { userId: user.id, phone: user.phone, email: user.email };
-  if (process.env.NODE_ENV === 'development') {
-    response.otp = otp;
-  }
+  const response = { userId: user.id, phone: user.phone, email: user.email, otp };
   return response;
 };
 

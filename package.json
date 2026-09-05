@@ -12,6 +12,7 @@
     "catalog:seed": "node scripts/seed-car-catalog.js",
     "seed:locations": "node scripts/seed-locations-from-package.js",
     "seed:cities": "node scripts/seed-cities-from-api.js",
+    "seed:tamilnadu": "node scripts/seed-tamilnadu-cities.js",
     "vercel-build": "npm ci --omit=dev",
     "render-build": "npm install --legacy-peer-deps && npm run db:migrate",
     "postinstall": "npm run db:migrate"
