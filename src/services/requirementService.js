@@ -30,6 +30,13 @@ exports.createRequirement = async (userId, data) => {
   const expiryDate = new Date();
   expiryDate.setDate(expiryDate.getDate() + data.purchase_plan_days);
 
+  const minPrice = data.min_price !== undefined && data.min_price !== '' ? data.min_price : null;
+  const maxPrice = data.max_price !== undefined && data.max_price !== '' ? data.max_price : null;
+  const minKm = data.min_km !== undefined && data.min_km !== '' ? data.min_km : null;
+  const maxKm = data.max_km !== undefined && data.max_km !== '' ? data.max_km : null;
+
+  const priceValue = data.price !== undefined && data.price !== '' ? data.price : null;
+
   const kmValue = data.km_driven !== undefined && data.km_driven !== null && data.km_driven !== ''
     ? data.km_driven
     : (data.km !== undefined && data.km !== null && data.km !== '' ? data.km : null);
@@ -40,7 +47,11 @@ exports.createRequirement = async (userId, data) => {
     brand_id: brandId,
     model_id: modelId,
     year: data.year || null,
-    price: data.price || null,
+    min_price: minPrice,
+    max_price: maxPrice,
+    price: priceValue,
+    min_km: minKm,
+    max_km: maxKm,
     km_driven: kmValue,
     body_type: data.body_type,
     transmission: data.transmission,
@@ -189,7 +200,11 @@ exports.updateRequirement = async (requirementId, userId, data) => {
     // 4. Prepare update fields (only allowed ones)
     const allowedFields = [
       'year',
+      'min_price',
+      'max_price',
       'price',
+      'min_km',
+      'max_km',
       'km_driven',
       'body_type',
       'transmission',
@@ -203,7 +218,24 @@ exports.updateRequirement = async (requirementId, userId, data) => {
     if (data.model_id) updateData.model_id = resolvedModelId;
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
-        updateData[field] = data[field];
+        updateData[field] = data[field] === '' ? null : data[field];
+      }
+    }
+
+    // Validate range consistency if updating min/max bounds
+    const targetMinPrice = updateData.min_price !== undefined ? updateData.min_price : requirement.min_price;
+    const targetMaxPrice = updateData.max_price !== undefined ? updateData.max_price : requirement.max_price;
+    if (targetMinPrice !== null && targetMinPrice !== undefined && targetMaxPrice !== null && targetMaxPrice !== undefined) {
+      if (Number(targetMinPrice) > Number(targetMaxPrice)) {
+        throw new AppError('min_price cannot be greater than max_price', 400);
+      }
+    }
+
+    const targetMinKm = updateData.min_km !== undefined ? updateData.min_km : requirement.min_km;
+    const targetMaxKm = updateData.max_km !== undefined ? updateData.max_km : requirement.max_km;
+    if (targetMinKm !== null && targetMinKm !== undefined && targetMaxKm !== null && targetMaxKm !== undefined) {
+      if (Number(targetMinKm) > Number(targetMaxKm)) {
+        throw new AppError('min_km cannot be greater than max_km', 400);
       }
     }
 
@@ -389,11 +421,23 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
     carFilters.year = requirement.year;
   }
 
-  if (requirement.price !== null && requirement.price !== undefined && requirement.price !== '') {
+  if (requirement.min_price !== null && requirement.min_price !== undefined && requirement.min_price !== '') {
+    carFilters.min_price = requirement.min_price;
+  }
+  if (requirement.max_price !== null && requirement.max_price !== undefined && requirement.max_price !== '') {
+    carFilters.max_price = requirement.max_price;
+  }
+  if (carFilters.min_price === undefined && carFilters.max_price === undefined && requirement.price !== null && requirement.price !== undefined && requirement.price !== '') {
     carFilters.price = requirement.price;
   }
 
-  if (requirement.km_driven !== null && requirement.km_driven !== undefined && requirement.km_driven !== '') {
+  if (requirement.min_km !== null && requirement.min_km !== undefined && requirement.min_km !== '') {
+    carFilters.min_km = requirement.min_km;
+  }
+  if (requirement.max_km !== null && requirement.max_km !== undefined && requirement.max_km !== '') {
+    carFilters.max_km = requirement.max_km;
+  }
+  if (carFilters.min_km === undefined && carFilters.max_km === undefined && requirement.km_driven !== null && requirement.km_driven !== undefined && requirement.km_driven !== '') {
     carFilters.km_driven = requirement.km_driven;
   }
 
