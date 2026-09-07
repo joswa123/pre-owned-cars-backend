@@ -42,8 +42,25 @@ exports.getCars = catchAsync(async (req, res) => {
 
   const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...rawFilters } = req.query;
   const userId = req.user?.id;
+  const userRole = req.user?.role;
 
   const filters = { ...rawFilters };
+
+  // Security check: Only admins can query public car feed by arbitrary user_id / seller_id
+  if (userRole !== 'admin') {
+    if (filters.user_id && filters.user_id !== 'me') {
+      delete filters.user_id;
+    }
+    if (filters.userId && filters.userId !== 'me') {
+      delete filters.userId;
+    }
+    if (filters.seller_id && filters.seller_id !== 'me') {
+      delete filters.seller_id;
+    }
+    if (filters.sellerId && filters.sellerId !== 'me') {
+      delete filters.sellerId;
+    }
+  }
 
   // Parse arrays
   const arrayFields = ['brands', 'models', 'fuel_types', 'body_types', 'ownerships', 'transmissions', 'colors'];
@@ -61,7 +78,7 @@ exports.getCars = catchAsync(async (req, res) => {
     filters.has_wishlist = filters.has_wishlist === 'true' || filters.has_wishlist === true;
   }
 
-  const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder, userId);
+  const result = await carService.getCars(filters, Number(page), Number(limit), sortBy, sortOrder, userId, userRole);
   res.status(200).json({ status: "success", data: result });
 });
 

@@ -774,7 +774,8 @@ exports.getCars = async (
   limit = 20,
   sortBy = 'created_at',
   sortOrder = 'DESC',
-  userId = null
+  userId = null,
+  userRole = null
 ) => {
   const cacheKey = `cars:list:${Buffer.from(JSON.stringify({ filters, page, limit, sortBy, sortOrder })).toString('base64')}`;
 
@@ -1039,12 +1040,17 @@ exports.getCars = async (
     if (filters.city_id) where.city_id = filters.city_id;
 
     // User / Seller / Posted by me filters
+    // Note: user_id / seller_id arbitrary query param is allowed only for admin users or when explicitly 'me'
     if (filters.user_id) {
-      const targetUserId = filters.user_id === 'me' ? userId : filters.user_id;
-      if (targetUserId) where.user_id = targetUserId;
+      if (userRole === 'admin' || filters.user_id === 'me') {
+        const targetUserId = filters.user_id === 'me' ? userId : filters.user_id;
+        if (targetUserId) where.user_id = targetUserId;
+      }
     } else if (filters.seller_id) {
-      const targetSellerId = filters.seller_id === 'me' ? userId : filters.seller_id;
-      if (targetSellerId) where.user_id = targetSellerId;
+      if (userRole === 'admin' || filters.seller_id === 'me') {
+        const targetSellerId = filters.seller_id === 'me' ? userId : filters.seller_id;
+        if (targetSellerId) where.user_id = targetSellerId;
+      }
     } else if (filters.posted_by_me === true || filters.posted_by_me === 'true' || filters.mine === true || filters.mine === 'true') {
       if (userId) where.user_id = userId;
     }
@@ -1302,7 +1308,8 @@ exports.getUserCars = async (userId, options = {}) => {
     throw new AppError('User ID is required to fetch user listings', 400);
   }
 
-  const status = typeof options === 'string' ? options : options.status;
+  const rawStatus = typeof options === 'string' ? options : options?.status;
+  const status = rawStatus ? String(rawStatus).trim().toLowerCase() : null;
   const page = typeof options === 'object' && options.page ? parseInt(options.page) : 1;
   const limit = typeof options === 'object' && options.limit ? parseInt(options.limit) : 20;
   const cursor = typeof options === 'object' ? options.cursor : null;

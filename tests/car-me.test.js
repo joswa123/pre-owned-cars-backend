@@ -172,4 +172,70 @@ describe('User and Dealer My Cars Isolation Tests', () => {
       expect(c.user_id).toBe(user.userId);
     });
   });
+
+  test('GET /api/v1/cars/me?status=sold returns only authenticated user sold cars; public endpoint returns all sold cars', async () => {
+    const customerA = await setupUser('customer');
+    const dealerB = await setupUser('dealer');
+
+    // Customer A posts a car and marks it as sold
+    const carA = await postTestCar(customerA.token, { description: 'Customer A Sold Car' });
+    const carAId = carA.body.data.car.id;
+    const sellResA = await request(app)
+      .patch(`/api/v1/cars/${carAId}/sell`)
+      .set('Authorization', `Bearer ${customerA.token}`);
+    expect(sellResA.statusCode).toBe(200);
+    expect(sellResA.body.data.car.status).toBe('sold');
+
+    // Dealer B posts a car and marks it as sold
+    const carB = await postTestCar(dealerB.token, { description: 'Dealer B Sold Car' });
+    const carBId = carB.body.data.car.id;
+    const sellResB = await request(app)
+      .patch(`/api/v1/cars/${carBId}/sell`)
+      .set('Authorization', `Bearer ${dealerB.token}`);
+    expect(sellResB.statusCode).toBe(200);
+    expect(sellResB.body.data.car.status).toBe('sold');
+
+    // 1. Customer A calls GET /api/v1/cars/me?status=sold -> only Customer A's sold car returned
+    const resCustomerA = await request(app)
+      .get('/api/v1/cars/me?status=sold')
+      .set('Authorization', `Bearer ${customerA.token}`);
+    expect(resCustomerA.statusCode).toBe(200);
+    const customerASoldIds = resCustomerA.body.data.cars.map(c => c.id);
+    expect(customerASoldIds).toContain(carAId);
+    expect(customerASoldIds).not.toContain(carBId);
+    resCustomerA.body.data.cars.forEach(car => {
+      expect(car.user_id).toBe(customerA.userId);
+      expect(car.status).toBe('sold');
+    });
+
+    // 2. Dealer B calls GET /api/v1/cars/me?status=sold -> only Dealer B's sold car returned
+    const resDealerB = await request(app)
+      .get('/api/v1/cars/me?status=sold')
+      .set('Authorization', `Bearer ${dealerB.token}`);
+    expect(resDealerB.statusCode).toBe(200);
+    const dealerBSoldIds = resDealerB.body.data.cars.map(c => c.id);
+    expect(dealerBSoldIds).toContain(carBId);
+    expect(dealerBSoldIds).not.toContain(carAId);
+    resDealerB.body.data.cars.forEach(car => {
+      expect(car.user_id).toBe(dealerB.userId);
+      expect(car.status).toBe('sold');
+    });
+
+    // 3. Public GET /api/v1/cars?status=sold -> returns all sold cars (both users' cars)
+    const resPublicSold = await request(app)
+      .get('/api/v1/cars?status=sold');
+    expect(resPublicSold.statusCode).toBe(200);
+    const publicSoldIds = resPublicSold.body.data.cars.map(c => c.id);
+    expect(publicSoldIds).toContain(carAId);
+    expect(publicSoldIds).toContain(carBId);
+
+    // 4. Security Check: Non-admin calling public endpoint with user_id or seller_id is ignored
+    const resIgnoredUserId = await request(app)
+      .get(`/api/v1/cars?status=sold&user_id=${dealerB.userId}`)
+      .set('Authorization', `Bearer ${customerA.token}`);
+    expect(resIgnoredUserId.statusCode).toBe(200);
+    const ignoredUserCarIds = resIgnoredUserId.body.data.cars.map(c => c.id);
+    // Because user_id was ignored for non-admin, it still returns the global sold list containing customerA's car
+    expect(ignoredUserCarIds).toContain(carAId);
+  });
 });
