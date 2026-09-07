@@ -189,4 +189,140 @@ describe('Buying Requirements Range Fields Tests', () => {
     expect(updated.min_km).toBe(15000);
     expect(updated.max_km).toBe(45000);
   });
+
+  describe('Hybrid External ID Resolution Tests (Integer IDs)', () => {
+    let externalBrand;
+    let externalModel;
+
+    beforeAll(async () => {
+      // Create or ensure a brand & model with external_id
+      [externalBrand] = await Brand.findOrCreate({
+        where: { name: 'Tata Motors External Test' },
+        defaults: {
+          name: 'Tata Motors External Test',
+          external_id: 1088,
+          is_active: true,
+        },
+      });
+      if (!externalBrand.external_id) {
+        await externalBrand.update({ external_id: 1088 });
+      }
+
+      [externalModel] = await Model.findOrCreate({
+        where: { name: 'Nexon EV Test', brandId: externalBrand.id },
+        defaults: {
+          name: 'Nexon EV Test',
+          brandId: externalBrand.id,
+          external_id: 54088,
+          body_type: 'SUV',
+          is_active: true,
+        },
+      });
+      if (!externalModel.external_id) {
+        await externalModel.update({ external_id: 54088 });
+      }
+    });
+
+    test('POST /api/v1/requirements - accepts integer brand_id and model_id', async () => {
+      const payload = {
+        brand_id: 1088,
+        model_id: 54088,
+        year: 2023,
+        min_price: 1000000,
+        max_price: 1500000,
+        min_km: 5000,
+        max_km: 25000,
+        body_type: 'SUV',
+        transmission: 'Automatic',
+        board_type: 'Own Board',
+        purchase_plan_days: 30,
+      };
+
+      const res = await request(app)
+        .post('/api/v1/requirements')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send(payload);
+
+      expect(res.statusCode).toBe(201);
+      expect(res.body.status).toBe('success');
+      expect(res.body.data.brand_id).toBe(externalBrand.id);
+      expect(res.body.data.model_id).toBe(externalModel.id);
+      expect(res.body.data.brand.name).toBe(externalBrand.name);
+      expect(res.body.data.carModel.name).toBe(externalModel.name);
+    });
+
+    test('POST /api/v1/requirements - accepts numeric string brand_id and model_id', async () => {
+      const payload = {
+        brand_id: '1088',
+        model_id: '54088',
+        year: 2023,
+        min_price: 1000000,
+        max_price: 1500000,
+        body_type: 'SUV',
+        transmission: 'Automatic',
+        board_type: 'Own Board',
+        purchase_plan_days: 15,
+      };
+
+      const res = await request(app)
+        .post('/api/v1/requirements')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send(payload);
+
+      expect(res.statusCode).toBe(201);
+      expect(res.body.status).toBe('success');
+      expect(res.body.data.brand_id).toBe(externalBrand.id);
+      expect(res.body.data.model_id).toBe(externalModel.id);
+    });
+
+    test('POST /api/v1/requirements - fails with 404 when external integer brand_id is not found', async () => {
+      const payload = {
+        brand_id: 999999999,
+        model_id: 54088,
+        body_type: 'SUV',
+        transmission: 'Automatic',
+        board_type: 'Own Board',
+        purchase_plan_days: 15,
+      };
+
+      const res = await request(app)
+        .post('/api/v1/requirements')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send(payload);
+
+      expect(res.statusCode).toBe(404);
+      expect(res.body.message).toMatch(/brand/i);
+    });
+
+    test('PUT /api/v1/requirements/:id - updates requirement using integer brand_id & model_id', async () => {
+      // Create first with UUID
+      const createRes = await request(app)
+        .post('/api/v1/requirements')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          brand_id: testBrand.id,
+          model_id: testModel.id,
+          body_type: 'SUV',
+          transmission: 'Automatic',
+          board_type: 'Own Board',
+          purchase_plan_days: 30,
+        });
+      expect(createRes.statusCode).toBe(201);
+      const requirementId = createRes.body.data.id;
+
+      // Update to integer brand/model
+      const updateRes = await request(app)
+        .put(`/api/v1/requirements/${requirementId}`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          brand_id: 1088,
+          model_id: 54088,
+        });
+
+      expect(updateRes.statusCode).toBe(200);
+      expect(updateRes.body.status).toBe('success');
+      expect(updateRes.body.data.brand_id).toBe(externalBrand.id);
+      expect(updateRes.body.data.model_id).toBe(externalModel.id);
+    });
+  });
 });

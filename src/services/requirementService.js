@@ -2,13 +2,12 @@ const { Requirement, Brand, Model, User } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const { AppError } = require('../utils/errorHandler');
+const { resolveBrandId, resolveModelId } = require('../utils/idResolver');
 
 /**
  * Create a new Buying Requirement
  */
 exports.createRequirement = async (userId, data) => {
-  const { resolveBrandId, resolveModelId } = require('./carService');
-
   // 1. Resolve Brand
   const brandId = await resolveBrandId(data.brand_id);
   if (!brandId) {
@@ -16,7 +15,7 @@ exports.createRequirement = async (userId, data) => {
   }
 
   // 2. Resolve Model and check brand association
-  const modelId = await resolveModelId(data.model_id, brandId);
+  const modelId = await resolveModelId(data.model_id, brandId, data.body_type || 'SUV');
   if (!modelId) {
     throw new AppError('Model not found', 404);
   }
@@ -35,12 +34,6 @@ exports.createRequirement = async (userId, data) => {
   const minKm = data.min_km !== undefined && data.min_km !== '' ? data.min_km : null;
   const maxKm = data.max_km !== undefined && data.max_km !== '' ? data.max_km : null;
 
-  const priceValue = data.price !== undefined && data.price !== '' ? data.price : null;
-
-  const kmValue = data.km_driven !== undefined && data.km_driven !== null && data.km_driven !== ''
-    ? data.km_driven
-    : (data.km !== undefined && data.km !== null && data.km !== '' ? data.km : null);
-
   // 4. Create requirement
   const requirement = await Requirement.create({
     user_id: userId,
@@ -49,10 +42,8 @@ exports.createRequirement = async (userId, data) => {
     year: data.year || null,
     min_price: minPrice,
     max_price: maxPrice,
-    price: priceValue,
     min_km: minKm,
     max_km: maxKm,
-    km_driven: kmValue,
     body_type: data.body_type,
     transmission: data.transmission,
     board_type: data.board_type,
@@ -173,7 +164,6 @@ exports.updateRequirement = async (requirementId, userId, data) => {
     }
 
     // Determine target brandId
-    const { resolveBrandId, resolveModelId } = require('./carService');
     let resolvedBrandId = requirement.brand_id;
     if (data.brand_id) {
       resolvedBrandId = await resolveBrandId(data.brand_id, transaction);
@@ -202,10 +192,8 @@ exports.updateRequirement = async (requirementId, userId, data) => {
       'year',
       'min_price',
       'max_price',
-      'price',
       'min_km',
       'max_km',
-      'km_driven',
       'body_type',
       'transmission',
       'board_type',
@@ -427,18 +415,12 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
   if (requirement.max_price !== null && requirement.max_price !== undefined && requirement.max_price !== '') {
     carFilters.max_price = requirement.max_price;
   }
-  if (carFilters.min_price === undefined && carFilters.max_price === undefined && requirement.price !== null && requirement.price !== undefined && requirement.price !== '') {
-    carFilters.price = requirement.price;
-  }
 
   if (requirement.min_km !== null && requirement.min_km !== undefined && requirement.min_km !== '') {
     carFilters.min_km = requirement.min_km;
   }
   if (requirement.max_km !== null && requirement.max_km !== undefined && requirement.max_km !== '') {
     carFilters.max_km = requirement.max_km;
-  }
-  if (carFilters.min_km === undefined && carFilters.max_km === undefined && requirement.km_driven !== null && requirement.km_driven !== undefined && requirement.km_driven !== '') {
-    carFilters.km_driven = requirement.km_driven;
   }
 
   if (requirement.body_type) {

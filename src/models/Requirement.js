@@ -37,11 +37,6 @@ const Requirement = sequelize.define('Requirement', {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
   },
-  price: {
-    type: DataTypes.DECIMAL(12, 2),
-    allowNull: true,
-    comment: 'Deprecated in favor of min_price/max_price, retained for backward compatibility',
-  },
   min_km: {
     type: DataTypes.INTEGER,
     allowNull: true,
@@ -49,20 +44,6 @@ const Requirement = sequelize.define('Requirement', {
   max_km: {
     type: DataTypes.INTEGER,
     allowNull: true,
-  },
-  km_driven: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    comment: 'Deprecated in favor of min_km/max_km, retained for backward compatibility',
-  },
-  km: {
-    type: DataTypes.VIRTUAL,
-    get() {
-      return this.getDataValue('km_driven');
-    },
-    set(val) {
-      this.setDataValue('km_driven', val);
-    }
   },
   body_type: {
     type: DataTypes.STRING(50),
