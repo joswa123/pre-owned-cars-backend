@@ -1,7 +1,37 @@
 const Joi = require('joi');
 
-const FUEL_TYPES_IN         = ['petrol', 'diesel', 'electric', 'hybrid', 'cng', 'lpg'];
-const TRANSMISSION_TYPES_IN = ['manual', 'automatic', 'clutchless manual', 'clutchless-manual'];
+const FUEL_TYPES_IN = [
+  'petrol',
+  'diesel',
+  'cng',
+  'electric',
+  'hybrid',
+  'hybrid (electric + petrol)',
+  'mild hybrid(electric + petrol)',
+  'mild hybrid (electric + petrol)',
+  'mild hybrid (electric + diesel)',
+  'plug-in hybrid (electric + petrol)',
+  'lpg',
+];
+
+const TRANSMISSION_TYPES_IN = [
+  'manual',
+  'automatic',
+  'automatic (tc)',
+  'automatic (dct)',
+  'automatic (amt)',
+  'automatic (cvt)',
+  'automatic (e-cvt)',
+  'clutchless manual (imt)',
+  'clutchless manual',
+  'clutchless-manual',
+  'amt',
+  'imt',
+  'cvt',
+  'dct',
+  'tc',
+  'e-cvt',
+];
 const OWNERSHIP_TYPES_IN    = ['1st owner', '2nd owner', '3rd owner', '4th+ owner'];
 const INSURANCE_TYPE_IN     = ['comprehensive', 'third party', 'not insured'];
 const BOARD_TYPES_IN        = ['own board', 't-board', 'commercial'];
@@ -42,7 +72,7 @@ const createCarSchema = Joi.object({
   kmdriven:         Joi.number().integer().min(0).optional(),
   fuel_type:        enumString(FUEL_TYPES_IN).optional(),
   fueltype:         enumString(FUEL_TYPES_IN).optional(),
-  transmission:     Joi.string().trim().max(50).required(),
+  transmission:     enumString(TRANSMISSION_TYPES_IN).required(),
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
   body_type:        Joi.string().trim().max(50).optional(),
   car_type:         Joi.string().trim().max(50).optional(),
@@ -93,7 +123,7 @@ const updateCarSchema = Joi.object({
   kmdriven:         Joi.number().integer().min(0),
   fuel_type:        enumString(FUEL_TYPES_IN),
   fueltype:         enumString(FUEL_TYPES_IN),
-  transmission:     Joi.string().trim().max(50).optional(),
+  transmission:     enumString(TRANSMISSION_TYPES_IN).optional(),
   ownership:        enumString(OWNERSHIP_TYPES_IN),
   body_type:        Joi.string().trim().max(50),
   car_type:         Joi.string().trim().max(50),
@@ -123,23 +153,36 @@ const updateCarSchema = Joi.object({
 
 // DB Mapping Helpers
 const FUEL_TYPE_MAP = {
-  petrol:   'Petrol',
-  diesel:   'Diesel',
-  electric: 'Electric',
-  hybrid:   'Hybrid',
-  cng:      'CNG',
-  lpg:      'LPG',
+  'petrol':                              'Petrol',
+  'diesel':                              'Diesel',
+  'cng':                                 'CNG',
+  'electric':                            'Electric',
+  'hybrid':                              'Hybrid',
+  'hybrid (electric + petrol)':          'Hybrid (Electric + Petrol)',
+  'mild hybrid(electric + petrol)':      'Mild Hybrid(Electric + Petrol)',
+  'mild hybrid (electric + petrol)':     'Mild Hybrid(Electric + Petrol)',
+  'mild hybrid (electric + diesel)':     'Mild Hybrid (Electric + Diesel)',
+  'plug-in hybrid (electric + petrol)':  'Plug-in Hybrid (Electric + Petrol)',
+  'lpg':                                 'LPG',
 };
 
 const TRANSMISSION_MAP = {
-  manual:              'Manual',
-  automatic:           'Automatic',
-  'clutchless manual': 'Clutchless Manual',
-  'clutchless-manual': 'Clutchless Manual',
-  amt:                 'AMT',
-  imt:                 'IMT',
-  cvt:                 'CVT',
-  dct:                 'DCT',
+  'manual':                  'Manual',
+  'automatic':               'Automatic',
+  'automatic (tc)':          'Automatic (TC)',
+  'automatic (dct)':         'Automatic (DCT)',
+  'automatic (amt)':         'Automatic (AMT)',
+  'automatic (cvt)':         'Automatic (CVT)',
+  'automatic (e-cvt)':       'Automatic (e-CVT)',
+  'clutchless manual (imt)': 'Clutchless Manual (IMT)',
+  'clutchless manual':       'Clutchless Manual',
+  'clutchless-manual':       'Clutchless Manual',
+  'amt':                     'Automatic (AMT)',
+  'imt':                     'Clutchless Manual (IMT)',
+  'cvt':                     'Automatic (CVT)',
+  'dct':                     'Automatic (DCT)',
+  'tc':                      'Automatic (TC)',
+  'e-cvt':                   'Automatic (e-CVT)',
 };
 
 const OWNERSHIP_MAP = {
@@ -309,6 +352,10 @@ const carQuerySchema = Joi.object({
 const sellCarSchema = Joi.object({}).unknown(true);
 
 module.exports = {
+  FUEL_TYPES_IN,
+  TRANSMISSION_TYPES_IN,
+  FUEL_TYPE_MAP,
+  TRANSMISSION_MAP,
   hybridId,
   optionalHybridId,
   idSchema: optionalHybridId,

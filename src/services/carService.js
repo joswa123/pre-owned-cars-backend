@@ -59,7 +59,7 @@ const invalidateCarCaches = async (carId = null, userId = null) => {
     console.error('Car cache invalidation error:', err);
   }
 };
-const { mapToDbValues } = require('../validations/carValidation');
+const { mapToDbValues, FUEL_TYPE_MAP, TRANSMISSION_MAP } = require('../validations/carValidation');
 
 const sellerInclude = {
   model: User,
@@ -204,12 +204,15 @@ const fetchExternalJson = (url) => {
 
 const normalizeTransmission = (t) => {
   if (!t) return null;
-  const lower = t.toLowerCase();
-  if (lower.includes('amt')) return 'AMT';
-  if (lower.includes('imt')) return 'IMT';
-  if (lower.includes('cvt')) return 'CVT';
-  if (lower.includes('dct') || lower.includes('dsg')) return 'DCT';
-  if (lower.includes('clutchless')) return 'Clutchless Manual';
+  const lower = t.toLowerCase().trim();
+  if (TRANSMISSION_MAP[lower]) return TRANSMISSION_MAP[lower];
+  if (lower.includes('amt')) return 'Automatic (AMT)';
+  if (lower.includes('imt')) return 'Clutchless Manual (IMT)';
+  if (lower.includes('e-cvt') || lower.includes('ecvt')) return 'Automatic (e-CVT)';
+  if (lower.includes('cvt')) return 'Automatic (CVT)';
+  if (lower.includes('dct') || lower.includes('dsg')) return 'Automatic (DCT)';
+  if (lower.includes('tc') || lower.includes('torque converter')) return 'Automatic (TC)';
+  if (lower.includes('clutchless')) return 'Clutchless Manual (IMT)';
   if (lower.includes('auto')) return 'Automatic';
   if (lower.includes('manual')) return 'Manual';
   return t.trim();
@@ -217,13 +220,17 @@ const normalizeTransmission = (t) => {
 
 const normalizeFuelType = (f) => {
   if (!f) return null;
-  const lower = f.toLowerCase();
-  if (lower.includes('petrol')) return 'Petrol';
-  if (lower.includes('diesel')) return 'Diesel';
+  const lower = f.toLowerCase().trim();
+  if (FUEL_TYPE_MAP[lower]) return FUEL_TYPE_MAP[lower];
+  if (lower.includes('mild hybrid') && lower.includes('diesel')) return 'Mild Hybrid (Electric + Diesel)';
+  if (lower.includes('mild hybrid')) return 'Mild Hybrid(Electric + Petrol)';
+  if (lower.includes('plug-in') || lower.includes('plugin')) return 'Plug-in Hybrid (Electric + Petrol)';
+  if (lower.includes('hybrid')) return 'Hybrid (Electric + Petrol)';
   if (lower.includes('electric') || lower.includes('ev')) return 'Electric';
   if (lower.includes('cng')) return 'CNG';
   if (lower.includes('lpg')) return 'LPG';
-  if (lower.includes('hybrid')) return 'Hybrid';
+  if (lower.includes('petrol')) return 'Petrol';
+  if (lower.includes('diesel')) return 'Diesel';
   return null;
 };
 
@@ -981,10 +988,15 @@ exports.getCars = async (
 
     // Fuel types
     if (filters.fuel_types && filters.fuel_types.length) {
-      const fuels = Array.isArray(filters.fuel_types) ? filters.fuel_types : filters.fuel_types.split(',');
+      const fuels = (Array.isArray(filters.fuel_types) ? filters.fuel_types : filters.fuel_types.split(','))
+        .map(f => {
+          const trimmed = f.trim();
+          return FUEL_TYPE_MAP[trimmed.toLowerCase()] || trimmed;
+        });
       where.fuel_type = { [Op.in]: fuels };
     } else if (filters.fuel_type) {
-      where.fuel_type = filters.fuel_type;
+      const trimmed = filters.fuel_type.trim();
+      where.fuel_type = FUEL_TYPE_MAP[trimmed.toLowerCase()] || trimmed;
     }
 
     // Body types
@@ -1003,10 +1015,15 @@ exports.getCars = async (
 
     // Transmissions
     if (filters.transmissions && filters.transmissions.length) {
-      const trans = Array.isArray(filters.transmissions) ? filters.transmissions : filters.transmissions.split(',');
+      const trans = (Array.isArray(filters.transmissions) ? filters.transmissions : filters.transmissions.split(','))
+        .map(t => {
+          const trimmed = t.trim();
+          return TRANSMISSION_MAP[trimmed.toLowerCase()] || trimmed;
+        });
       where.transmission = { [Op.in]: trans };
     } else if (filters.transmission) {
-      where.transmission = filters.transmission;
+      const trimmed = filters.transmission.trim();
+      where.transmission = TRANSMISSION_MAP[trimmed.toLowerCase()] || trimmed;
     }
 
     // Colors
