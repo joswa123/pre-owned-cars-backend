@@ -9,7 +9,7 @@ const FuelType = sequelize.define('FuelType', {
     allowNull: false,
   },
   fuel_type_name: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING,
     allowNull: false,
     unique: true,
   },

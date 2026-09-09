@@ -9,7 +9,7 @@ const Transmission = sequelize.define('Transmission', {
     allowNull: false,
   },
   transmission_name: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING,
     allowNull: false,
     unique: true,
   },
