@@ -49,6 +49,7 @@ router.get('/', optionalAuth, cacheMiddleware(60), carController.getCars);
 router.get('/stats/board-types', cacheMiddleware(60, { ignoreAuth: true }), carController.getBoardTypeStats); // must be BEFORE /:id
 router.get('/featured', optionalAuth, cacheMiddleware(600), carController.getFeaturedCars); // must be BEFORE /:id
 
+// Media URLs (video & audio) are included in the car detail response (GET /:id) – no separate endpoints needed
 // Similar & Recommended Cars (Must be BEFORE /:id)
 router.get('/similar-recommended', optionalAuth, carController.getSimilarRecommended);
 

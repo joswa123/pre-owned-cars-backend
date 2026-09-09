@@ -93,6 +93,7 @@ const User = sequelize.define('User', {
   },
   status: {
     type: DataTypes.ENUM('approved', 'pending', 'rejected'),
+    // All new users are approved by default, bypassing admin approval workflow
     defaultValue: 'approved',
   },
   profile_picture: {

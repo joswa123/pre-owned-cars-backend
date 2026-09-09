@@ -284,8 +284,36 @@ exports.createCar = async (userId, carData, files) => {
       return null;
     };
 
+    // Logging video file info
+    if (files && files.video && files.video[0]) {
+      console.log('📹 Video file received:', {
+        originalname: files.video[0].originalname,
+        size: files.video[0].size,
+        mimetype: files.video[0].mimetype,
+      });
+    } else {
+      console.log('📹 No video file provided');
+    }
+    // Logging audio file info
+    if (files && files.audio && files.audio[0]) {
+      console.log('🎵 Audio file received:', {
+        originalname: files.audio[0].originalname,
+        size: files.audio[0].size,
+        mimetype: files.audio[0].mimetype,
+      });
+    } else {
+      console.log('🎵 No audio file provided');
+    }
     const videoUrl = files && files.video && files.video[0] ? getFileUrl(files.video[0]) : null;
     const audioUrl = files && files.audio && files.audio[0] ? getFileUrl(files.audio[0]) : null;
+    console.log('✅ Resolved URLs -> video:', videoUrl, 'audio:', audioUrl);
+    // Validate that if a file was provided, a URL was obtained
+    if (files && files.video && files.video[0] && !videoUrl) {
+      throw new AppError('Failed to upload video file. Please check Cloudinary configuration.', 500);
+    }
+    if (files && files.audio && files.audio[0] && !audioUrl) {
+      throw new AppError('Failed to upload audio file. Please check Cloudinary configuration.', 500);
+    }
 
     const carFields = {
       user_id: userId,
@@ -1163,13 +1191,37 @@ exports.updateCar = async (carId, userId, updateData, files) => {
       };
 
       // Video: uploaded file takes precedence
-      if (files.video && files.video[0]) {
-        filteredData.video_url = getFileUrl(files.video[0]);
-      }
-      // Audio: uploaded file takes precedence
-      if (files.audio && files.audio[0]) {
-        filteredData.audio_url = getFileUrl(files.audio[0]);
-      }
+        // Log incoming video file details
+        if (files.video && files.video[0]) {
+          console.log('📹 Update - Video file received:', {
+            originalname: files.video[0].originalname,
+            size: files.video[0].size,
+            mimetype: files.video[0].mimetype,
+          });
+          filteredData.video_url = getFileUrl(files.video[0]);
+        } else {
+          console.log('📹 Update - No video file provided');
+        }
+        // Validate video URL
+        if (files && files.video && files.video[0] && !filteredData.video_url) {
+          throw new AppError('Failed to upload video during update. Check Cloudinary settings.', 500);
+        }
+        // Log incoming audio file details
+        if (files.audio && files.audio[0]) {
+          console.log('🎵 Update - Audio file received:', {
+            originalname: files.audio[0].originalname,
+            size: files.audio[0].size,
+            mimetype: files.audio[0].mimetype,
+          });
+          filteredData.audio_url = getFileUrl(files.audio[0]);
+        } else {
+          console.log('🎵 Update - No audio file provided');
+        }
+        // Validate audio URL
+        if (files && files.audio && files.audio[0] && !filteredData.audio_url) {
+          throw new AppError('Failed to upload audio during update. Check Cloudinary settings.', 500);
+        }
+        console.log('✅ Update - Resolved URLs -> video:', filteredData.video_url, 'audio:', filteredData.audio_url);
     }
 
     // Removal flags (only evaluated if no replacement file was provided)

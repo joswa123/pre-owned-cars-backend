@@ -16,6 +16,12 @@ const isCloudinaryConfigured = Boolean(
   process.env.CLOUDINARY_API_SECRET.trim() !== ''
 );
 
+// Validate configuration for non-test environments
+if (!isCloudinaryConfigured && (process.env.NODE_ENV || '').trim() !== 'test') {
+  throw new Error('Cloudinary configuration missing. Uploads must be stored in Cloudinary for production.');
+}
+
+
 if (isCloudinaryConfigured) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME.trim(),
