@@ -12,8 +12,8 @@ router.use(protect, adminOnly);
 
 router.get('/', bannerController.getAllBanners);
 router.post('/reorder', validate(reorderBannerSchema), bannerController.reorderBanners);
-router.post('/', bannerUpload.single('image'), validate(createBannerSchema), bannerController.createBanner);
-router.put('/:id', bannerUpload.single('image'), validate(updateBannerSchema), bannerController.updateBanner);
+router.post('/', bannerUpload, validate(createBannerSchema), bannerController.createBanner);
+router.put('/:id', bannerUpload, validate(updateBannerSchema), bannerController.updateBanner);
 router.delete('/:id', bannerController.deleteBanner);
 
 module.exports = router;
