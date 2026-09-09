@@ -196,6 +196,16 @@ const Car = sequelize.define('Car', {
       return parts.length > 0 ? parts.join(', ') : null;
     }
   },
+  video_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    comment: 'Cloudinary URL for car video',
+  },
+  audio_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    comment: 'Cloudinary URL for car audio (e.g., engine sound)',
+  },
   deleted_at: {
     type: DataTypes.DATE,
     allowNull: true,

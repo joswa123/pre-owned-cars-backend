@@ -25,6 +25,28 @@ const createTempImageFile = (filename = 'test-image.png') => {
   return filePath;
 };
 
+// Create a temporary video file
+const createTempVideoFile = (filename = 'test-video.mp4') => {
+  const tmpDir = path.join(__dirname, 'tmp');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const filePath = path.join(tmpDir, filename);
+  // Minimal MP4 / dummy video buffer
+  const buffer = Buffer.from('dummy-video-content-for-testing-mp4-upload');
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+};
+
+// Create a temporary audio file
+const createTempAudioFile = (filename = 'test-audio.mp3') => {
+  const tmpDir = path.join(__dirname, 'tmp');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const filePath = path.join(tmpDir, filename);
+  // Minimal MP3 / dummy audio buffer
+  const buffer = Buffer.from('dummy-audio-content-for-testing-mp3-upload');
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+};
+
 // Clean up temp files
 const cleanupTempFiles = () => {
   const tmpDir = path.join(__dirname, 'tmp');
@@ -33,4 +55,10 @@ const cleanupTempFiles = () => {
   }
 };
 
-module.exports = { createDummyImageBuffer, createTempImageFile, cleanupTempFiles };
+module.exports = {
+  createDummyImageBuffer,
+  createTempImageFile,
+  createTempVideoFile,
+  createTempAudioFile,
+  cleanupTempFiles,
+};

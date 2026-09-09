@@ -4,7 +4,7 @@ const router = express.Router();
 const carController = require('../../controllers/carController');
 const { protect } = require('../../middlewares/auth');
 const { cacheMiddleware } = require('../../middlewares/cacheMiddleware');
-const { carUpload } = require('../../middlewares/upload');
+const { carMediaUpload } = require('../../middlewares/upload');
 const validate = require('../../middlewares/validate');
 const { createCarSchema, updateCarSchema } = require('../../validations/carValidation');
 
@@ -12,10 +12,7 @@ const { createCarSchema, updateCarSchema } = require('../../validations/carValid
 router.post(
   '/',
   protect,
-  carUpload.fields([
-    { name: 'primary_image', maxCount: 1 },
-    { name: 'images', maxCount: 10 }
-  ]),
+  carMediaUpload,
   (req, res, next) => {
     const hasPrimaryFile = req.files && req.files.primary_image && req.files.primary_image.length > 0;
     const hasSecondaryFiles = req.files && req.files.images && req.files.images.length > 0;
@@ -35,10 +32,7 @@ router.post(
 router.get('/me', protect, carController.getUserCars);
 
 // ─── Update Car ─────────────────────────────────────────────
-router.put('/:id', protect, carUpload.fields([
-    { name: 'primary_image', maxCount: 1 },
-    { name: 'images', maxCount: 10 }
-  ]),validate(updateCarSchema), carController.updateCar);
+router.put('/:id', protect, carMediaUpload, validate(updateCarSchema), carController.updateCar);
 
 // ─── Mark Car as Sold ───────────────────────────────────────
 router.patch('/:id/sell', protect, carController.markCarAsSold);

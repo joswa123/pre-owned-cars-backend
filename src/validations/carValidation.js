@@ -94,6 +94,8 @@ const createCarSchema = Joi.object({
   city_id:          Joi.string().uuid().allow('', null).optional(),
   primary_image:    Joi.any().optional(),
   images:           Joi.any().optional(),
+  video:            Joi.any().optional(),
+  audio:            Joi.any().optional(),
   highlight_ids:    Joi.alternatives().try(
     Joi.array().items(Joi.string().uuid()),
     Joi.string()
@@ -140,6 +142,12 @@ const updateCarSchema = Joi.object({
   numberplate:      Joi.string().trim().max(50).allow('', null),
   prior_appointments: Joi.boolean(),
   prior_appointemnts: Joi.boolean(),
+  primary_image:    Joi.any().optional(),
+  images:           Joi.any().optional(),
+  video:            Joi.any().optional(),
+  audio:            Joi.any().optional(),
+  remove_video:     Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  remove_audio:     Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   images_to_keep:   Joi.alternatives().try(
     Joi.array().items(Joi.string().uuid()),
     Joi.string()

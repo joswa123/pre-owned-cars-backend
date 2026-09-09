@@ -153,8 +153,18 @@ const transformCarImages = (car, baseUrl = null) => {
     icon_url: optimizedIconUrl,
   };
 
+  const formatMediaUrl = (url) => {
+    if (!url) return null;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+    return url;
+  };
+
   return {
     ...carJson,
+    video_url: formatMediaUrl(carJson.video_url),
+    audio_url: formatMediaUrl(carJson.audio_url),
     highlights: carJson.highlights || [],
     primary_image: primary ? getOptimizedImageUrl(primary.image_url) : null,
     secondary_images: secondary.map((img) => getOptimizedImageUrl(img.image_url)),
@@ -261,6 +271,11 @@ exports.createCar = async (userId, carData, files) => {
       if (!stateExists) stateId = null;
     }
 
+    const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
+
+    const videoUrl = files && files.video && files.video[0] ? getFileUrl(files.video[0]) : null;
+    const audioUrl = files && files.audio && files.audio[0] ? getFileUrl(files.audio[0]) : null;
+
     const carFields = {
       user_id: userId,
       brand_id: brandId,
@@ -284,14 +299,14 @@ exports.createCar = async (userId, carData, files) => {
       color: mapped.color || '',
       number_plate: mapped.number_plate || '',
       prior_appointemnts: mapped.prior_appointemnts === true || mapped.prior_appointemnts === 'true',
+      video_url: videoUrl,
+      audio_url: audioUrl,
       state_id: stateId,
       district_id: districtId,
       city_id: cityId,
     };
 
     const car = await Car.create(carFields, { transaction });
-
-    const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
 
     const imageRecords = [];
     if (files && files.primary_image && files.primary_image[0]) {
@@ -721,6 +736,7 @@ exports.getCars = async (
         'fuel_type', 'transmission', 'ownership', 'body_type', 'board_type',
         'insurance_expiry_date', 'insurance_type', 'b2b_listing', 'posted_by_type',
         'status', 'description', 'color', 'number_plate', 'prior_appointemnts',
+        'video_url', 'audio_url',
         'state_id', 'district_id', 'city_id', 'brand_id', 'user_id',
         'created_at', 'updated_at', 'deleted_at',
         [
@@ -1111,6 +1127,27 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (mapped.status !== undefined) filteredData.status = mapped.status;
     if (mapped.engine_cc !== undefined) filteredData.engine_cc = mapped.engine_cc;
     if (mapped.description !== undefined) filteredData.description = mapped.description;
+
+    if (files) {
+      const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
+
+      // Video: uploaded file takes precedence
+      if (files.video && files.video[0]) {
+        filteredData.video_url = getFileUrl(files.video[0]);
+      }
+      // Audio: uploaded file takes precedence
+      if (files.audio && files.audio[0]) {
+        filteredData.audio_url = getFileUrl(files.audio[0]);
+      }
+    }
+
+    // Removal flags (only evaluated if no replacement file was provided)
+    if (filteredData.video_url === undefined && (updateData.remove_video === true || updateData.remove_video === 'true' || updateData.video_url === null || updateData.video_url === '')) {
+      filteredData.video_url = null;
+    }
+    if (filteredData.audio_url === undefined && (updateData.remove_audio === true || updateData.remove_audio === 'true' || updateData.audio_url === null || updateData.audio_url === '')) {
+      filteredData.audio_url = null;
+    }
 
     if (updateData.replace_images === true || updateData.replace_images === 'true') {
       await CarImage.destroy({ where: { car_id: car.id }, transaction });
