@@ -325,6 +325,9 @@ function wrapMulter(multerMiddleware) {
         }
         return next(new AppError(err.message || 'File upload failed', 400));
       }
+      if (req.file || req.files) {
+        console.log('Successfully uploaded:', req.file || req.files);
+      }
       next();
     });
   };
@@ -357,7 +360,7 @@ const carMediaUploadRaw = multer({
   { name: 'primary_image', maxCount: 1 },
   { name: 'images', maxCount: 10 },
   { name: 'video', maxCount: 1 },
-  { name: 'audio', maxCount: 1 },
+  { name: 'audio', maxCount: 1 }, // field name must be exactly 'audio'
 ]);
 
 // ─── Named Exports (All Wrapped for Safe Error Handling) ─
