@@ -47,6 +47,15 @@ const createTempAudioFile = (filename = 'test-audio.mp3') => {
   return filePath;
 };
 
+// Create a temporary invalid file (e.g. text/pdf)
+const createTempInvalidFile = (filename = 'test-doc.txt') => {
+  const tmpDir = path.join(__dirname, 'tmp');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const filePath = path.join(tmpDir, filename);
+  fs.writeFileSync(filePath, Buffer.from('invalid file content for testing media upload'));
+  return filePath;
+};
+
 // Clean up temp files
 const cleanupTempFiles = () => {
   const tmpDir = path.join(__dirname, 'tmp');
@@ -60,5 +69,6 @@ module.exports = {
   createTempImageFile,
   createTempVideoFile,
   createTempAudioFile,
+  createTempInvalidFile,
   cleanupTempFiles,
 };

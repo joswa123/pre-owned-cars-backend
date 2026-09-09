@@ -271,7 +271,18 @@ exports.createCar = async (userId, carData, files) => {
       if (!stateExists) stateId = null;
     }
 
-    const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
+    const getFileUrl = (f) => {
+      if (!f) return null;
+      if (f.path && typeof f.path === 'string') return f.path;
+      if (f.secure_url && typeof f.secure_url === 'string') return f.secure_url;
+      if (f.url && typeof f.url === 'string') return f.url;
+      if (f.filename) {
+        if (f.fieldname === 'video') return `/uploads/cars/videos/${f.filename}`;
+        if (f.fieldname === 'audio') return `/uploads/cars/audio/${f.filename}`;
+        return `/uploads/cars/${f.filename}`;
+      }
+      return null;
+    };
 
     const videoUrl = files && files.video && files.video[0] ? getFileUrl(files.video[0]) : null;
     const audioUrl = files && files.audio && files.audio[0] ? getFileUrl(files.audio[0]) : null;
@@ -397,6 +408,9 @@ exports.createCar = async (userId, carData, files) => {
   } catch (error) {
     console.error('❌ CREATE CAR SERVICE ERROR:', error);
     await transaction.rollback();
+    if (error instanceof AppError) {
+      throw error;
+    }
     if (error.name === 'SequelizeForeignKeyConstraintError') {
       throw new AppError('Foreign key constraint error: Brand, Model, Variant, or Location not found in database.', 400);
     }
@@ -406,7 +420,13 @@ exports.createCar = async (userId, carData, files) => {
     if (error.name === 'SequelizeUniqueConstraintError') {
       throw new AppError('Duplicate record detected for this car listing.', 400);
     }
-    throw error;
+    if (error.name === 'SequelizeDatabaseError') {
+      if (/unknown column/i.test(error.message) || /column.*does not exist/i.test(error.message)) {
+        throw new AppError(`Database schema out of sync: ${error.message}. Please run database migrations on server.`, 500);
+      }
+      throw new AppError(`Database error: ${error.message}`, 500);
+    }
+    throw new AppError(error.message || 'Failed to create car listing.', error.statusCode || 500);
   }
 };
 
@@ -1129,7 +1149,18 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (mapped.description !== undefined) filteredData.description = mapped.description;
 
     if (files) {
-      const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
+      const getFileUrl = (f) => {
+        if (!f) return null;
+        if (f.path && typeof f.path === 'string') return f.path;
+        if (f.secure_url && typeof f.secure_url === 'string') return f.secure_url;
+        if (f.url && typeof f.url === 'string') return f.url;
+        if (f.filename) {
+          if (f.fieldname === 'video') return `/uploads/cars/videos/${f.filename}`;
+          if (f.fieldname === 'audio') return `/uploads/cars/audio/${f.filename}`;
+          return `/uploads/cars/${f.filename}`;
+        }
+        return null;
+      };
 
       // Video: uploaded file takes precedence
       if (files.video && files.video[0]) {
@@ -1175,7 +1206,18 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     await car.update(filteredData, { transaction });
 
     if (files) {
-      const getFileUrl = (f) => f.path || f.secure_url || f.url || (f.filename ? `/uploads/cars/${f.filename}` : 'test-image.png');
+      const getFileUrl = (f) => {
+        if (!f) return null;
+        if (f.path && typeof f.path === 'string') return f.path;
+        if (f.secure_url && typeof f.secure_url === 'string') return f.secure_url;
+        if (f.url && typeof f.url === 'string') return f.url;
+        if (f.filename) {
+          if (f.fieldname === 'video') return `/uploads/cars/videos/${f.filename}`;
+          if (f.fieldname === 'audio') return `/uploads/cars/audio/${f.filename}`;
+          return `/uploads/cars/${f.filename}`;
+        }
+        return null;
+      };
 
       const imageRecords = [];
 
@@ -1240,8 +1282,27 @@ exports.updateCar = async (carId, userId, updateData, files) => {
 
     return transformCarImages(updatedCar);
   } catch (error) {
+    console.error('❌ UPDATE CAR SERVICE ERROR:', error);
     await transaction.rollback();
-    throw error;
+    if (error instanceof AppError) {
+      throw error;
+    }
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      throw new AppError('Foreign key constraint error: Brand, Model, Variant, or Location not found in database.', 400);
+    }
+    if (error.name === 'SequelizeValidationError') {
+      throw new AppError(error.errors?.[0]?.message || 'Database validation error', 400);
+    }
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      throw new AppError('Duplicate record detected for this car listing.', 400);
+    }
+    if (error.name === 'SequelizeDatabaseError') {
+      if (/unknown column/i.test(error.message) || /column.*does not exist/i.test(error.message)) {
+        throw new AppError(`Database schema out of sync: ${error.message}. Please run database migrations on server.`, 500);
+      }
+      throw new AppError(`Database error: ${error.message}`, 500);
+    }
+    throw new AppError(error.message || 'Failed to update car listing.', error.statusCode || 500);
   }
 };
 

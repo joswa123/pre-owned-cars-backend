@@ -190,4 +190,73 @@ describe('Car Multimedia (Video & Audio) Integration Tests', () => {
     // video_url must NOT be injected from client payload
     expect(res.body.data.car.video_url).toBeNull();
   });
+
+  test('6. POST /api/v1/cars - reject invalid video format (e.g. .txt / .pdf)', async () => {
+    const { token } = await setupUser();
+    const primaryImg = createTempImageFile(`primary-${Date.now()}.png`);
+    const invalidVideo = require('./helpers').createTempInvalidFile('test-video.txt');
+
+    const res = await request(app)
+      .post('/api/v1/cars')
+      .set('Authorization', `Bearer ${token}`)
+      .field('brand', 'Toyota')
+      .field('model', 'Innova')
+      .field('year', '2021')
+      .field('price', '2500000')
+      .field('km_driven', '35000')
+      .field('transmission', 'manual')
+      .field('ownership', '1st owner')
+      .attach('primary_image', primaryImg)
+      .attach('video', invalidVideo);
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toMatch(/video format/i);
+  });
+
+  test('7. POST /api/v1/cars - reject invalid audio format', async () => {
+    const { token } = await setupUser();
+    const primaryImg = createTempImageFile(`primary-${Date.now()}.png`);
+    const invalidAudio = require('./helpers').createTempInvalidFile('test-audio.pdf');
+
+    const res = await request(app)
+      .post('/api/v1/cars')
+      .set('Authorization', `Bearer ${token}`)
+      .field('brand', 'Toyota')
+      .field('model', 'Innova')
+      .field('year', '2021')
+      .field('price', '2500000')
+      .field('km_driven', '35000')
+      .field('transmission', 'manual')
+      .field('ownership', '1st owner')
+      .attach('primary_image', primaryImg)
+      .attach('audio', invalidAudio);
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toMatch(/audio format/i);
+  });
+
+  test('8. POST /api/v1/cars - reject unexpected file field (e.g. videoFile instead of video)', async () => {
+    const { token } = await setupUser();
+    const primaryImg = createTempImageFile(`primary-${Date.now()}.png`);
+    const videoFile = createTempVideoFile(`video-${Date.now()}.mp4`);
+
+    const res = await request(app)
+      .post('/api/v1/cars')
+      .set('Authorization', `Bearer ${token}`)
+      .field('brand', 'Toyota')
+      .field('model', 'Innova')
+      .field('year', '2021')
+      .field('price', '2500000')
+      .field('km_driven', '35000')
+      .field('transmission', 'manual')
+      .field('ownership', '1st owner')
+      .attach('primary_image', primaryImg)
+      .attach('videoFile', videoFile);
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toMatch(/unexpected field/i);
+  });
 });

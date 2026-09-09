@@ -7,13 +7,24 @@ const { AppError } = require('../utils/errorHandler');
 require('dotenv').config();
 
 // ─── Configure Cloudinary ──────────────────────────────
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+const isCloudinaryConfigured = Boolean(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET &&
+  process.env.CLOUDINARY_CLOUD_NAME.trim() !== '' &&
+  process.env.CLOUDINARY_API_KEY.trim() !== '' &&
+  process.env.CLOUDINARY_API_SECRET.trim() !== ''
+);
 
-const isTestOrNoSecret = (process.env.NODE_ENV || '').trim() === 'test' || !process.env.CLOUDINARY_API_SECRET;
+if (isCloudinaryConfigured) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME.trim(),
+    api_key: process.env.CLOUDINARY_API_KEY.trim(),
+    api_secret: process.env.CLOUDINARY_API_SECRET.trim(),
+  });
+}
+
+const isTestOrNoSecret = (process.env.NODE_ENV || '').trim() === 'test' || !isCloudinaryConfigured;
 
 // ─── File Filter & MIME Definitions ────────────────────
 const ALLOWED_IMAGE_MIMES = [
@@ -24,6 +35,7 @@ const ALLOWED_IMAGE_MIMES = [
   'image/webp',
   'image/heic',
   'image/bmp',
+  'application/octet-stream',
 ];
 
 const EXT_TO_IMAGE_MIME = {
@@ -41,38 +53,51 @@ const ALLOWED_VIDEO_MIMES = [
   'video/webm',
   'video/quicktime',
   'video/x-matroska',
+  'video/3gpp',
+  'video/x-m4v',
+  'video/mpeg',
+  'video/avi',
+  'video/x-msvideo',
+  'application/octet-stream',
 ];
 
-const ALLOWED_VIDEO_EXTS = ['.mp4', '.webm', '.mov', '.mkv'];
+const ALLOWED_VIDEO_EXTS = ['.mp4', '.webm', '.mov', '.mkv', '.3gp', '.m4v', '.avi'];
 
 const ALLOWED_AUDIO_MIMES = [
   'audio/mpeg',
   'audio/mp3',
   'audio/wav',
   'audio/x-wav',
+  'audio/wave',
   'audio/aac',
   'audio/x-aac',
   'audio/mp4',
   'audio/m4a',
   'audio/x-m4a',
   'audio/ogg',
+  'audio/webm',
+  'audio/3gpp',
+  'audio/amr',
+  'audio/flac',
+  'application/ogg',
+  'application/octet-stream',
 ];
 
-const ALLOWED_AUDIO_EXTS = ['.mp3', '.wav', '.aac', '.m4a', '.ogg'];
+const ALLOWED_AUDIO_EXTS = ['.mp3', '.wav', '.aac', '.m4a', '.ogg', '.webm', '.3gp', '.amr', '.flac'];
 
 // Image-only filter
 const imageFileFilter = (req, file, cb) => {
   const mimetype = (file.mimetype || '').toLowerCase();
   const ext = path.extname(file.originalname || '').toLowerCase();
 
-  if (ALLOWED_IMAGE_MIMES.includes(mimetype) || EXT_TO_IMAGE_MIME[ext]) {
-    if (!ALLOWED_IMAGE_MIMES.includes(mimetype) && EXT_TO_IMAGE_MIME[ext]) {
+  if (EXT_TO_IMAGE_MIME[ext] || ALLOWED_IMAGE_MIMES.includes(mimetype)) {
+    if (EXT_TO_IMAGE_MIME[ext]) {
       file.mimetype = EXT_TO_IMAGE_MIME[ext];
     }
     return cb(null, true);
   }
 
-  return cb(new AppError('Only image files are allowed', 400), false);
+  return cb(new AppError('Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP, GIF, HEIC.', 400), false);
 };
 
 // Video-only filter
@@ -80,10 +105,10 @@ const videoFileFilter = (req, file, cb) => {
   const mimetype = (file.mimetype || '').toLowerCase();
   const ext = path.extname(file.originalname || '').toLowerCase();
 
-  if (ALLOWED_VIDEO_MIMES.includes(mimetype) || ALLOWED_VIDEO_EXTS.includes(ext)) {
+  if (ALLOWED_VIDEO_EXTS.includes(ext) || (ALLOWED_VIDEO_MIMES.includes(mimetype) && mimetype !== 'application/octet-stream')) {
     return cb(null, true);
   }
-  return cb(new AppError('Only MP4, WebM, and QuickTime videos are allowed', 400), false);
+  return cb(new AppError('Invalid video format. Allowed formats: MP4, WebM, MOV, MKV, 3GP, M4V, AVI.', 400), false);
 };
 
 // Audio-only filter
@@ -91,10 +116,10 @@ const audioFileFilter = (req, file, cb) => {
   const mimetype = (file.mimetype || '').toLowerCase();
   const ext = path.extname(file.originalname || '').toLowerCase();
 
-  if (ALLOWED_AUDIO_MIMES.includes(mimetype) || ALLOWED_AUDIO_EXTS.includes(ext)) {
+  if (ALLOWED_AUDIO_EXTS.includes(ext) || (ALLOWED_AUDIO_MIMES.includes(mimetype) && mimetype !== 'application/octet-stream')) {
     return cb(null, true);
   }
-  return cb(new AppError('Only MP3, WAV, and AAC audio files are allowed', 400), false);
+  return cb(new AppError('Invalid audio format. Allowed formats: MP3, WAV, AAC, M4A, OGG, FLAC.', 400), false);
 };
 
 // Combined Car Media filter
@@ -103,21 +128,24 @@ const carMediaFileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname || '').toLowerCase();
 
   if (file.fieldname === 'video') {
-    if (ALLOWED_VIDEO_MIMES.includes(mimetype) || ALLOWED_VIDEO_EXTS.includes(ext)) {
+    if (ALLOWED_VIDEO_EXTS.includes(ext) || (ALLOWED_VIDEO_MIMES.includes(mimetype) && mimetype !== 'application/octet-stream')) {
       return cb(null, true);
     }
-    return cb(new AppError('Only MP4, WebM, and QuickTime videos are allowed', 400), false);
+    return cb(new AppError('Invalid video format. Allowed formats: MP4, WebM, MOV, MKV, 3GP, M4V, AVI.', 400), false);
   }
 
   if (file.fieldname === 'audio') {
-    if (ALLOWED_AUDIO_MIMES.includes(mimetype) || ALLOWED_AUDIO_EXTS.includes(ext)) {
+    if (ALLOWED_AUDIO_EXTS.includes(ext) || (ALLOWED_AUDIO_MIMES.includes(mimetype) && mimetype !== 'application/octet-stream')) {
       return cb(null, true);
     }
-    return cb(new AppError('Only MP3, WAV, and AAC audio files are allowed', 400), false);
+    return cb(new AppError('Invalid audio format. Allowed formats: MP3, WAV, AAC, M4A, OGG, FLAC.', 400), false);
   }
 
-  // Otherwise images (primary_image, images)
-  return imageFileFilter(req, file, cb);
+  if (file.fieldname === 'primary_image' || file.fieldname === 'images') {
+    return imageFileFilter(req, file, cb);
+  }
+
+  return cb(new AppError(`Unexpected field "${file.fieldname}". Allowed file fields: primary_image, images, video, audio.`, 400), false);
 };
 
 // ─── Cloudinary & Disk Storages ──────────────────────────
@@ -169,7 +197,6 @@ const audioStorage = isTestOrNoSecret
         folder: 'cars/audio',
         resource_type: 'video', // Cloudinary treats audio as video resource type
         public_id: (req, file) => `audio-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-        format: 'mp3',
       },
     });
 
@@ -211,7 +238,6 @@ const carMediaStorage = isTestOrNoSecret
             folder: 'cars/audio',
             resource_type: 'video',
             public_id: `audio-${unique}`,
-            format: 'mp3',
           };
         }
         return {
@@ -254,15 +280,52 @@ function createUpload(folderName, extraParams = {}) {
         },
       });
 
-  return multer({
+  const rawMulter = multer({
     storage,
     limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024 },
     fileFilter: imageFileFilter,
   });
+
+  return wrapMulter(rawMulter.single('image'));
 }
 
-// ─── Multer Instances ───────────────────────────────────
-const uploadVideo = multer({
+// ─── Multer Error Handling Wrapper ───────────────────────
+function wrapMulter(multerMiddleware) {
+  return (req, res, next) => {
+    multerMiddleware(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            const field = err.field;
+            let limitDesc = '10MB for images, 20MB for audio, 100MB for video';
+            if (field === 'video') limitDesc = '100MB';
+            else if (field === 'audio') limitDesc = '20MB';
+            else if (field === 'primary_image' || field === 'images' || field === 'image') limitDesc = '10MB';
+            return next(new AppError(`File size exceeds allowable limit (${limitDesc}) for field "${field || 'file'}".`, 413));
+          }
+          if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            return next(new AppError(`Unexpected field "${err.field}". Allowed file fields: primary_image, images, video, audio.`, 400));
+          }
+          if (err.code === 'LIMIT_FILE_COUNT') {
+            return next(new AppError(`Too many files uploaded for field "${err.field}".`, 400));
+          }
+          return next(new AppError(`Upload error (${err.code}): ${err.message}`, 400));
+        }
+        if (err instanceof AppError) {
+          return next(err);
+        }
+        if (err.http_code || (err.message && /cloudinary|cloud_name|api_key/i.test(err.message))) {
+          return next(new AppError(`Cloudinary upload failed: ${err.message}`, err.http_code || 400));
+        }
+        return next(new AppError(err.message || 'File upload failed', 400));
+      }
+      next();
+    });
+  };
+}
+
+// ─── Raw Multer Instances ───────────────────────────────
+const uploadVideoRaw = multer({
   storage: videoStorage,
   limits: {
     fileSize: 100 * 1024 * 1024, // 100 MB
@@ -270,7 +333,7 @@ const uploadVideo = multer({
   fileFilter: videoFileFilter,
 });
 
-const uploadAudio = multer({
+const uploadAudioRaw = multer({
   storage: audioStorage,
   limits: {
     fileSize: 20 * 1024 * 1024, // 20 MB
@@ -278,10 +341,10 @@ const uploadAudio = multer({
   fileFilter: audioFileFilter,
 });
 
-const carMediaUpload = multer({
+const carMediaUploadRaw = multer({
   storage: carMediaStorage,
   limits: {
-    fileSize: 150 * 1024 * 1024, // 150 MB total per request
+    fileSize: 100 * 1024 * 1024, // 100 MB per file max
   },
   fileFilter: carMediaFileFilter,
 }).fields([
@@ -291,11 +354,12 @@ const carMediaUpload = multer({
   { name: 'audio', maxCount: 1 },
 ]);
 
-// ─── Named Exports ──────────────────────────────────────
+// ─── Named Exports (All Wrapped for Safe Error Handling) ─
 module.exports = {
-  uploadVideo,
-  uploadAudio,
-  carMediaUpload,
+  uploadVideo: wrapMulter(uploadVideoRaw.single('video')),
+  uploadAudio: wrapMulter(uploadAudioRaw.single('audio')),
+  carMediaUpload: wrapMulter(carMediaUploadRaw),
+  wrapMulter,
   brandUpload: createUpload('brands'),
   carUpload: createUpload('cars'),
   profileUpload: createUpload('profiles'),
