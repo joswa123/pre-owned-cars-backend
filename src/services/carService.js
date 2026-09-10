@@ -1974,4 +1974,59 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
     similarCars: similarCarsData,
     recommendedCars: recommendedCarsData
   };
+};exports.uploadCarVideo = async (carId, userId, file) => {
+  const { Car } = require('../models');
+  const { AppError } = require('../utils/errorHandler');
+  const cloudinary = require('cloudinary').v2;
+  const fs = require('fs');
+
+  if (!file) throw new AppError('No video file provided', 400);
+
+  const car = await Car.findOne({ where: { id: carId, user_id: userId } });
+  if (!car) throw new AppError('Car not found or unauthorized', 404);
+
+  console.log('Video upload requested:', {
+    car_id: carId,
+    has_file: !!file,
+    originalname: file.originalname,
+    mimetype: file.mimetype,
+    size: file.size
+  });
+
+  try {
+    const result = await cloudinary.uploader.upload(file.path, {
+      resource_type: 'video',
+      folder: 'cars/videos',
+      public_id: 'car_video_$' + Date.now()
+    });
+
+    console.log('Cloudinary response:', {
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+      full_response: result
+    });
+
+    const videoUrl = result.secure_url;
+    if (!videoUrl) {
+      throw new Error('Cloudinary secure_url is null');
+    }
+
+    car.video_url = videoUrl;
+    await car.save();
+
+    console.log('DB saved:', { car_id: car.id, video_url: car.video_url });
+
+    // Clean up temporary file
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+
+    return videoUrl;
+  } catch (error) {
+    console.error('Cloudinary Video Upload Error:', error);
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+    throw new AppError(error.message || 'Failed to upload video', 500);
+  }
 };

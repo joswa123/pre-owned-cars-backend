@@ -164,6 +164,26 @@ exports.deleteCarImage = catchAsync(async (req, res) => {
 });
 
 /**
+ * Upload Car Video
+ */
+exports.uploadCarVideo = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const file = req.file;
+
+  const video_url = await carService.uploadCarVideo(id, userId, file);
+
+  const { clearCache } = require('../middlewares/cacheMiddleware');
+  clearCache('/api/v1/cars');
+
+  res.status(200).json({
+    status: "success",
+    message: "Video uploaded successfully.",
+    video_url
+  });
+});
+
+/**
  * Mark Car as Sold
  */
 exports.markCarAsSold = catchAsync(async (req, res) => {

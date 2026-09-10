@@ -5,6 +5,8 @@ const carController = require('../../controllers/carController');
 const { protect } = require('../../middlewares/auth');
 const { cacheMiddleware } = require('../../middlewares/cacheMiddleware');
 const { carMediaUpload } = require('../../middlewares/upload');
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/temp/' });
 const validate = require('../../middlewares/validate');
 const { createCarSchema, updateCarSchema } = require('../../validations/carValidation');
 
@@ -42,6 +44,9 @@ router.delete('/:id', protect, carController.deleteCar);
 
 // ─── Delete Car Image ───────────────────────────────────────
 router.delete('/:id/images/:imageId', protect, carController.deleteCarImage);
+
+// ─── Upload Car Video ───────────────────────────────────────
+router.post('/:id/video', protect, upload.single('video'), carController.uploadCarVideo);
 
 // ─── Public Routes ──────────────────────────────────────────
 const { optionalAuth } = require('../../middlewares/auth');
