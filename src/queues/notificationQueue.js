@@ -7,6 +7,17 @@ const notificationQueue = new Queue('car-matching', {
     host: process.env.REDIS_HOST || '127.0.0.1',
     port: process.env.REDIS_PORT || 6379,
     password: process.env.REDIS_PASSWORD || undefined,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    keepAlive: 30000,
+    tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
+    retryStrategy: (times) => {
+      if (times > 10) {
+        console.error('[Notification Queue] Redis retry limit reached');
+        return null; // stop retrying
+      }
+      return Math.min(times * 50, 3000); // delay
+    }
   }
 });
 
@@ -23,7 +34,11 @@ notificationQueue.process(async (job) => {
 });
 
 notificationQueue.on('error', (error) => {
-  console.error('[Notification Queue] Error:', error);
+  if (error.code === 'ECONNRESET') {
+    console.warn('[Notification Queue] Redis connection reset. Reconnecting...');
+  } else {
+    console.error('[Notification Queue] Error:', error);
+  }
 });
 
 notificationQueue.on('failed', (job, err) => {

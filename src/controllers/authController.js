@@ -85,8 +85,8 @@ exports.resendOtp = catchAsync(async (req, res) => {
  * Login User or Dealer
  */
 exports.login = catchAsync(async (req, res) => {
-  const { phone, email, password } = req.body;
-  const result = await authService.loginUser({ phone, email }, password);
+  const { phone, email, password, device_token, device_type } = req.body;
+  const result = await authService.loginUser({ phone, email, device_token, device_type }, password);
 
   res.status(200).json({
     status: 'success',

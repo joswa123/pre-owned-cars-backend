@@ -22,11 +22,27 @@ if (process.env.REDIS_PASSWORD) {
   redisUrl = `redis://${process.env.REDIS_HOST || '127.0.0.1'}:${process.env.REDIS_PORT || 6379}`;
 }
 
-const redisClient = createClient({ url: redisUrl });
+const redisClient = createClient({
+  url: redisUrl,
+  socket: {
+    keepAlive: 30000,
+    reconnectStrategy: (retries) => {
+      if (retries > 10) {
+        logger.error('❌ Redis reconnect limit reached');
+        return new Error('Redis reconnect limit reached');
+      }
+      return Math.min(retries * 50, 3000);
+    }
+  }
+});
 
 redisClient.on('error', (err) => {
-  // Log the error but don't crash — the app can run without Redis (cache will be bypassed)
-  logger.error('❌ Redis Client Error:', err.message);
+  if (err.code === 'ECONNRESET') {
+    logger.warn('⚠️ Redis connection reset. Reconnecting...');
+  } else {
+    // Log the error but don't crash — the app can run without Redis (cache will be bypassed)
+    logger.error('❌ Redis Client Error: ' + err.message);
+  }
 });
 
 redisClient.on('connect', () => {
