@@ -10,13 +10,10 @@ const notificationQueue = new Queue('car-matching', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     keepAlive: 30000,
-    tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
+    tls: process.env.REDIS_PASSWORD ? {} : undefined, // Upstash requires TLS when using password
     retryStrategy: (times) => {
-      if (times > 10) {
-        console.error('[Notification Queue] Redis retry limit reached');
-        return null; // stop retrying
-      }
-      return Math.min(times * 50, 3000); // delay
+      // Keep retrying endlessly but max out delay at 3 seconds
+      return Math.min(times * 50, 3000);
     }
   }
 });
@@ -34,8 +31,8 @@ notificationQueue.process(async (job) => {
 });
 
 notificationQueue.on('error', (error) => {
-  if (error.code === 'ECONNRESET') {
-    console.warn('[Notification Queue] Redis connection reset. Reconnecting...');
+  if (error.code === 'ECONNRESET' || error.code === 'EPIPE') {
+    console.warn(`[Notification Queue] Redis connection error (${error.code}). Reconnecting...`);
   } else {
     console.error('[Notification Queue] Error:', error);
   }

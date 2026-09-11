@@ -37,8 +37,8 @@ const redisClient = createClient({
 });
 
 redisClient.on('error', (err) => {
-  if (err.code === 'ECONNRESET') {
-    logger.warn('⚠️ Redis connection reset. Reconnecting...');
+  if (err.code === 'ECONNRESET' || err.code === 'EPIPE') {
+    logger.warn(`⚠️ Redis connection error (${err.code}). Reconnecting...`);
   } else {
     // Log the error but don't crash — the app can run without Redis (cache will be bypassed)
     logger.error('❌ Redis Client Error: ' + err.message);
