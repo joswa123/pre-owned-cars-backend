@@ -56,6 +56,9 @@ const connectWithRetry = async (maxRetries = 5, initialDelayMs = 1000) => {
     } catch (redisErr) {
       logger.warn('⚠️ Redis connection warning:', redisErr.message);
     }
+    
+    // 3.5.1 Start Notification Queue Worker
+    require('./queues/notificationQueue');
 
     // 3.6 Start Analytics Metric Flusher (Configurable: default 15s interval)
     const analyticsService = require('./services/analyticsService');

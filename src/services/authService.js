@@ -143,6 +143,8 @@ exports.registerUser = async (userData) => {
     gst_no,
     license_no,
     contact_person,
+    device_token,
+    device_type,
   } = userData;
 
   // Check phone uniqueness
@@ -190,6 +192,8 @@ exports.registerUser = async (userData) => {
         seller_type: role === 'dealer' ? 'company' : 'individual',
         whatsapp_number: userData.whatsapp_number || null,
         use_registered_for_whatsapp: userData.use_registered_for_whatsapp !== undefined ? userData.use_registered_for_whatsapp : true,
+        device_token: device_token || null,
+        device_type: device_type || null,
       },
       { transaction }
     );
@@ -266,7 +270,7 @@ exports.registerUser = async (userData) => {
 /**
  * Verify OTP / Code and Activate User with JWT Generation
  */
-exports.verifyUser = async ({ phone, email, code, otp }) => {
+exports.verifyUser = async ({ phone, email, code, otp, device_token, device_type }) => {
   const inputCode = code || otp;
   if (!inputCode) {
     throw new AppError('Verification code is required.', 400);
@@ -303,8 +307,13 @@ exports.verifyUser = async ({ phone, email, code, otp }) => {
     throw new AppError('Invalid verification code.', 400);
   }
 
-  // Mark user as verified
-  await user.update({ is_verified: true });
+  // Mark user as verified and update device token if provided
+  const updateData = { is_verified: true };
+  if (device_token !== undefined) {
+    updateData.device_token = device_token || null;
+    updateData.device_type = device_type || null;
+  }
+  await user.update(updateData);
 
   // Delete used OTP record
   await Otp.destroy({ where: { id: otpRecord.id } });
@@ -355,7 +364,7 @@ exports.resendOtp = async ({ phone, email }) => {
  * Login User / Dealer with Phone or Email and Password
  * Returns JWT tokens and eager-loaded Profile with Car activity metrics.
  */
-exports.loginUser = async ({ phone, email }, password) => {
+exports.loginUser = async ({ phone, email, device_token, device_type }, password) => {
   const whereClause = {};
   if (phone) whereClause.phone = phone;
   else if (email) whereClause.email = email;
@@ -385,8 +394,13 @@ exports.loginUser = async ({ phone, email }, password) => {
     throw new AppError('Account is not verified. Please verify your phone/email first.', 401);
   }
 
-  // Update last login timestamp
-  await user.update({ last_login: new Date() });
+  // Update last login timestamp and device token if provided
+  const updateData = { last_login: new Date() };
+  if (device_token !== undefined) {
+    updateData.device_token = device_token || null;
+    updateData.device_type = device_type || null;
+  }
+  await user.update(updateData);
 
   // Clean up expired refresh tokens for this user
   await RefreshToken.destroy({

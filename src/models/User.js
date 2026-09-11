@@ -100,6 +100,14 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(255),
     allowNull: true,
   },
+  device_token: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
+  device_type: {
+    type: DataTypes.ENUM('android', 'ios', 'web'),
+    allowNull: true,
+  },
 }, {
   tableName: 'users',
   timestamps: true,
@@ -111,6 +119,7 @@ const User = sequelize.define('User', {
     { fields: ['city_id'] },
     { fields: ['district_id'] },
     { fields: ['state_id'] },
+    { fields: ['device_token'] },
   ],
 });
 

@@ -47,6 +47,8 @@ const registerSchema = Joi.object({
   license_no: Joi.string().max(100).optional().allow('', null),
   contact_person: Joi.string().max(100).optional().allow('', null),
   seller_type: Joi.string().valid('individual', 'company', 'private', 'dealer').optional().allow('', null),
+  device_token: Joi.string().max(500).optional().allow('', null),
+  device_type: Joi.string().valid('android', 'ios', 'web').optional().allow('', null),
   // Security: Client cannot set status or is_verified
   status: Joi.forbidden(),
   is_verified: Joi.forbidden(),
@@ -60,6 +62,8 @@ const verifySchema = Joi.object({
   email: Joi.string().email().optional().allow('', null),
   code: Joi.string().length(6).pattern(/^[0-9]{6}$/).optional(),
   otp: Joi.string().length(6).pattern(/^[0-9]{6}$/).optional(),
+  device_token: Joi.string().max(500).optional().allow('', null),
+  device_type: Joi.string().valid('android', 'ios', 'web').optional().allow('', null),
 }).or('phone', 'email').or('code', 'otp');
 
 const verifyOtpSchema = Joi.object({
@@ -76,6 +80,8 @@ const loginSchema = Joi.object({
   phone: Joi.string().pattern(/^[0-9]{10}$/).optional().allow('', null),
   email: Joi.string().email().optional().allow('', null),
   password: Joi.string().required(),
+  device_token: Joi.string().max(500).optional().allow('', null),
+  device_type: Joi.string().valid('android', 'ios', 'web').optional().allow('', null),
 }).or('phone', 'email');
 
 const forgotPasswordSchema = Joi.object({

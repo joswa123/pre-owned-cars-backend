@@ -3,6 +3,7 @@ const { Op, Sequelize, fn, col, where } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
+const notificationQueue = require('../queues/notificationQueue');
 
 const clearCache = async (key) => {
   try {
@@ -431,6 +432,11 @@ exports.createCar = async (userId, carData, files) => {
     });
 
     await invalidateCarCaches(createdCar.id, userId);
+
+    // Add job to match requirements
+    notificationQueue.add({ carId: createdCar.id }).catch(err => {
+      console.error('Failed to enqueue car matching job:', err);
+    });
 
     return transformCarImages(createdCar);
   } catch (error) {
