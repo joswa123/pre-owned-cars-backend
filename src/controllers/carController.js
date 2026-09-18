@@ -63,7 +63,7 @@ exports.getCars = catchAsync(async (req, res) => {
   }
 
   // Parse arrays
-  const arrayFields = ['brands', 'models', 'fuel_types', 'body_types', 'ownerships', 'transmissions', 'colors'];
+  const arrayFields = ['brands', 'models', 'fuel_types', 'body_types', 'ownerships', 'transmissions', 'colors', 'variants'];
   arrayFields.forEach(field => {
     if (filters[field] && typeof filters[field] === 'string') {
       filters[field] = filters[field].split(',').map(item => item.trim()).filter(Boolean);
@@ -72,7 +72,7 @@ exports.getCars = catchAsync(async (req, res) => {
 
   // Parse booleans
   if (filters.include_expired !== undefined) {
-    filters.include_expired = filters.include_expired === 'true';
+    filters.include_expired = filters.include_expired === 'true' || filters.include_expired === true;
   }
   if (filters.has_wishlist !== undefined) {
     filters.has_wishlist = filters.has_wishlist === 'true' || filters.has_wishlist === true;

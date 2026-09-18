@@ -337,6 +337,7 @@ const carQuerySchema = Joi.object({
   variant_id: optionalHybridId,
   variant_ids: Joi.string().optional(),
   variant: Joi.string().optional(),
+  variants: Joi.string().optional(),
   fuel_type: Joi.string().optional(),
   transmission: Joi.string().optional(),
   state_id: Joi.string().uuid().optional(),
