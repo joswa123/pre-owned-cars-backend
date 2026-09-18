@@ -37,53 +37,64 @@ app.set('trust proxy', 1);
 // ─── Security ────────────────────────────────────────────────────────────────
 app.use(helmet());
 
-// Single, correctly configured CORS (don't use cors() twice)
-const configuredOrigins = process.env.ALLOWED_ORIGINS
+// Parse allowed origins from env, fallback to a safe default
+const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
-  : [];
+  : [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5173',
+      'https://autodeal4u.com',
+      'https://www.autodeal4u.com',
+      'http://autodeal4u.com',
+    ];
 
-const defaultOrigins = [
-  'https://dreamstarz.in',
-  'http://dreamstarz.in',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://localhost:8080',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:5173',
-];
+console.log('✅ CORS allowed origins:', allowedOrigins);
 
-const allowedOrigins = Array.from(new Set([...defaultOrigins, ...configuredOrigins]));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, Flutter, curl, Postman, server-to-server)
+      if (!origin) return callback(null, true);
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, Flutter, curl, server-to-server)
-    if (!origin) return callback(null, true);
+      // Normalize origin (remove trailing slashes)
+      const normalizedOrigin = origin.replace(/\/+$/, '');
 
-    // Normalize origin (remove trailing slashes)
-    const normalizedOrigin = origin.replace(/\/+$/, '');
+      if (
+        allowedOrigins.includes(origin) ||
+        allowedOrigins.includes(normalizedOrigin) ||
+        allowedOrigins.includes('*') ||
+        normalizedOrigin.endsWith('autodeal4u.com')
+      ) {
+        return callback(null, true);
+      }
 
-    // Allow wildcard or matching origin
-    const isAllowed = allowedOrigins.includes('*') ||
-      allowedOrigins.some(allowed => allowed.replace(/\/+$/, '') === normalizedOrigin) ||
-      normalizedOrigin.endsWith('dreamstarz.in');
+      // Do NOT throw an error — return callback(null, false) so server does not crash
+      console.warn(`⚠️ CORS: blocked origin ${origin}`);
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+      'ngrok-skip-browser-warning',
+      'x-refresh-token',
+    ],
+    exposedHeaders: ['Content-Length', 'Content-Type'],
+    maxAge: 86400,
+  })
+);
 
-    if (isAllowed) {
-      return callback(null, true);
-    }
-    return callback(new Error(`CORS policy does not allow access from origin: ${origin}`));
-  },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning', 'X-Requested-With', 'Accept', 'x-refresh-token'],
-  credentials: true,
-}));
+// Explicitly handle preflight for all routes
+app.options('*', cors());
 
-// ─── Rate Limiting ────────────────────────────────────────────────────────────
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// ─────────────────────────────────────────────────────────────────────────────
 app.use('/api', limiter);
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────

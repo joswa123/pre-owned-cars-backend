@@ -6,16 +6,215 @@ const locationTree = {
   'Tamil Nadu': {
     code: 'TN',
     districts: {
-      'Coimbatore': ['Coimbatore', 'Pollachi', 'Mettupalayam'],
-      'Chennai': ['Chennai', 'Guindy', 'Velachery', 'Tambaram'],
-      'Madurai': ['Madurai', 'Melur'],
-      'Salem': ['Salem', 'Attur'],
-      'Erode': ['Erode', 'Gobichettipalayam'],
-      'Tiruppur': ['Tiruppur', 'Dharapuram'],
-      'Tiruchirappalli': ['Trichy', 'Srirangam'],
-      'Vellore': ['Vellore', 'Katpadi'],
-      'Thoothukudi': ['Thoothukudi', 'Kovilpatti'],
-      'Kanyakumari': ['Nagercoil', 'Marthandam']
+      'Coimbatore': [
+        'Coimbatore', 'Gandhipuram', 'RS Puram', 'Peelamedu', 'Saravanampatti', 'Singanallur', 
+        'Saibaba Colony', 'Thudiyalur', 'Ganapathy', 'Vadavalli', 'Kuniyamuthur', 'Kovaipudur', 
+        'Ramanathapuram', 'Ondipudur', 'Sulur', 'Pollachi', 'Mettupalayam', 'Annur', 
+        'Kinathukadavu', 'Valparai', 'Madukkarai', 'Karumathampatti', 'Kalapatti', 
+        'Malumichampatti', 'Periyanaickenpalayam', 'Narasimhanaickenpalayam', 'Vellalore', 
+        'Irugur', 'Sirumugai', 'Negamam', 'Alandurai', 'Chettipalayam', 'Othakkalmandapam', 
+        'Kavundampalayam', 'Tatabad', 'Race Course', 'Ram Nagar', 'Siddhapudur', 'Ukkadam', 
+        'Sundarapuram', 'Podanur', 'Vilankurichi', 'Perur', 'Eachanari', 'Chinnavedampatti', 
+        'Neelambur', 'Kurichi', 'Telungupalayam', 'Veerakeralam', 'Thondamuthur', 'Karamadai', 
+        'Vedapatti', 'Pooluvapatti', 'Thenkarai', 'Anamalai', 'Kottur', 'Samathur', 
+        'Suleeswaranpatti', 'Zamin Uthukuli', 'Senjerimalai', 'Sultanpet'
+      ],
+      'Chennai': [
+        'Chennai', 'T. Nagar', 'Anna Nagar', 'Adyar', 'Velachery', 'Guindy', 'Tambaram', 
+        'Porur', 'Nungambakkam', 'Mylapore', 'Alwarpet', 'Kodambakkam', 'Vadapalani', 
+        'Sholinganallur', 'Thoraipakkam', 'Karapakkam', 'Navalur', 'Kelambakkam', 'Pallavaram', 
+        'Chromepet', 'Medavakkam', 'Perungudi', 'Thiruvanmiyur', 'Kottivakkam', 'Palavakkam', 
+        'Neelankarai', 'Injambakkam', 'Kilpauk', 'Egmore', 'Royapettah', 'Saidapet', 
+        'Mogappair', 'Ambattur', 'Avadi', 'Poonamallee', 'Madipakkam', 'Keelkattalai', 
+        'Nanganallur', 'Royapuram', 'Tondiarpet', 'Perambur', 'Kolathur', 'Villivakkam', 
+        'Ashok Nagar', 'KK Nagar', 'Valasaravakkam', 'Virugambakkam', 'Alandur', 'Pallikaranai', 
+        'Semmancheri', 'Siruseri', 'Urapakkam', 'Vandalur', 'Guduvanchery'
+      ],
+      'Tiruppur': [
+        'Tiruppur', 'Avinashi', 'Palladam', 'Dharapuram', 'Kangeyam', 'Udumalaipettai', 
+        'Uthukuli', 'Vellakoil', 'Madathukulam', 'Veerapandi', 'Nallur', 'Chettipalayam (Tiruppur)', 
+        '15 Velampalayam', 'Mangalam', 'Pongalur', 'Kundadam', 'Kaniyur', 'Mulanur', 
+        'Komaralingam', 'Samalapuram', 'Chinnakkampalayam', 'Rudravathi', 'Kannivadi (Tiruppur)'
+      ],
+      'Erode': [
+        'Erode', 'Perundurai', 'Gobichettipalayam', 'Bhavani', 'Sathyamangalam', 'Anthiyur', 
+        'Kodumudi', 'Modakkurichi', 'Chennimalai', 'Nambiyur', 'Sivagiri', 'Chithode', 
+        'Thindal', 'Veerappanchatram', 'Kasipalayam', 'Surampatti', 'Brahmana Periya Agraharam', 
+        'Appakudal', 'Olagadam', 'Ammapettai (Erode)', 'Bhavanisagar', 'Kanjikoil', 'Kollankoil', 
+        'Pasur', 'Periyasemur', 'Venkampatti', 'Arachalur', 'Kuhalur', 'P. Mettupalayam'
+      ],
+      'Salem': [
+        'Salem', 'Fairlands', 'Hasthampatti', 'Suramangalam', 'Ammapet', 'Shevapet', 
+        'Attur', 'Mettur', 'Omalur', 'Edappadi', 'Sankagiri', 'Thammampatti', 
+        'Jalakandapuram', 'Mecheri', 'Vazhapadi', 'Ayothiapattinam', 'Kannankurichi', 
+        'Pethanaickenpalayam', 'Tharamangalam', 'Nangavalli', 'Kolathur (Salem)', 'Veeraganur', 
+        'Mallur', 'Panamarathupatti', 'Kadayampatti', 'Gangavalli', 'Sentharappatti', 
+        'Thedavur', 'Konganapuram', 'Poolampatti', 'Avadattur', 'Karamandurai'
+      ],
+      'Madurai': [
+        'Madurai', 'Anna Nagar (Madurai)', 'KK Nagar (Madurai)', 'Goripalayam', 'Mattuthavani', 'Simmakkal', 
+        'Thirunagar', 'Teppakulam', 'Melur', 'Thirumangalam', 'Usilampatti', 'Vadipatti', 
+        'Sholavandan', 'Alanganallur', 'Othakadai', 'Samayanallur', 'Paravai', 'Avaniyapuram', 
+        'Villapuram', 'Tirupparankunram', 'Kochadai', 'Pasumalai', 'Anaiyur', 'Harveypatti', 
+        'Kalligudi', 'Peraiyur', 'Sedapatti', 'Chekkanurani', 'T. Kallupatti', 'Elumalai', 'Palamedu'
+      ],
+      'Tiruchirappalli': [
+        'Tiruchirappalli', 'Trichy', 'Thillai Nagar', 'Cantonment', 'Srirangam', 'K.K. Nagar (Trichy)', 
+        'Woraiyur', 'Ponmalai', 'Golden Rock', 'Kattur', 'Thuvakudi', 'Lalgudi', 
+        'Manapparai', 'Musiri', 'Thottiyam', 'Thuraiyur', 'Samayapuram', 'Vayalur', 
+        'Tiruverumbur', 'Manachanallur', 'Uppiliapuram', 'Marungapuri', 'Pullambadi', 
+        'Kattuputhur', 'Sirugamani', 'Balakrishnampatti'
+      ],
+      'Dindigul': [
+        'Dindigul', 'Palani', 'Kodaikanal', 'Oddanchatram', 'Natham', 'Nilakottai', 
+        'Vedasandur', 'Batlagundu', 'Ayakudi', 'Balasamudram', 'Chinnalapatti', 
+        'Kannivadi', 'Keeranur', 'Neikkarappatti', 'Palayam', 'Pannaikadu', 
+        'Pattiveeranpatti', 'Sevugampatti', 'Sithayankottai', 'Vadamadurai', 'Guziliamparai'
+      ],
+      'Namakkal': [
+        'Namakkal', 'Tiruchengode', 'Rasipuram', 'Paramathi Velur', 'Komarapalayam', 
+        'Sendamangalam', 'Kolli Hills', 'Mohanur', 'Kabilarmalai', 'Puduchatram', 
+        'Erumapatti', 'Vennandur', 'Mallasamudram', 'Padaiveedu', 'Pandamangalam', 
+        'Pillanallur', 'Pothanur', 'R.Pudupatti', 'Seerapalli', 'Alampalayam'
+      ],
+      'Karur': [
+        'Karur', 'Kulithalai', 'Aravakurichi', 'Manmangalam', 'Pugalur', 'Krishnarayapuram', 
+        'Kadavur', 'Inam Karur', 'Thanthoni', 'Puliyur', 'Uppidamangalam', 'Nangavaram', 
+        'Marudur', 'Palanichettipatti', 'Punjaipugalur', 'TNPL Pugalur'
+      ],
+      'Krishnagiri': [
+        'Krishnagiri', 'Hosur', 'Pochampalli', 'Uthangarai', 'Denkanikottai', 'Bargur', 
+        'Shoolagiri', 'Kelamangalam', 'Kaveripattinam', 'Mathur', 'Anchetty', 
+        'Rayakottai', 'Berigai', 'Bagalur', 'Nagojanahalli'
+      ],
+      'Dharmapuri': [
+        'Dharmapuri', 'Harur', 'Palacode', 'Pennagaram', 'Pappireddipatti', 'Karimangalam', 
+        'Morappur', 'Marandahalli', 'Kambainallur', 'B.Mallapuram', 'Kadathur', 'Papparapatti'
+      ],
+      'Vellore': [
+        'Vellore', 'Katpadi', 'Gudiyatham', 'Anaicut', 'Konavattam', 'Sathuvachari', 
+        'Thorapadi', 'Dharapadavedu', 'Shenbakkam', 'Pennathur', 'Allapuram', 
+        'Virinjipuram', 'Pallikonda', 'Odugathur', 'Kaniyambadi'
+      ],
+      'Ranipet': [
+        'Ranipet', 'Walajapet', 'Arcot', 'Arakkonam', 'Sholinghur', 'Nemili', 
+        'Kalavai', 'Thakkolam', 'Panapakkam', 'Melvisharam', 'Timiri', 'Kaverypakkam'
+      ],
+      'Tirupathur': [
+        'Tirupathur', 'Vaniyambadi', 'Ambur', 'Natrampalli', 'Jolarpet', 'Yelagiri', 
+        'Alangayam', 'Madhanur'
+      ],
+      'Tiruvannamalai': [
+        'Tiruvannamalai', 'Arani', 'Cheyyar', 'Polur', 'Chengam', 'Vandavasi', 
+        'Kilpennathur', 'Kalasapakkam', 'Jawadhu Hills', 'Peranamallur', 'Desur', 
+        'Chetpet', 'Vettavalam', 'Kannamangalam', 'Pudupalayam'
+      ],
+      'Kanchipuram': [
+        'Kanchipuram', 'Sriperumbudur', 'Walajabad', 'Uthiramerur', 'Kundrathur', 
+        'Sunguvarchatram', 'Pillaiyarpatti', 'Tenambakkam', 'Sevilimedu', 'Ayyampettai'
+      ],
+      'Chengalpattu': [
+        'Chengalpattu', 'Tambaram South', 'Pallavaram', 'Chromepet', 'Mahabalipuram', 
+        'Mamallapuram', 'Madurantakam', 'Cheyyur', 'Tirukalukundram', 'Kelambakkam', 
+        'Thiruporur', 'Guduvanchery', 'Maraimalai Nagar', 'Singaperumal Koil', 'Vandalur', 
+        'Urapakkam', 'Padappai', 'Anupuram', 'Acharapakkam', 'Kalpakkam'
+      ],
+      'Tiruvallur': [
+        'Tiruvallur', 'Avadi', 'Poonamallee', 'Ambattur', 'Ponneri', 'Gummidipoondi', 
+        'Tiruttani', 'Uthukkottai', 'Pallipattu', 'RK Pet', 'Minjur', 'Naravarikuppam', 
+        'Thiruninravur', 'Thirumazhisai', 'Manavalanagar', 'Arani (Tiruvallur)'
+      ],
+      'Cuddalore': [
+        'Cuddalore', 'Chidambaram', 'Panruti', 'Vridhachalam', 'Neyveli', 'Tittakudi', 
+        'Kattumannarkoil', 'Kurinjipadi', 'Bhuvanagiri', 'Srimushnam', 'Pennadam', 
+        'Annamalai Nagar', 'Lalpet', 'Parangipettai', 'Porto Novo', 'Gangaikondan'
+      ],
+      'Viluppuram': [
+        'Viluppuram', 'Tindivanam', 'Gingee', 'Marakkanam', 'Vanur', 'Vikravandi', 
+        'Kandachipuram', 'Valavanur', 'Ananthapuram', 'Tiruvennainallur'
+      ],
+      'Kallakurichi': [
+        'Kallakurichi', 'Sankarapuram', 'Chinnasalem', 'Ulundurpet', 'Tirukkoyilur', 
+        'Kalvarayan Hills', 'Rishivandiyam', 'Thiagadurgam', 'Manalurpet', 'Vadakkanandal'
+      ],
+      'Thanjavur': [
+        'Thanjavur', 'Kumbakonam', 'Pattukkottai', 'Orathanadu', 'Thiruvaiyaru', 
+        'Peravurani', 'Budalur', 'Thiruvidaimarudur', 'Papanasam', 'Vallam', 
+        'Adirampattinam', 'Madukkar', 'Swamimalai', 'Dharasuram'
+      ],
+      'Mayiladuthurai': [
+        'Mayiladuthurai', 'Sirkazhi', 'Tharangambadi', 'Kuthalam', 'Poompuhar', 
+        'Vaitheeswarankoil', 'Manalmedu', 'Sembanarkoil'
+      ],
+      'Nagapattinam': [
+        'Nagapattinam', 'Velankanni', 'Vedaranyam', 'Kilvelur', 'Thirukkuvalai', 
+        'Nagore', 'Thalaignayiru'
+      ],
+      'Tiruvarur': [
+        'Tiruvarur', 'Mannargudi', 'Thiruthuraipoondi', 'Needamangalam', 'Kodavasal', 
+        'Valangaiman', 'Nannilam', 'Muthupet', 'Koradacherry', 'Peralam'
+      ],
+      'Pudukkottai': [
+        'Pudukkottai', 'Aranthangi', 'Illuppur', 'Alangudi', 'Gandarvakottai', 
+        'Kulathur', 'Ponnamaravathi', 'Thirumayam', 'Avudaiyarkoil', 'Manamelkudi', 
+        'Viralimalai', 'Karambakkudi', 'Annavasal', 'Keeramangalam'
+      ],
+      'Ariyalur': [
+        'Ariyalur', 'Udayarpalayam', 'Sendurai', 'Andimadam', 'Jayankondam', 
+        'Varadarajanpettai'
+      ],
+      'Perambalur': [
+        'Perambalur', 'Kunnam', 'Veppanthattai', 'Alathur', 'Poolambadi', 
+        'Kurumbalur', 'Labbaikudikadu'
+      ],
+      'Sivaganga': [
+        'Sivaganga', 'Karaikudi', 'Devakottai', 'Manamadurai', 'Tiruppattur (Sivaganga)', 
+        'Kalaiyarkovil', 'Ilayangudi', 'Singampunari', 'Kanadukathan', 'Kottaiyur', 
+        'Pallathur', 'Puduvayal', 'Nerkuppai'
+      ],
+      'Ramanathapuram': [
+        'Ramanathapuram', 'Rameswaram', 'Paramakudi', 'Kilakarai', 'Mudukulathur', 
+        'Kamuthi', 'Tiruvadanai', 'Kadaladi', 'R.S. Mangalam', 'Mandapam', 
+        'Sayalgudi', 'Abiramam', 'Thondi'
+      ],
+      'Virudhunagar': [
+        'Virudhunagar', 'Sivakasi', 'Rajapalayam', 'Srivilliputhur', 'Aruppukkottai', 
+        'Sattur', 'Watrap', 'Vembakottai', 'Kariapatti', 'Tiruchuli', 'Seithur', 
+        'Mamsapuram', 'Sundarapandiam', 'Chettiarpatti'
+      ],
+      'Theni': [
+        'Theni', 'Periyakulam', 'Bodinayakanur', 'Uthamapalayam', 'Cumbum', 
+        'Chinnamanur', 'Andipatti', 'Gudalur (Theni)', 'Devadanapatti', 'Kamayagoundanpatti', 
+        'Kuchanur', 'Kombai', 'Markayankottai', 'Pannaipuram', 'Thamaraikulam', 'Veerapandi (Theni)'
+      ],
+      'Tirunelveli': [
+        'Tirunelveli', 'Palayamkottai', 'Ambasamudram', 'Cheranmahadevi', 'Nanguneri', 
+        'Radhapuram', 'Manur', 'Tisayanvilai', 'Kalakkad', 'Mukkudal', 'Vikramasingapuram', 
+        'Kallidaikurichi', 'Alwarkurichi', 'Gopalasamudram', 'Melaseval', 'Panagudi', 'Vadakkuvalliyur'
+      ],
+      'Tenkasi': [
+        'Tenkasi', 'Sankarankovil', 'Courtallam', 'Kadayanallur', 'Puliyangudi', 
+        'Shenkottai', 'Alangulam (Tenkasi)', 'Thiruvengadam', 'Veerakeralampudur', 
+        'Surandai', 'Ilangi', 'Sundarapandiapuram', 'Achanpudur', 'Rayagiri', 'Sivagiri (Tenkasi)'
+      ],
+      'Thoothukudi': [
+        'Thoothukudi', 'Tuticorin', 'Kovilpatti', 'Tiruchendur', 'Kayathar', 
+        'Ottapidaram', 'Srivaikuntam', 'Vilathikulam', 'Ettayapuram', 'Sathankulam', 
+        'Arumuganeri', 'Authoor', 'Eral', 'Kadambur', 'Kalugumalai', 'Kanam', 
+        'Nazareth', 'Perungulam', 'Udangudi'
+      ],
+      'Kanyakumari': [
+        'Nagercoil', 'Kanyakumari', 'Marthandam', 'Padmanabhapuram', 'Colachel', 
+        'Kuzhithurai', 'Thuckalay', 'Killiyoor', 'Vilavancode', 'Thiruvattar', 
+        'Agastheeswaram', 'Boothapandi', 'Eraniel', 'Karungal', 'Kulasekharam', 
+        'Manavalakurichi', 'Mulagumoodu', 'Mundakkal', 'Pazhugal', 'Suchindram', 
+        'Thiruvithamcode', 'Vadasery'
+      ],
+      'Nilgiris': [
+        'Ooty', 'Udhagamandalam', 'Coonoor', 'Kotagiri', 'Gudalur (Nilgiris)', 
+        'Wellington', 'Aruvankadu', 'Devala', 'Naduvattam', 'Ketti', 
+        'Hubbathala', 'Jagathala', 'Adikaratti', 'Bikkatty', 'O\'Valley'
+      ]
     }
   },
   'Kerala': {
