@@ -91,10 +91,13 @@ app.use(
   })
 );
 
-// Explicitly handle preflight for all routes
-app.options('*', cors());
-
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Rate Limiting ────────────────────────────────────────────────────────────
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 app.use('/api', limiter);
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
