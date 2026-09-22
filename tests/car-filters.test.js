@@ -127,4 +127,18 @@ describe('Car Filters', () => {
     expect(res.body.data.cars).toBeInstanceOf(Array);
     expect(res.body.data.cars.length).toBe(0);
   });
+
+  test('Should handle empty query parameters without 400 error', async () => {
+    const query = 'min_year=1970&max_year=2026&min_km=0&max_km=200000&posted_within_days=90&min_price=700000&max_price=1000000&color&include_expired=false';
+    const res = await request(app).get(`/api/v1/cars?${query}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+  });
+
+  test('Should handle multiple empty string query parameters', async () => {
+    const query = 'color=&brand=&model=&variant=&transmission=&fuel_type=&min_price=&max_price=&sortOrder=asc';
+    const res = await request(app).get(`/api/v1/cars?${query}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('success');
+  });
 });

@@ -145,6 +145,10 @@ exports.createLead = async (userId, data) => {
   let buyer = null;
   if (userId) {
     buyer = await User.findByPk(userId);
+  } else {
+    if (!data.name || !data.phone) {
+      throw new AppError('Name and phone are required for guest enquiries', 400);
+    }
   }
 
   const buyerName = data.name || buyer?.full_name || 'Guest User';

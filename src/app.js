@@ -222,7 +222,6 @@ app.use('/api/v1/variants', cacheMiddleware(300, { ignoreAuth: true }), require(
 app.use('/api/v1/car-types', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/carTypeRoutes'));
 app.use('/api/v1/catalog', require('./routes/v1/catalogRoutes'));
 app.use('/api/v1/wishlist', require('./routes/v1/wishlistRoutes'));
-app.use('/api/v1/wishlists', require('./routes/v1/wishlistRoutes'));
 app.use('/api/v1/views', require('./routes/v1/viewRoutes'));
 app.use('/api/v1/leads', require('./routes/v1/leadRoutes'));
 app.use('/api/v1/enquiries', require('./routes/v1/leadRoutes'));

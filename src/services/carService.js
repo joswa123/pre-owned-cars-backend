@@ -465,7 +465,7 @@ exports.createCar = async (userId, carData, files) => {
 };
 
 exports.getCars = async (
-  filters = {},
+  rawFilters = {},
   page = 1,
   limit = 20,
   sortBy = 'created_at',
@@ -473,6 +473,14 @@ exports.getCars = async (
   userId = null,
   userRole = null
 ) => {
+  // Sanitize filters to strip undefined, null, and empty string values
+  const filters = {};
+  for (const [key, value] of Object.entries(rawFilters || {})) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    filters[key] = value;
+  }
+
   const cacheKey = `cars:list:${Buffer.from(JSON.stringify({ filters, page, limit, sortBy, sortOrder })).toString('base64')}`;
 
   let cachedData;

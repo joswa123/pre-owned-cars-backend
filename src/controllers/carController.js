@@ -31,6 +31,13 @@ exports.createCar = catchAsync(async (req, res) => {
  * Get Public Cars List with Filters
  */
 exports.getCars = catchAsync(async (req, res) => {
+  const cleanedQuery = {};
+  for (const [key, value] of Object.entries(req.query)) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    cleanedQuery[key] = value;
+  }
+
   const { error } = carQuerySchema.validate(req.query, { allowUnknown: true });
   if (error) {
     return res.status(400).json({
@@ -40,7 +47,7 @@ exports.getCars = catchAsync(async (req, res) => {
     });
   }
 
-  const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...rawFilters } = req.query;
+  const { page = 1, limit = 20, sortBy = "created_at", sortOrder = "DESC", ...rawFilters } = cleanedQuery;
   const userId = req.user?.id;
   const userRole = req.user?.role;
 
