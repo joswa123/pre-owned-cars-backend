@@ -50,8 +50,9 @@ const Requirement = sequelize.define('Requirement', {
     allowNull: false,
   },
   transmission: {
-    type: DataTypes.STRING(50),
-    allowNull: false,
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    defaultValue: null,
   },
   board_type: {
     type: DataTypes.STRING(50),

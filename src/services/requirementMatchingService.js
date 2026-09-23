@@ -1,7 +1,15 @@
 const { Requirement, Notification, Car, Brand, Model, User } = require('../models');
 const { Op } = require('sequelize');
 const pushNotificationService = require('./pushNotificationService');
+const { parseTransmissionList } = require('./requirementService');
 
+/**
+ * Matches active buying requirements against a newly created or updated car.
+ * Uses a coarse SQL filter to fetch candidate requirements followed by an exact
+ * JavaScript evaluation to prevent false substring matches (e.g. 'Manual' vs 'Clutchless Manual').
+ *
+ * @param {string} carId - The ID of the listed car
+ */
 exports.matchRequirementsForCar = async (carId) => {
   try {
     const car = await Car.findByPk(carId, {
@@ -15,6 +23,9 @@ exports.matchRequirementsForCar = async (carId) => {
       console.warn(`[Matching Service] Car not found with ID: ${carId}`);
       return;
     }
+
+    const carTransmission = (car.transmission || '').trim();
+    const carTransLower = carTransmission.toLowerCase();
 
     const whereConditions = {
       status: 'active',
@@ -64,11 +75,13 @@ exports.matchRequirementsForCar = async (carId) => {
           ]
         },
         {
+          // Coarse SQL filter: wildcard requirements or substring match
           [Op.or]: [
             { transmission: null },
             { transmission: '' },
             { transmission: 'Any' },
-            { transmission: car.transmission }
+            { transmission: { [Op.like]: `%${carTransmission}%` } },
+            { transmission: { [Op.like]: `%${carTransLower}%` } }
           ]
         },
         {
@@ -89,12 +102,23 @@ exports.matchRequirementsForCar = async (carId) => {
     }
 
     for (const req of requirements) {
-      // Check deduplication
+      // 1. Multi-transmission precision check:
+      // If the requirement specified one or more transmissions, ensure car's transmission is included.
+      if (req.transmission && req.transmission.trim() !== '' && req.transmission.toLowerCase() !== 'any') {
+        const parsedReqTrans = parseTransmissionList(req.transmission).map(t => t.toLowerCase());
+        if (parsedReqTrans.length > 0 && !parsedReqTrans.includes(carTransLower)) {
+          // Skip false positive (e.g. car 'Manual' matching requirement 'Clutchless Manual')
+          continue;
+        }
+      }
+
+      // 2. Global deduplication per user and car:
+      // Avoid spamming buyer with multiple notifications if they have multiple matching requirements
       const existingNotification = await Notification.findOne({
         where: {
           user_id: req.user_id,
-          requirement_id: req.id,
-          car_id: car.id
+          car_id: car.id,
+          type: 'requirement_match',
         }
       });
 

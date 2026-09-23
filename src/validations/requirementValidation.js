@@ -15,7 +15,10 @@ const createRequirementSchema = Joi.object({
   min_km: Joi.number().integer().min(0).optional().allow(null, ''),
   max_km: Joi.number().integer().min(0).optional().allow(null, ''),
   body_type: Joi.string().trim().max(50).required(),
-  transmission: Joi.string().trim().max(50).required(),
+  transmission: Joi.alternatives().try(
+    Joi.string().allow('', null),
+    Joi.array().items(Joi.string().allow('', null))
+  ).optional(),
   board_type: Joi.string().trim().max(50).required(),
   color: Joi.string().trim().max(50).optional().allow(null, ''),
   purchase_plan_days: Joi.number().integer().min(1).max(365).required(),
@@ -60,7 +63,10 @@ const updateRequirementSchema = Joi.object({
   min_km: Joi.number().integer().min(0).optional().allow(null, ''),
   max_km: Joi.number().integer().min(0).optional().allow(null, ''),
   body_type: Joi.string().trim().max(50).optional(),
-  transmission: Joi.string().trim().max(50).optional(),
+  transmission: Joi.alternatives().try(
+    Joi.string().allow('', null),
+    Joi.array().items(Joi.string().allow('', null))
+  ).optional(),
   board_type: Joi.string().trim().max(50).optional(),
   color: Joi.string().trim().max(50).optional().allow(null, ''),
   purchase_plan_days: Joi.number().integer().min(1).max(365).optional(),

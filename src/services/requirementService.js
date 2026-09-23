@@ -4,6 +4,50 @@ const sequelize = require('../config/database');
 const { AppError } = require('../utils/errorHandler');
 const { resolveBrandId, resolveModelId } = require('../utils/idResolver');
 
+const ALLOWED_TRANSMISSIONS = ['Manual', 'Automatic', 'Clutchless Manual', 'CVT', 'DCT'];
+const TRANSMISSION_CANONICAL_MAP = {
+  'manual': 'Manual',
+  'automatic': 'Automatic',
+  'clutchless manual': 'Clutchless Manual',
+  'clutchless-manual': 'Clutchless Manual',
+  'cvt': 'CVT',
+  'dct': 'DCT',
+};
+
+/**
+ * Parses raw transmission input into a normalized array of Title-Case transmissions.
+ * Drops unrecognized values with a warning to ensure type safety.
+ *
+ * @param {string|string[]|null|undefined} raw
+ * @returns {string[]} Normalized Title Case transmission list
+ */
+function parseTransmissionList(raw) {
+  if (!raw) return [];
+  const items = Array.isArray(raw) ? raw : String(raw).split(',');
+  const result = [];
+
+  for (const entry of items) {
+    if (!entry) continue;
+    const trimmed = String(entry).trim();
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+    if (lower === 'any') continue;
+
+    const canonical = TRANSMISSION_CANONICAL_MAP[lower];
+    if (canonical && ALLOWED_TRANSMISSIONS.includes(canonical)) {
+      if (!result.includes(canonical)) {
+        result.push(canonical);
+      }
+    } else {
+      console.warn(`[RequirementService] Unknown transmission dropped: "${trimmed}"`);
+    }
+  }
+  return result;
+}
+
+exports.parseTransmissionList = parseTransmissionList;
+exports.ALLOWED_TRANSMISSIONS = ALLOWED_TRANSMISSIONS;
+
 /**
  * Create a new Buying Requirement
  */
@@ -34,7 +78,14 @@ exports.createRequirement = async (userId, data) => {
   const minKm = data.min_km !== undefined && data.min_km !== '' ? data.min_km : null;
   const maxKm = data.max_km !== undefined && data.max_km !== '' ? data.max_km : null;
 
-  // 4. Create requirement
+  // 4. Normalize transmission
+  let normalizedTransmission = null;
+  if (data.transmission !== undefined && data.transmission !== null) {
+    const parsed = parseTransmissionList(data.transmission);
+    normalizedTransmission = parsed.length > 0 ? parsed.join(', ') : null;
+  }
+
+  // 5. Create requirement
   const requirement = await Requirement.create({
     user_id: userId,
     brand_id: brandId,
@@ -45,7 +96,7 @@ exports.createRequirement = async (userId, data) => {
     min_km: minKm,
     max_km: maxKm,
     body_type: data.body_type,
-    transmission: data.transmission,
+    transmission: normalizedTransmission,
     board_type: data.board_type,
     color: data.color || null,
     purchase_plan_days: data.purchase_plan_days,
@@ -206,7 +257,12 @@ exports.updateRequirement = async (requirementId, userId, data) => {
     if (data.model_id) updateData.model_id = resolvedModelId;
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
-        updateData[field] = data[field] === '' ? null : data[field];
+        if (field === 'transmission') {
+          const parsed = parseTransmissionList(data.transmission);
+          updateData.transmission = parsed.length > 0 ? parsed.join(', ') : null;
+        } else {
+          updateData[field] = data[field] === '' ? null : data[field];
+        }
       }
     }
 
@@ -428,7 +484,10 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
   }
 
   if (requirement.transmission) {
-    carFilters.transmissions = [requirement.transmission];
+    const parsed = parseTransmissionList(requirement.transmission);
+    if (parsed.length > 0) {
+      carFilters.transmissions = parsed.join(',');
+    }
   }
 
   if (requirement.board_type) {
