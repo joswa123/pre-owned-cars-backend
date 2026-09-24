@@ -509,7 +509,9 @@ exports.getCars = async (
       where.status = 'active';
     }
 
-    if (filters.posted_by_type) where.posted_by_type = filters.posted_by_type;
+    if (filters.posted_by_type && ['dealer', 'customer'].includes(filters.posted_by_type.toLowerCase())) {
+      where.posted_by_type = filters.posted_by_type.toLowerCase();
+    }
     if (filters.b2b_listing !== undefined) {
       where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
     }

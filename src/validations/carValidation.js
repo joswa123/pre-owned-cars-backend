@@ -348,7 +348,7 @@ const carQuerySchema = Joi.object({
   seller_id: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),
   posted_by_me: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
   mine: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
-  posted_by_type: Joi.string().allow('', null).optional(),
+  posted_by_type: Joi.string().valid('dealer', 'customer', 'all').allow('', null).optional(),
   b2b_listing: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
   body_type: Joi.string().allow('', null).optional(),
   board_type: Joi.string().allow('', null).optional(),

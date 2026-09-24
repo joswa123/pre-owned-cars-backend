@@ -240,6 +240,7 @@ const Car = sequelize.define('Car', {
     { fields: ['status', 'board_type'] },
     { fields: ['status', 'b2b_listing'] },
     { fields: ['status', 'brand_id'] },
+    { name: 'idx_cars_status_posted_created', fields: ['status', 'posted_by_type', 'created_at'] },
   ],
 });
 
