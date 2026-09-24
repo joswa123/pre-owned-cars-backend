@@ -29,7 +29,7 @@ const Variant = sequelize.define('Variant', {
     allowNull: true,
   },
   transmission: {
-    type: DataTypes.ENUM('Manual', 'Automatic', 'AMT', 'CVT', 'DCT'),
+    type: DataTypes.STRING(50),
     allowNull: true,
   },
   engine_cc: {

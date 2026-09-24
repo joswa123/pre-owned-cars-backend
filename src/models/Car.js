@@ -111,9 +111,8 @@ const Car = sequelize.define('Car', {
     defaultValue: 'Petrol',
   },
   transmission: {
-    type: DataTypes.STRING(100),
-    allowNull: false,
-    defaultValue: 'Manual',
+    type: DataTypes.STRING(50),
+    allowNull: true,
   },
   ownership: {
     type: DataTypes.ENUM('1st Owner', '2nd Owner', '3rd Owner', '4th+ Owner'),

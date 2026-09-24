@@ -226,6 +226,8 @@ exports.createCar = async (userId, carData, files) => {
     const modelId = await resolveModelId(modelInput, brandId, mapped.body_type || 'SUV', transaction);
     if (!modelId) throw new AppError('Model ID or model name is required.', 400);
 
+    const normalizedTransmission = normalizeTransmission(mapped.transmission) || mapped.transmission || 'Manual';
+
     const variantInput = mapped.variant_id !== undefined && mapped.variant_id !== null && mapped.variant_id !== ''
       ? mapped.variant_id
       : mapped.variant;
@@ -234,7 +236,7 @@ exports.createCar = async (userId, carData, files) => {
       modelId,
       {
         fuel_type: mapped.fuel_type,
-        transmission: mapped.transmission,
+        transmission: normalizedTransmission,
         price: mapped.price,
       },
       transaction
@@ -326,7 +328,7 @@ exports.createCar = async (userId, carData, files) => {
       price_negotiable: mapped.price_negotiable || false,
       km_driven: mapped.km_driven,
       fuel_type: mapped.fuel_type,
-      transmission: mapped.transmission,
+      transmission: normalizedTransmission,
       ownership: mapped.ownership,
       body_type: mapped.body_type || 'SUV',
       board_type: mapped.board_type || 'Own Board',
@@ -1308,6 +1310,10 @@ exports.updateCar = async (carId, userId, updateData, files) => {
       );
     }
 
+    const normalizedTransmission = mapped.transmission !== undefined
+      ? (normalizeTransmission(mapped.transmission) || mapped.transmission)
+      : undefined;
+
     let variantId = car.variant_id;
     const variantInput = mapped.variant_id !== undefined && mapped.variant_id !== null && mapped.variant_id !== ''
       ? mapped.variant_id
@@ -1318,7 +1324,7 @@ exports.updateCar = async (carId, userId, updateData, files) => {
         modelId,
         {
           fuel_type: mapped.fuel_type || car.fuel_type,
-          transmission: mapped.transmission || car.transmission,
+          transmission: normalizedTransmission || car.transmission,
           price: mapped.price || car.price,
         },
         transaction
@@ -1334,7 +1340,7 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (mapped.price_negotiable !== undefined) filteredData.price_negotiable = mapped.price_negotiable;
     if (mapped.km_driven !== undefined) filteredData.km_driven = mapped.km_driven;
     if (mapped.fuel_type !== undefined) filteredData.fuel_type = mapped.fuel_type;
-    if (mapped.transmission !== undefined) filteredData.transmission = mapped.transmission;
+    if (normalizedTransmission !== undefined) filteredData.transmission = normalizedTransmission;
     if (mapped.ownership !== undefined) filteredData.ownership = mapped.ownership;
     if (mapped.body_type !== undefined) filteredData.body_type = mapped.body_type;
     if (mapped.board_type !== undefined) filteredData.board_type = mapped.board_type;

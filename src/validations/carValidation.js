@@ -125,7 +125,7 @@ const updateCarSchema = Joi.object({
   kmdriven:         Joi.number().integer().min(0),
   fuel_type:        enumString(FUEL_TYPES_IN),
   fueltype:         enumString(FUEL_TYPES_IN),
-  transmission:     enumString(TRANSMISSION_TYPES_IN).optional(),
+  transmission:     Joi.string().trim().max(100).allow('', null).optional(),
   ownership:        enumString(OWNERSHIP_TYPES_IN),
   body_type:        Joi.string().trim().max(50),
   car_type:         Joi.string().trim().max(50),

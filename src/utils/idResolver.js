@@ -33,21 +33,39 @@ const fetchExternalJson = (url) => {
   });
 };
 
-const normalizeTransmission = (t) => {
-  if (!t) return null;
-  const lower = t.toLowerCase().trim();
-  if (TRANSMISSION_MAP[lower]) return TRANSMISSION_MAP[lower];
-  if (lower.includes('amt')) return 'Automatic (AMT)';
-  if (lower.includes('imt')) return 'Clutchless Manual (IMT)';
-  if (lower.includes('e-cvt') || lower.includes('ecvt')) return 'Automatic (e-CVT)';
-  if (lower.includes('cvt')) return 'Automatic (CVT)';
-  if (lower.includes('dct') || lower.includes('dsg')) return 'Automatic (DCT)';
-  if (lower.includes('tc') || lower.includes('torque converter')) return 'Automatic (TC)';
-  if (lower.includes('clutchless')) return 'Clutchless Manual (IMT)';
-  if (lower.includes('auto')) return 'Automatic';
-  if (lower.includes('manual')) return 'Manual';
-  return t.trim();
+const TRANSMISSION_CANONICAL = {
+  'mt': 'Manual',
+  'manual': 'Manual',
+  'at': 'Automatic',
+  'auto': 'Automatic',
+  'automatic': 'Automatic',
+  'amt': 'AMT',
+  'imt': 'IMT',
+  'cvt': 'CVT',
+  'dct': 'DCT',
+  'dsg': 'DSG',
+  'tc': 'Torque Converter',
+  'torque converter': 'Torque Converter',
+  'dual-clutch': 'Dual-Clutch',
+  'dual clutch': 'Dual-Clutch',
+  'clutchless manual': 'Clutchless Manual',
+  'clutchless-manual': 'Clutchless Manual',
+  'ivt': 'IVT',
+  'ecvt': 'e-CVT',
 };
+
+function normalizeTransmission(raw) {
+  if (!raw) return null;
+  const key = String(raw).trim().toLowerCase();
+  if (TRANSMISSION_CANONICAL[key]) return TRANSMISSION_CANONICAL[key];
+  if (TRANSMISSION_MAP && TRANSMISSION_MAP[key]) return TRANSMISSION_MAP[key];
+  // Fallback: Title Case the raw value
+  return String(raw)
+    .trim()
+    .split(/\s+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
 
 const normalizeFuelType = (f) => {
   if (!f) return null;
