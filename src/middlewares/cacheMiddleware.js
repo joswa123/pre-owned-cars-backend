@@ -93,11 +93,16 @@ const clearCache = async (prefix) => {
     if (!redisClient.isOpen) return;
 
     const pattern = `__express__${prefix}*`;
-    const keys = await redisClient.keys(pattern);
-    
-    if (keys && keys.length > 0) {
-      await redisClient.del(keys);
-      logger.info(`Cleared cache for pattern: ${pattern} (${keys.length} keys removed)`);
+    let count = 0;
+    for await (const chunk of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+      const batch = Array.isArray(chunk) ? chunk : (chunk ? [chunk] : []);
+      if (batch.length > 0) {
+        await redisClient.del(batch);
+        count += batch.length;
+      }
+    }
+    if (count > 0) {
+      logger.info(`Cleared cache for pattern: ${pattern} (${count} keys removed)`);
     } else {
       logger.info(`No cache keys found for pattern: ${pattern}`);
     }
