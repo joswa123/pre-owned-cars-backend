@@ -59,12 +59,8 @@ function normalizeTransmission(raw) {
   const key = String(raw).trim().toLowerCase();
   if (TRANSMISSION_CANONICAL[key]) return TRANSMISSION_CANONICAL[key];
   if (TRANSMISSION_MAP && TRANSMISSION_MAP[key]) return TRANSMISSION_MAP[key];
-  // Fallback: Title Case the raw value
-  return String(raw)
-    .trim()
-    .split(/\s+/)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
+  // Fallback: preserve string
+  return String(raw).trim();
 }
 
 const normalizeFuelType = (f) => {
@@ -80,7 +76,7 @@ const normalizeFuelType = (f) => {
   if (lower.includes('lpg')) return 'LPG';
   if (lower.includes('petrol')) return 'Petrol';
   if (lower.includes('diesel')) return 'Diesel';
-  return null;
+  return String(f).trim();
 };
 
 /**

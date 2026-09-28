@@ -70,9 +70,9 @@ const createCarSchema = Joi.object({
   price_negotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
   km_driven:        Joi.number().integer().min(0).optional(),
   kmdriven:         Joi.number().integer().min(0).optional(),
-  fuel_type:        Joi.string().optional(),
-  fueltype:         Joi.string().optional(),
-  transmission:     Joi.string().required(),
+  fuel_type:        Joi.string().trim().max(100).allow('', null).optional(),
+  fueltype:         Joi.string().trim().max(100).allow('', null).optional(),
+  transmission:     Joi.string().trim().max(100).allow('', null).optional(),
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
   body_type:        Joi.string().trim().max(50).optional(),
   car_type:         Joi.string().trim().max(50).optional(),
@@ -106,7 +106,6 @@ const createCarSchema = Joi.object({
 }).or('brand_id', 'brand')
   .or('model_id', 'model')
   .or('km_driven', 'kmdriven')
-  .or('fuel_type', 'fueltype')
   .or('body_type', 'car_type')
   .or('board_type', 'numplate')
   .unknown(true);
@@ -126,8 +125,8 @@ const updateCarSchema = Joi.object({
   price_negotiable: Joi.boolean(),
   km_driven:        Joi.number().integer().min(0),
   kmdriven:         Joi.number().integer().min(0),
-  fuel_type:        enumString(FUEL_TYPES_IN),
-  fueltype:         enumString(FUEL_TYPES_IN),
+  fuel_type:        Joi.string().trim().max(100).allow('', null).optional(),
+  fueltype:         Joi.string().trim().max(100).allow('', null).optional(),
   transmission:     Joi.string().trim().max(100).allow('', null).optional(),
   ownership:        enumString(OWNERSHIP_TYPES_IN),
   body_type:        Joi.string().trim().max(50),
@@ -259,8 +258,10 @@ const mapToDbValues = (data) => {
     mapped.prior_appointemnts = data.prior_appointments;
   }
 
-  const rawFuel = (mapped.fuel_type || '').toString().toLowerCase();
-  if (rawFuel && FUEL_TYPE_MAP[rawFuel]) mapped.fuel_type = FUEL_TYPE_MAP[rawFuel];
+  const rawFuel = (mapped.fuel_type || '').toString().trim();
+  if (rawFuel) {
+    mapped.fuel_type = FUEL_TYPE_MAP[rawFuel.toLowerCase()] || rawFuel;
+  }
 
   const rawTrans = (mapped.transmission || '').toString().trim();
   if (rawTrans) {

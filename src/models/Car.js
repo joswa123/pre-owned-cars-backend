@@ -95,24 +95,14 @@ const Car = sequelize.define('Car', {
     validate: { min: 0 },
   },
   fuel_type: {
-    type: DataTypes.ENUM(
-      'Petrol',
-      'Diesel',
-      'CNG',
-      'Electric',
-      'Hybrid',
-      'Hybrid (Electric + Petrol)',
-      'Mild Hybrid(Electric + Petrol)',
-      'Mild Hybrid (Electric + Diesel)',
-      'Plug-in Hybrid (Electric + Petrol)',
-      'LPG'
-    ),
+    type: DataTypes.STRING(100),
     allowNull: false,
     defaultValue: 'Petrol',
   },
   transmission: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING(100),
     allowNull: true,
+    defaultValue: 'Manual',
   },
   ownership: {
     type: DataTypes.ENUM('1st Owner', '2nd Owner', '3rd Owner', '4th+ Owner'),

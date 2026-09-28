@@ -25,11 +25,11 @@ const Variant = sequelize.define('Variant', {
     allowNull: false,
   },
   fuel_type: {
-    type: DataTypes.ENUM('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG', 'LPG'),
+    type: DataTypes.STRING(100),
     allowNull: true,
   },
   transmission: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING(100),
     allowNull: true,
   },
   engine_cc: {
