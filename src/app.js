@@ -3,9 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
 const os = require('os');
-const fs = require('fs');
 const { globalErrorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
 const { cacheMiddleware } = require('./middlewares/cacheMiddleware');
@@ -116,44 +114,8 @@ app.use(compression({
   },
 }));
 
-// ─── Static Uploads ──────────────────────────────────────────────────────────
-// Render has a persistent disk if configured, otherwise use local uploads folder.
-// Do NOT route to /tmp here — Render is NOT Vercel. /tmp files are not served.
-const uploadDir = process.env.VERCEL
-  ? path.join(os.tmpdir(), 'uploads')
-  : path.join(__dirname, '..', 'uploads');
-
-// Ensure the uploads directory exists at startup so static serving doesn't fail
-try {
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-    logger.info(`📁 Created uploads directory: ${uploadDir}`);
-  }
-} catch (err) {
-  logger.warn(`⚠️  Could not create uploads directory: ${err.message}`);
-}
-
-app.use('/uploads', express.static(uploadDir));
-
-// ─── Debug Endpoint ──────────────────────────────────────────────────────────
-app.get('/api/debug/uploads', (req, res) => {
-  const brandsDir = path.join(uploadDir, 'brands');
-  const getDirContents = (dir) => {
-    try {
-      if (fs.existsSync(dir)) {
-        return { exists: true, files: fs.readdirSync(dir) };
-      }
-      return { exists: false, reason: 'Directory does not exist' };
-    } catch (error) {
-      return { exists: true, error: error.message };
-    }
-  };
-  res.json({
-    success: true,
-    uploadDir,
-    brands: { directory: brandsDir, ...getDirContents(brandsDir) },
-  });
-});
+// All uploads are streamed directly to Cloudinary CDN (res.cloudinary.com).
+// No static local file serving is enabled.
 
 // ─── Diagnostic & Health Routes ──────────────────────────────────────────────
 // GET /health & GET /health/live — Fast Liveness Probe (Used by Render/Nginx without hitting DB)

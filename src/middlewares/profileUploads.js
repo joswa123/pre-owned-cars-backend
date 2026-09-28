@@ -1,22 +1,23 @@
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const cloudinary = require('cloudinary').v2;
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+const { cloudinary } = require('../config/cloudinary');
+const crypto = require('crypto');
+const path = require('path');
+const { AppError } = require('../utils/errorHandler');
 
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: {
-    folder: 'profiles',
-    format: async (req, file) => 'png',
-    public_id: (req, file) => {
-      const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-      return `profile-${req.user.id}-${unique}`;
-    },
+  params: async (req, file) => {
+    const userId = req.user?.id || req.params?.userId || 'unknown';
+    const uuid = crypto.randomUUID();
+    return {
+      folder: `autodeal4u/avatars/${userId}`,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp'],
+      transformation: [
+        { width: 1600, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' },
+      ],
+      public_id: `avatar-${uuid}`,
+    };
   },
 });
 
@@ -28,6 +29,7 @@ const ALLOWED_MIMES = [
   'image/webp',
   'image/heic',
   'image/bmp',
+  'application/octet-stream',
 ];
 
 const EXT_TO_MIME = {
@@ -41,25 +43,22 @@ const EXT_TO_MIME = {
 };
 
 const fileFilter = (req, file, cb) => {
-  const path = require('path');
   const mimetype = (file.mimetype || '').toLowerCase();
   const ext = path.extname(file.originalname || '').toLowerCase();
 
-  if (ALLOWED_MIMES.includes(mimetype)) {
+  if (ALLOWED_MIMES.includes(mimetype) || EXT_TO_MIME[ext]) {
+    if (EXT_TO_MIME[ext]) {
+      file.mimetype = EXT_TO_MIME[ext];
+    }
     return cb(null, true);
   }
 
-  if (EXT_TO_MIME[ext]) {
-    file.mimetype = EXT_TO_MIME[ext];
-    return cb(null, true);
-  }
-
-  return cb(new Error('Only image files are allowed'), false);
+  return cb(new AppError('Only image files are allowed. Formats: JPG, JPEG, PNG, WEBP, GIF, HEIC.', 400), false);
 };
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
   fileFilter,
 });
 

@@ -92,7 +92,10 @@ const createCarSchema = Joi.object({
   state_id:         Joi.string().uuid().allow('', null).optional(),
   district_id:      Joi.string().uuid().allow('', null).optional(),
   city_id:          Joi.string().uuid().allow('', null).optional(),
-  primary_image:    Joi.any().optional(),
+  primary_image:    Joi.alternatives().try(
+    Joi.string().trim().pattern(/^https:\/\/res\.cloudinary\.com\//).message('Primary image URL must start with https://res.cloudinary.com/'),
+    Joi.any()
+  ).optional(),
   images:           Joi.any().optional(),
   video:            Joi.any().optional(),
   audio:            Joi.any().optional(),

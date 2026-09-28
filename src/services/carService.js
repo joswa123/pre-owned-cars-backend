@@ -4,6 +4,11 @@ const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
 const notificationQueue = require('../queues/notificationQueue');
+const {
+  extractPublicIdFromUrl,
+  getOptimizedCloudinaryUrl,
+  deleteCloudinaryMedia,
+} = require('../utils/cloudinaryHelper');
 
 const clearCache = async (key) => {
   try {
@@ -96,32 +101,36 @@ const CAR_TYPE_ICONS = {
 };
 
 /**
- * Helper to transform car images into absolute URLs and flatten seller district & company_name
+ * Helper to transform car images into absolute Cloudinary URLs and flatten seller district & company_name
+ * Ensures NO local filesystem paths (D:/..., /uploads/...) or server hostnames are returned.
  */
 const transformCarImages = (car, baseUrl = null) => {
   if (!car) return null;
-  const images = car.images || [];
-  const primary = images.find((img) => img.is_primary === true);
-  const secondary = images.filter((img) => img.is_primary !== true);
-  const base = baseUrl || process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  const rawImages = car.images || [];
 
-  const getOptimizedImageUrl = (url) => {
-    if (!url) return null;
-
-    let absUrl = url;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      absUrl = `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+  // Filter out any broken local paths or non-Cloudinary images
+  const validImages = [];
+  for (const img of rawImages) {
+    const item = typeof img.toJSON === 'function' ? img.toJSON() : { ...img };
+    const rawUrl = item.image_url;
+    if (!rawUrl || typeof rawUrl !== 'string') continue;
+    // Disallow local disk paths and internal server uploads
+    if (rawUrl.match(/^[a-zA-Z]:[/\\]/) || rawUrl.includes('/uploads/') || rawUrl.includes('uploads\\')) {
+      continue;
     }
+    const optimized = getOptimizedCloudinaryUrl(rawUrl, { width: 800 });
+    if (!optimized) continue;
+    validImages.push({
+      id: item.id,
+      image_url: optimized,
+      is_primary: Boolean(item.is_primary),
+      public_id: item.public_id || extractPublicIdFromUrl(optimized),
+    });
+  }
 
-    // Apply delivery transformations for Cloudinary URLs (WebP/AVIF auto-format, quality, size)
-    if (absUrl.includes('res.cloudinary.com') && absUrl.includes('/upload/')) {
-      if (!absUrl.includes('/upload/f_auto')) {
-        absUrl = absUrl.replace('/upload/', '/upload/f_auto,q_auto,w_800,c_limit/');
-      }
-    }
-
-    return absUrl;
-  };
+  // Determine primary image
+  const primaryItem = validImages.find((img) => img.is_primary === true) || validImages[0] || null;
+  const secondaryImages = validImages.filter((img) => img !== primaryItem).map((img) => img.image_url);
 
   const carJson = typeof car.toJSON === 'function' ? car.toJSON() : { ...car };
 
@@ -143,7 +152,7 @@ const transformCarImages = (car, baseUrl = null) => {
   const matchedIcon = CAR_TYPE_ICONS[normalizedBodyType]
     || CAR_TYPE_ICONS[normalizedBodyType.replace(/[\s-]+/g, '_')]
     || null;
-  const optimizedIconUrl = getOptimizedImageUrl(matchedIcon);
+  const optimizedIconUrl = matchedIcon ? getOptimizedCloudinaryUrl(matchedIcon, { width: 800 }) || matchedIcon : null;
 
   carJson.icon_url = optimizedIconUrl;
   carJson.body_type_icon = optimizedIconUrl;
@@ -157,11 +166,17 @@ const transformCarImages = (car, baseUrl = null) => {
   };
 
   const formatMediaUrl = (url) => {
-    if (!url) return null;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+    if (!url || typeof url !== 'string') return null;
+    if (url.match(/^[a-zA-Z]:[/\\]/) || url.includes('/uploads/') || url.includes('uploads\\')) {
+      return null;
     }
-    return url;
+    if (url.startsWith('https://res.cloudinary.com/')) {
+      return url;
+    }
+    if (url.startsWith('http://res.cloudinary.com/')) {
+      return url.replace('http://', 'https://');
+    }
+    return null;
   };
 
   return {
@@ -169,12 +184,9 @@ const transformCarImages = (car, baseUrl = null) => {
     video_url: formatMediaUrl(carJson.video_url),
     audio_url: formatMediaUrl(carJson.audio_url),
     highlights: carJson.highlights || [],
-    primary_image: primary ? getOptimizedImageUrl(primary.image_url) : null,
-    secondary_images: secondary.map((img) => getOptimizedImageUrl(img.image_url)),
-    images: images.map((img) => ({
-      ...(typeof img.toJSON === 'function' ? img.toJSON() : img),
-      image_url: getOptimizedImageUrl(img.image_url),
-    })),
+    primary_image: primaryItem ? primaryItem.image_url : null,
+    secondary_images: secondaryImages,
+    images: validImages,
   };
 };
 
@@ -278,15 +290,26 @@ exports.createCar = async (userId, carData, files) => {
 
     const getFileUrl = (f) => {
       if (!f) return null;
-      if (f.path && typeof f.path === 'string') return f.path;
-      if (f.secure_url && typeof f.secure_url === 'string') return f.secure_url;
-      if (f.url && typeof f.url === 'string') return f.url;
-      if (f.filename) {
-        if (f.fieldname === 'video') return `/uploads/cars/videos/${f.filename}`;
-        if (f.fieldname === 'audio') return `/uploads/cars/audio/${f.filename}`;
-        return `/uploads/cars/${f.filename}`;
+      const url = typeof f === 'string' ? f : (f.path || f.secure_url || f.url);
+      if (typeof url === 'string') {
+        const clean = url.trim();
+        if (clean.startsWith('https://res.cloudinary.com/') || clean.startsWith('http://res.cloudinary.com/')) {
+          return clean.replace('http://', 'https://');
+        }
       }
       return null;
+    };
+
+    const getFilePublicId = (f, url) => {
+      if (f && typeof f === 'object') {
+        if (f.filename && typeof f.filename === 'string' && !f.filename.includes('\\') && !f.filename.includes('/uploads/')) {
+          return f.filename;
+        }
+        if (f.public_id && typeof f.public_id === 'string') {
+          return f.public_id;
+        }
+      }
+      return extractPublicIdFromUrl(url);
     };
 
     // Logging video file info
@@ -321,6 +344,7 @@ exports.createCar = async (userId, carData, files) => {
     }
 
     const carFields = {
+      ...(carData.id ? { id: carData.id } : {}),
       user_id: userId,
       brand_id: brandId,
       model_id: modelId,
@@ -354,48 +378,71 @@ exports.createCar = async (userId, carData, files) => {
 
     const imageRecords = [];
     if (files && files.primary_image && files.primary_image[0]) {
-      imageRecords.push({
-        car_id: car.id,
-        image_url: getFileUrl(files.primary_image[0]),
-        is_primary: true,
-      });
+      const pUrl = getFileUrl(files.primary_image[0]);
+      if (pUrl) {
+        imageRecords.push({
+          car_id: car.id,
+          image_url: pUrl,
+          public_id: getFilePublicId(files.primary_image[0], pUrl),
+          is_primary: true,
+        });
+      }
     } else if (files && files.images && files.images.length > 0) {
-      imageRecords.push({
-        car_id: car.id,
-        image_url: getFileUrl(files.images[0]),
-        is_primary: true,
-      });
+      const pUrl = getFileUrl(files.images[0]);
+      if (pUrl) {
+        imageRecords.push({
+          car_id: car.id,
+          image_url: pUrl,
+          public_id: getFilePublicId(files.images[0], pUrl),
+          is_primary: true,
+        });
+      }
     } else if (carData.primary_image && typeof carData.primary_image === 'string') {
-      imageRecords.push({
-        car_id: car.id,
-        image_url: carData.primary_image,
-        is_primary: true,
-      });
+      const pUrl = getFileUrl(carData.primary_image);
+      if (pUrl) {
+        imageRecords.push({
+          car_id: car.id,
+          image_url: pUrl,
+          public_id: getFilePublicId(carData.primary_image, pUrl),
+          is_primary: true,
+        });
+      }
     } else if (Array.isArray(carData.images) && carData.images.length > 0) {
-      imageRecords.push({
-        car_id: car.id,
-        image_url: typeof carData.images[0] === 'string' ? carData.images[0] : getFileUrl(carData.images[0]),
-        is_primary: true,
-      });
+      const pUrl = getFileUrl(carData.images[0]);
+      if (pUrl) {
+        imageRecords.push({
+          car_id: car.id,
+          image_url: pUrl,
+          public_id: getFilePublicId(carData.images[0], pUrl),
+          is_primary: true,
+        });
+      }
     }
 
     const secondaryFiles = files ? files.images || [] : [];
     const startIdx = (files && (!files.primary_image || !files.primary_image[0]) && files.images && files.images.length > 0) ? 1 : 0;
     for (let i = startIdx; i < secondaryFiles.length; i++) {
-      imageRecords.push({
-        car_id: car.id,
-        image_url: getFileUrl(secondaryFiles[i]),
-        is_primary: false,
-      });
+      const sUrl = getFileUrl(secondaryFiles[i]);
+      if (sUrl) {
+        imageRecords.push({
+          car_id: car.id,
+          image_url: sUrl,
+          public_id: getFilePublicId(secondaryFiles[i], sUrl),
+          is_primary: false,
+        });
+      }
     }
 
     if ((!files || !files.images || files.images.length === 0) && Array.isArray(carData.images)) {
       const bodyStartIdx = (!carData.primary_image && carData.images.length > 0) ? 1 : 0;
       for (let i = bodyStartIdx; i < carData.images.length; i++) {
-        if (typeof carData.images[i] === 'string') {
+        const item = carData.images[i];
+        const sUrl = getFileUrl(item);
+        if (sUrl) {
           imageRecords.push({
             car_id: car.id,
-            image_url: carData.images[i],
+            image_url: sUrl,
+            public_id: getFilePublicId(item, sUrl),
             is_primary: false,
           });
         }
@@ -1356,49 +1403,47 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (files) {
       const getFileUrl = (f) => {
         if (!f) return null;
-        if (f.path && typeof f.path === 'string') return f.path;
-        if (f.secure_url && typeof f.secure_url === 'string') return f.secure_url;
-        if (f.url && typeof f.url === 'string') return f.url;
-        if (f.filename) {
-          if (f.fieldname === 'video') return `/uploads/cars/videos/${f.filename}`;
-          if (f.fieldname === 'audio') return `/uploads/cars/audio/${f.filename}`;
-          return `/uploads/cars/${f.filename}`;
+        const url = typeof f === 'string' ? f : (f.path || f.secure_url || f.url);
+        if (typeof url === 'string') {
+          const clean = url.trim();
+          if (clean.startsWith('https://res.cloudinary.com/') || clean.startsWith('http://res.cloudinary.com/')) {
+            return clean.replace('http://', 'https://');
+          }
         }
         return null;
       };
 
       // Video: uploaded file takes precedence
-        // Log incoming video file details
-        if (files.video && files.video[0]) {
-          console.log('📹 Update - Video file received:', {
-            originalname: files.video[0].originalname,
-            size: files.video[0].size,
-            mimetype: files.video[0].mimetype,
-          });
-          filteredData.video_url = getFileUrl(files.video[0]);
-        } else {
-          console.log('📹 Update - No video file provided');
-        }
-        // Validate video URL
-        if (files && files.video && files.video[0] && !filteredData.video_url) {
-          throw new AppError('Failed to upload video during update. Check Cloudinary settings.', 500);
-        }
-        // Log incoming audio file details
-        if (files.audio && files.audio[0]) {
-          console.log('🎵 Update - Audio file received:', {
-            originalname: files.audio[0].originalname,
-            size: files.audio[0].size,
-            mimetype: files.audio[0].mimetype,
-          });
-          filteredData.audio_url = getFileUrl(files.audio[0]);
-        } else {
-          console.log('🎵 Update - No audio file provided');
-        }
-        // Validate audio URL
-        if (files && files.audio && files.audio[0] && !filteredData.audio_url) {
-          throw new AppError('Failed to upload audio during update. Check Cloudinary settings.', 500);
-        }
-        console.log('✅ Update - Resolved URLs -> video:', filteredData.video_url, 'audio:', filteredData.audio_url);
+      if (files.video && files.video[0]) {
+        console.log('📹 Update - Video file received:', {
+          originalname: files.video[0].originalname,
+          size: files.video[0].size,
+          mimetype: files.video[0].mimetype,
+        });
+        filteredData.video_url = getFileUrl(files.video[0]);
+      } else {
+        console.log('📹 Update - No video file provided');
+      }
+      // Validate video URL
+      if (files && files.video && files.video[0] && !filteredData.video_url) {
+        throw new AppError('Failed to upload video during update. Check Cloudinary settings.', 500);
+      }
+      // Log incoming audio file details
+      if (files.audio && files.audio[0]) {
+        console.log('🎵 Update - Audio file received:', {
+          originalname: files.audio[0].originalname,
+          size: files.audio[0].size,
+          mimetype: files.audio[0].mimetype,
+        });
+        filteredData.audio_url = getFileUrl(files.audio[0]);
+      } else {
+        console.log('🎵 Update - No audio file provided');
+      }
+      // Validate audio URL
+      if (files && files.audio && files.audio[0] && !filteredData.audio_url) {
+        throw new AppError('Failed to upload audio during update. Check Cloudinary settings.', 500);
+      }
+      console.log('✅ Update - Resolved URLs -> video:', filteredData.video_url, 'audio:', filteredData.audio_url);
     }
 
     // Removal flags (only evaluated if no replacement file was provided)
@@ -1410,6 +1455,11 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     }
 
     if (updateData.replace_images === true || updateData.replace_images === 'true') {
+      const oldImages = await CarImage.findAll({ where: { car_id: car.id }, transaction });
+      for (const oldImg of oldImages) {
+        const pid = oldImg.public_id || extractPublicIdFromUrl(oldImg.image_url);
+        if (pid) deleteCloudinaryMedia(pid).catch(() => {});
+      }
       await CarImage.destroy({ where: { car_id: car.id }, transaction });
     } else if (updateData.images_to_keep !== undefined) {
       let imagesToKeep = updateData.images_to_keep;
@@ -1417,17 +1467,27 @@ exports.updateCar = async (carId, userId, updateData, files) => {
         try {
           imagesToKeep = JSON.parse(imagesToKeep);
         } catch (e) {
-          // If not valid JSON array, treat as single string (e.g. one ID) or empty
           imagesToKeep = imagesToKeep ? [imagesToKeep] : [];
         }
       }
       if (Array.isArray(imagesToKeep)) {
+        const toDelete = await CarImage.findAll({
+          where: {
+            car_id: car.id,
+            id: { [Op.notIn]: imagesToKeep },
+          },
+          transaction,
+        });
+        for (const oldImg of toDelete) {
+          const pid = oldImg.public_id || extractPublicIdFromUrl(oldImg.image_url);
+          if (pid) deleteCloudinaryMedia(pid).catch(() => {});
+        }
         await CarImage.destroy({
           where: {
             car_id: car.id,
-            id: { [Op.notIn]: imagesToKeep }
+            id: { [Op.notIn]: imagesToKeep },
           },
-          transaction
+          transaction,
         });
       }
     }
@@ -1437,36 +1497,60 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (files) {
       const getFileUrl = (f) => {
         if (!f) return null;
-        if (f.path && typeof f.path === 'string') return f.path;
-        if (f.secure_url && typeof f.secure_url === 'string') return f.secure_url;
-        if (f.url && typeof f.url === 'string') return f.url;
-        if (f.filename) {
-          if (f.fieldname === 'video') return `/uploads/cars/videos/${f.filename}`;
-          if (f.fieldname === 'audio') return `/uploads/cars/audio/${f.filename}`;
-          return `/uploads/cars/${f.filename}`;
+        const url = typeof f === 'string' ? f : (f.path || f.secure_url || f.url);
+        if (typeof url === 'string') {
+          const clean = url.trim();
+          if (clean.startsWith('https://res.cloudinary.com/') || clean.startsWith('http://res.cloudinary.com/')) {
+            return clean.replace('http://', 'https://');
+          }
         }
         return null;
+      };
+
+      const getFilePublicId = (f, url) => {
+        if (f && typeof f === 'object') {
+          if (f.filename && typeof f.filename === 'string' && !f.filename.includes('\\') && !f.filename.includes('/uploads/')) {
+            return f.filename;
+          }
+          if (f.public_id && typeof f.public_id === 'string') {
+            return f.public_id;
+          }
+        }
+        return extractPublicIdFromUrl(url);
       };
 
       const imageRecords = [];
 
       if (files.primary_image && files.primary_image[0]) {
-        // Only replace primary image
-        await CarImage.destroy({ where: { car_id: car.id, is_primary: true }, transaction });
-        imageRecords.push({
-          car_id: car.id,
-          image_url: getFileUrl(files.primary_image[0]),
-          is_primary: true,
-        });
+        // Destroy old primary image on Cloudinary
+        const oldPrimary = await CarImage.findOne({ where: { car_id: car.id, is_primary: true }, transaction });
+        if (oldPrimary) {
+          const oldPid = oldPrimary.public_id || extractPublicIdFromUrl(oldPrimary.image_url);
+          if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => {});
+          await oldPrimary.destroy({ transaction });
+        }
+        const pUrl = getFileUrl(files.primary_image[0]);
+        if (pUrl) {
+          imageRecords.push({
+            car_id: car.id,
+            image_url: pUrl,
+            public_id: getFilePublicId(files.primary_image[0], pUrl),
+            is_primary: true,
+          });
+        }
       }
 
       const secondaryFiles = files.images || [];
       secondaryFiles.forEach((file) => {
-        imageRecords.push({
-          car_id: car.id,
-          image_url: getFileUrl(file),
-          is_primary: false,
-        });
+        const sUrl = getFileUrl(file);
+        if (sUrl) {
+          imageRecords.push({
+            car_id: car.id,
+            image_url: sUrl,
+            public_id: getFilePublicId(file, sUrl),
+            is_primary: false,
+          });
+        }
       });
 
       if (imageRecords.length > 0) {
@@ -1552,7 +1636,12 @@ exports.deleteCarImage = async (userId, carId, imageId, userRole) => {
     if (!image) throw new AppError('Image not found.', 404);
 
     const wasPrimary = image.is_primary;
+    const publicId = image.public_id || extractPublicIdFromUrl(image.image_url);
     await image.destroy({ transaction });
+
+    if (publicId) {
+      deleteCloudinaryMedia(publicId).catch(() => {});
+    }
 
     if (wasPrimary) {
       const nextImage = await CarImage.findOne({ where: { car_id: car.id }, transaction });
@@ -2154,7 +2243,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
 };exports.uploadCarVideo = async (carId, userId, file) => {
   const { Car } = require('../models');
   const { AppError } = require('../utils/errorHandler');
-  const cloudinary = require('cloudinary').v2;
+  const { cloudinary } = require('../config/cloudinary');
   const fs = require('fs');
 
   if (!file) throw new AppError('No video file provided', 400);
@@ -2162,48 +2251,34 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
   const car = await Car.findOne({ where: { id: carId, user_id: userId } });
   if (!car) throw new AppError('Car not found or unauthorized', 404);
 
-  console.log('Video upload requested:', {
-    car_id: carId,
-    has_file: !!file,
-    originalname: file.originalname,
-    mimetype: file.mimetype,
-    size: file.size
-  });
+  // If multer already streamed to Cloudinary, file.path or file.secure_url is the Cloudinary URL
+  let videoUrl = file.path || file.secure_url;
 
-  try {
-    const result = await cloudinary.uploader.upload(file.path, {
-      resource_type: 'video',
-      folder: 'cars/videos',
-      public_id: 'car_video_$' + Date.now()
-    });
-
-    console.log('Cloudinary response:', {
-      secure_url: result.secure_url,
-      public_id: result.public_id,
-      full_response: result
-    });
-
-    const videoUrl = result.secure_url;
-    if (!videoUrl) {
-      throw new Error('Cloudinary secure_url is null');
+  if (videoUrl && (videoUrl.startsWith('https://res.cloudinary.com/') || videoUrl.startsWith('http://res.cloudinary.com/'))) {
+    videoUrl = videoUrl.replace('http://', 'https://');
+  } else if (file.path && fs.existsSync(file.path)) {
+    // If a temporary local file was uploaded, stream to Cloudinary
+    try {
+      const result = await cloudinary.uploader.upload(file.path, {
+        resource_type: 'video',
+        folder: `autodeal4u/cars/${carId}/videos`,
+        public_id: `video-${Date.now()}`,
+      });
+      videoUrl = result.secure_url;
+      try { fs.unlinkSync(file.path); } catch (e) {}
+    } catch (uploadErr) {
+      try { fs.unlinkSync(file.path); } catch (e) {}
+      throw new AppError(uploadErr.message || 'Failed to upload video to Cloudinary', 500);
     }
-
-    car.video_url = videoUrl;
-    await car.save();
-
-    console.log('DB saved:', { car_id: car.id, video_url: car.video_url });
-
-    // Clean up temporary file
-    if (fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
-    }
-
-    return videoUrl;
-  } catch (error) {
-    console.error('Cloudinary Video Upload Error:', error);
-    if (fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
-    }
-    throw new AppError(error.message || 'Failed to upload video', 500);
   }
+
+  if (!videoUrl || !videoUrl.startsWith('https://res.cloudinary.com/')) {
+    throw new AppError('Video upload failed: No valid Cloudinary URL returned.', 500);
+  }
+
+  car.video_url = videoUrl;
+  await car.save();
+  await invalidateCarCaches(car.id, userId);
+
+  return videoUrl;
 };

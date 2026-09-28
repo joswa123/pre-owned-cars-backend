@@ -1,36 +1,16 @@
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const cloudinary = require('cloudinary').v2;
+const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const path = require('path');
-const fs = require('fs');
+const crypto = require('crypto');
 const { AppError } = require('../utils/errorHandler');
-require('dotenv').config();
 
-// ─── Configure Cloudinary ──────────────────────────────
-const isCloudinaryConfigured = Boolean(
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET &&
-  process.env.CLOUDINARY_CLOUD_NAME.trim() !== '' &&
-  process.env.CLOUDINARY_API_KEY.trim() !== '' &&
-  process.env.CLOUDINARY_API_SECRET.trim() !== ''
-);
+const isTestEnv = (process.env.NODE_ENV || '').trim() === 'test';
 
 // Validate configuration for non-test environments
-if (!isCloudinaryConfigured && (process.env.NODE_ENV || '').trim() !== 'test') {
+if (!isCloudinaryConfigured && !isTestEnv) {
   throw new Error('Cloudinary configuration missing. Uploads must be stored in Cloudinary for production.');
 }
-
-
-if (isCloudinaryConfigured) {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME.trim(),
-    api_key: process.env.CLOUDINARY_API_KEY.trim(),
-    api_secret: process.env.CLOUDINARY_API_SECRET.trim(),
-  });
-}
-
-const isTestOrNoSecret = (process.env.NODE_ENV || '').trim() === 'test' || !isCloudinaryConfigured;
 
 // ─── File Filter & MIME Definitions ────────────────────
 const ALLOWED_IMAGE_MIMES = [
@@ -130,8 +110,8 @@ const audioFileFilter = (req, file, cb) => {
 
 // Combined Car Media filter
 const carMediaFileFilter = (req, file, cb) => {
-  const mimetype = (file.mimetype || '').toLowerCase();
   const ext = path.extname(file.originalname || '').toLowerCase();
+  const mimetype = (file.mimetype || '').toLowerCase();
 
   if (file.fieldname === 'video') {
     if (ALLOWED_VIDEO_EXTS.includes(ext) || (ALLOWED_VIDEO_MIMES.includes(mimetype) && mimetype !== 'application/octet-stream')) {
@@ -154,137 +134,144 @@ const carMediaFileFilter = (req, file, cb) => {
   return cb(new AppError(`Unexpected field "${file.fieldname}". Allowed file fields: primary_image, images, video, audio.`, 400), false);
 };
 
-// ─── Cloudinary & Disk Storages ──────────────────────────
+// ─── Cloudinary Storages (Zero Local Disk Writes) ───────────────────
+
+// Common image transformation at upload time:
+// quality: "auto:good", fetch_format: "auto", max width 1600px, crop: "limit"
+const IMAGE_UPLOAD_TRANSFORMATION = [
+  { width: 1600, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' },
+];
+
+/**
+ * Creates an in-memory stream-consuming mock storage for automated test suites
+ * that send dummy text strings for video/audio.
+ */
+function createTestMediaStorage(resourceType) {
+  return {
+    _handleFile(req, file, cb) {
+      file.stream.resume(); // Drain stream in memory
+      const carId = req.carId || req.params?.id || crypto.randomUUID();
+      const uuid = crypto.randomUUID();
+      const prefix = file.fieldname === 'video' ? 'video' : (file.fieldname === 'audio' ? 'audio' : 'media');
+      const ext = file.fieldname === 'video' ? 'mp4' : (file.fieldname === 'audio' ? 'mp3' : 'png');
+      const publicId = `autodeal4u/cars/${carId}/${prefix}-${uuid}`;
+      const secureUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME || 'fub1whjx'}/${resourceType}/upload/v${Date.now()}/${publicId}.${ext}`;
+
+      cb(null, {
+        path: secureUrl,
+        size: file.size || 42,
+        filename: publicId,
+        secure_url: secureUrl,
+        public_id: publicId,
+      });
+    },
+    _removeFile(req, file, cb) {
+      cb(null);
+    },
+  };
+}
 
 // Video storage
-const videoStorage = isTestOrNoSecret
-  ? multer.diskStorage({
-      destination: (req, file, cb) => {
-        const uploadPath = path.join(__dirname, '..', '..', 'uploads', 'cars', 'videos');
-        if (!fs.existsSync(uploadPath)) {
-          fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-      },
-      filename: (req, file, cb) => {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const ext = path.extname(file.originalname) || '.mp4';
-        cb(null, `video-${unique}${ext}`);
-      },
-    })
-  : new CloudinaryStorage({
-      cloudinary,
-      params: {
-        folder: 'cars/videos',
-        resource_type: 'video',
-        public_id: (req, file) => `video-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-      },
-    });
-
-// Audio storage
-const audioStorage = isTestOrNoSecret
-  ? multer.diskStorage({
-      destination: (req, file, cb) => {
-        const uploadPath = path.join(__dirname, '..', '..', 'uploads', 'cars', 'audio');
-        if (!fs.existsSync(uploadPath)) {
-          fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-      },
-      filename: (req, file, cb) => {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const ext = path.extname(file.originalname) || '.mp3';
-        cb(null, `audio-${unique}${ext}`);
-      },
-    })
-  : new CloudinaryStorage({
-      cloudinary,
-      params: {
-        folder: 'cars/audio',
-        resource_type: 'video', // Cloudinary treats audio as video resource type
-        public_id: (req, file) => `audio-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-      },
-    });
-
-// Combined car media storage
-const carMediaStorage = isTestOrNoSecret
-  ? multer.diskStorage({
-      destination: (req, file, cb) => {
-        let subfolder = 'cars';
-        if (file.fieldname === 'video') subfolder = path.join('cars', 'videos');
-        else if (file.fieldname === 'audio') subfolder = path.join('cars', 'audio');
-
-        const uploadPath = path.join(__dirname, '..', '..', 'uploads', subfolder);
-        if (!fs.existsSync(uploadPath)) {
-          fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-      },
-      filename: (req, file, cb) => {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const defaultExt = file.fieldname === 'video' ? '.mp4' : file.fieldname === 'audio' ? '.mp3' : '.png';
-        const ext = path.extname(file.originalname) || defaultExt;
-        const prefix = file.fieldname === 'video' ? 'video' : file.fieldname === 'audio' ? 'audio' : 'cars';
-        cb(null, `${prefix}-${unique}${ext}`);
-      },
-    })
+const videoStorage = isTestEnv
+  ? createTestMediaStorage('video')
   : new CloudinaryStorage({
       cloudinary,
       params: async (req, file) => {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        if (file.fieldname === 'video') {
-          return {
-            folder: 'cars/videos',
-            resource_type: 'video',
-            public_id: `video-${unique}`,
-          };
-        }
-        if (file.fieldname === 'audio') {
-          return {
-            folder: 'cars/audio',
-            resource_type: 'video',
-            public_id: `audio-${unique}`,
-          };
-        }
+        const carId = req.carId || req.params?.id || req.body?.car_id || crypto.randomUUID();
+        req.carId = carId;
+        const uuid = crypto.randomUUID();
         return {
-          folder: 'cars',
-          resource_type: 'image',
-          allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-          public_id: `cars-${unique}`,
+          folder: `autodeal4u/cars/${carId}/videos`,
+          resource_type: 'video',
+          public_id: `video-${uuid}`,
         };
       },
     });
 
-// ─── Factory: Create a Cloudinary-backed Multer instance for Images ─
+// Audio storage
+const audioStorage = isTestEnv
+  ? createTestMediaStorage('video')
+  : new CloudinaryStorage({
+      cloudinary,
+      params: async (req, file) => {
+        const carId = req.carId || req.params?.id || req.body?.car_id || crypto.randomUUID();
+        req.carId = carId;
+        const uuid = crypto.randomUUID();
+        return {
+          folder: `autodeal4u/cars/${carId}/audio`,
+          resource_type: 'video', // Cloudinary handles audio as video resource type
+          public_id: `audio-${uuid}`,
+        };
+      },
+    });
+
+// Combined car media storage: handles primary_image, images, video, and audio
+// Streams images directly to Cloudinary across ALL environments.
+const carMediaCloudinaryStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    const carId = req.carId || req.params?.id || req.body?.car_id || crypto.randomUUID();
+    req.carId = carId;
+    const uuid = crypto.randomUUID();
+
+    if (file.fieldname === 'video') {
+      return {
+        folder: `autodeal4u/cars/${carId}/videos`,
+        resource_type: 'video',
+        public_id: `video-${uuid}`,
+      };
+    }
+    if (file.fieldname === 'audio') {
+      return {
+        folder: `autodeal4u/cars/${carId}/audio`,
+        resource_type: 'video',
+        public_id: `audio-${uuid}`,
+      };
+    }
+
+    const prefix = file.fieldname === 'primary_image' ? 'primary' : 'car';
+    return {
+      folder: `autodeal4u/cars/${carId}`,
+      resource_type: 'image',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp'],
+      transformation: IMAGE_UPLOAD_TRANSFORMATION,
+      public_id: `${prefix}-${uuid}`,
+    };
+  },
+});
+
+const carMediaStorage = isTestEnv
+  ? {
+      _handleFile(req, file, cb) {
+        // In test mode, allow dummy non-video buffers for video/audio without failing on Cloudinary's ffmpeg checker
+        if (file.fieldname === 'video' || file.fieldname === 'audio') {
+          return createTestMediaStorage('video')._handleFile(req, file, cb);
+        }
+        // Images ALWAYS stream directly to Cloudinary
+        return carMediaCloudinaryStorage._handleFile(req, file, cb);
+      },
+      _removeFile(req, file, cb) {
+        return carMediaCloudinaryStorage._removeFile(req, file, cb);
+      },
+    }
+  : carMediaCloudinaryStorage;
+
+// ─── Factory: Create a Cloudinary-backed Multer instance for Other Entities ─
 function createUpload(folderName, extraParams = {}) {
-  const storage = isTestOrNoSecret
-    ? multer.diskStorage({
-        destination: (req, file, cb) => {
-          const uploadPath = path.join(__dirname, '..', '..', 'uploads', folderName);
-          if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-          }
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = path.extname(file.originalname) || '.png';
-          cb(null, `${folderName}-${unique}${ext}`);
-        },
-      })
-    : new CloudinaryStorage({
-        cloudinary,
-        params: {
-          folder: folderName,
-          allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-          public_id: (req, file) => {
-            const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-            const prefix = folderName === 'banners' ? 'banner' : folderName;
-            return `${prefix}-${unique}`;
-          },
-          ...extraParams,
-        },
-      });
+  const storage = new CloudinaryStorage({
+    cloudinary,
+    params: async (req, file) => {
+      const uuid = crypto.randomUUID();
+      const prefix = folderName === 'banners' ? 'banner' : (folderName === 'brands' ? 'brand' : folderName);
+      return {
+        folder: `autodeal4u/${folderName}`,
+        allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp'],
+        transformation: IMAGE_UPLOAD_TRANSFORMATION,
+        public_id: `${prefix}-${uuid}`,
+        ...extraParams,
+      };
+    },
+  });
 
   const rawMulter = multer({
     storage,
@@ -325,9 +312,6 @@ function wrapMulter(multerMiddleware) {
         }
         return next(new AppError(err.message || 'File upload failed', 400));
       }
-      if (req.file || req.files) {
-        console.log('Successfully uploaded:', req.file || req.files);
-      }
       next();
     });
   };
@@ -353,17 +337,17 @@ const uploadAudioRaw = multer({
 const carMediaUploadRaw = multer({
   storage: carMediaStorage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100 MB per file max
+    fileSize: 100 * 1024 * 1024, // 100 MB max per file
   },
   fileFilter: carMediaFileFilter,
 }).fields([
   { name: 'primary_image', maxCount: 1 },
   { name: 'images', maxCount: 10 },
   { name: 'video', maxCount: 1 },
-  { name: 'audio', maxCount: 1 }, // field name must be exactly 'audio'
+  { name: 'audio', maxCount: 1 },
 ]);
 
-// ─── Named Exports (All Wrapped for Safe Error Handling) ─
+// ─── Named Exports ─────────────────────────────────────
 module.exports = {
   uploadVideo: wrapMulter(uploadVideoRaw.single('video')),
   uploadAudio: wrapMulter(uploadAudioRaw.single('audio')),
@@ -373,6 +357,6 @@ module.exports = {
   carUpload: createUpload('cars'),
   profileUpload: createUpload('profiles'),
   bannerUpload: createUpload('banners', {
-    transformation: [{ width: 1920, height: 600, crop: 'fill' }],
+    transformation: [{ width: 1920, height: 600, crop: 'fill', quality: 'auto:good', fetch_format: 'auto' }],
   }),
 };

@@ -198,11 +198,25 @@ const Car = sequelize.define('Car', {
   video_url: {
     type: DataTypes.STRING(500),
     allowNull: true,
+    validate: {
+      isCloudinary(value) {
+        if (value && typeof value === 'string' && !value.startsWith('https://res.cloudinary.com/')) {
+          throw new Error('Video URL must start with https://res.cloudinary.com/');
+        }
+      },
+    },
     comment: 'Cloudinary URL for car video',
   },
   audio_url: {
     type: DataTypes.STRING(500),
     allowNull: true,
+    validate: {
+      isCloudinary(value) {
+        if (value && typeof value === 'string' && !value.startsWith('https://res.cloudinary.com/')) {
+          throw new Error('Audio URL must start with https://res.cloudinary.com/');
+        }
+      },
+    },
     comment: 'Cloudinary URL for car audio (e.g., engine sound)',
   },
   deleted_at: {
