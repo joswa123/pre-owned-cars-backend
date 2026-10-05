@@ -3,9 +3,13 @@ const { CarReport, Car, User, Brand, Model, CarImage } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 
 /**
- * Submit a report for a car listing (authenticated user or guest)
+ * Submit a report for a car listing (authenticated / registered users only)
  */
 exports.createReport = async (reporterUser, data) => {
+  if (!reporterUser || !reporterUser.id) {
+    throw new AppError('Authentication required. Only registered users can report a listing.', 401);
+  }
+
   const car = await Car.findByPk(data.car_id);
   if (!car) {
     throw new AppError('Car listing not found.', 404);
@@ -14,19 +18,10 @@ exports.createReport = async (reporterUser, data) => {
   // Resolve dealer (the owner/seller of the car)
   const dealerId = car.user_id;
 
-  // Resolve reporter identity
-  let reporterId = null;
-  let reporterName = '';
-  let reporterPhone = '';
-
-  if (reporterUser) {
-    reporterId = reporterUser.id;
-    reporterName = (data.reporter_name || reporterUser.full_name || '').trim();
-    reporterPhone = (data.reporter_phone || reporterUser.phone || '').trim();
-  } else {
-    reporterName = (data.reporter_name || '').trim();
-    reporterPhone = (data.reporter_phone || '').trim();
-  }
+  // Resolve reporter identity from registered user
+  const reporterId = reporterUser.id;
+  const reporterName = (data.reporter_name || reporterUser.full_name || reporterUser.name || '').trim();
+  const reporterPhone = (data.reporter_phone || reporterUser.phone || reporterUser.mobile_number || '').trim();
 
   if (!reporterName) {
     throw new AppError('Reporter name is required.', 400);

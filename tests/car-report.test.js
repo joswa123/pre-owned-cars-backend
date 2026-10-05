@@ -148,8 +148,8 @@ describe('Car Report ("Report This Listing") Integration Tests', () => {
     expect(report.resolved_at).toBeNull();
   });
 
-  // ── 2. Guest User Submits Report ───────────────────────────────────
-  test('2. POST /api/v1/car-reports - Guest submits report with name & phone', async () => {
+  // ── 2. Guest User Rejected (401) ───────────────────────────────────
+  test('2. POST /api/v1/car-reports - Guest user is rejected with 401 Unauthorized', async () => {
     const payload = {
       car_id: testCar.id,
       dealer_id: dealerUser.id,
@@ -163,19 +163,8 @@ describe('Car Report ("Report This Listing") Integration Tests', () => {
       .post('/api/v1/car-reports')
       .send(payload);
 
-    expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-
-    const report = res.body.data.report;
-    createdReportIds.push(report.id);
-
-    expect(report.car_id).toBe(testCar.id);
-    expect(report.dealer_id).toBe(dealerUser.id);
-    expect(report.reporter_id).toBeNull();
-    expect(report.reporter_name).toBe('Guest Observer');
-    expect(report.reporter_phone).toBe('9876543210');
-    expect(report.reason).toBe('fraudulent_listing');
-    expect(report.status).toBe('pending');
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
   });
 
   // ── 3. Validation: Reject Invalid Reason ────────────────────────────
@@ -209,19 +198,22 @@ describe('Car Report ("Report This Listing") Integration Tests', () => {
     expect(res.body.message).toMatch(/car listing not found/i);
   });
 
-  // ── 5. Validation: Reject Guest with Missing Name/Phone ─────────────
-  test('5. POST /api/v1/car-reports - Reject guest submission if phone missing', async () => {
+  // ── 5. Registered User Reporting another reason ───────────────────
+  test('5. POST /api/v1/car-reports - Registered user submits report with reason dealer_listed_as_individual', async () => {
     const res = await request(app)
       .post('/api/v1/car-reports')
+      .set('Authorization', `Bearer ${customerToken}`)
       .send({
         car_id: testCar.id,
         reason: 'dealer_listed_as_individual',
-        reporter_name: 'Guest Without Phone',
+        description: 'Listing says individual seller but location is a commercial showroom.',
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/phone/i);
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.report.reason).toBe('dealer_listed_as_individual');
+    expect(res.body.data.report.reporter_id).toBe(customerUser.id);
+    createdReportIds.push(res.body.data.report.id);
   });
 
   // ── 6. Validation: Reject Unknown Fields (unknown: false) ───────────

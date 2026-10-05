@@ -9,10 +9,10 @@ const {
 } = require('../../validations/carReportValidation');
 const carReportController = require('../../controllers/carReportController');
 
-// ── Submit Car Report (Logged-in user or Guest) ────────────────────
+// ── Submit Car Report (Registered / Logged-in users only) ───────────
 router.post(
   '/',
-  optionalAuth,
+  protect,
   validate(createCarReportSchema, { allowUnknown: false }),
   carReportController.createReport
 );
