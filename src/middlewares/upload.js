@@ -282,6 +282,19 @@ function createUpload(folderName, extraParams = {}) {
   return wrapMulter(rawMulter.single('image'));
 }
 
+const MAX_CAR_IMAGES = parseInt(process.env.MAX_CAR_IMAGES, 10) || 20;
+
+const FIELD_MAX_COUNTS = {
+  primary_image: 1,
+  images: MAX_CAR_IMAGES,
+  video: 1,
+  audio: 1,
+  profile_picture: 1,
+  customerProfile: 1,
+  dealerProfile: 1,
+  image: 1,
+};
+
 // ─── Multer Error Handling Wrapper ───────────────────────
 function wrapMulter(multerMiddleware) {
   return (req, res, next) => {
@@ -293,14 +306,17 @@ function wrapMulter(multerMiddleware) {
             let limitDesc = '10MB for images, 20MB for audio, 100MB for video';
             if (field === 'video') limitDesc = '100MB';
             else if (field === 'audio') limitDesc = '20MB';
-            else if (field === 'primary_image' || field === 'images' || field === 'image') limitDesc = '10MB';
+            else if (field === 'primary_image' || field === 'images' || field === 'image' || field === 'profile_picture' || field === 'customerProfile' || field === 'dealerProfile') limitDesc = '10MB';
             return next(new AppError(`File size exceeds allowable limit (${limitDesc}) for field "${field || 'file'}".`, 413));
           }
           if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            if (err.field && FIELD_MAX_COUNTS[err.field] !== undefined) {
+              return next(new AppError(`Too many files uploaded for field "${err.field}". Maximum allowed is ${FIELD_MAX_COUNTS[err.field]}.`, 400));
+            }
             return next(new AppError(`Unexpected field "${err.field}". Allowed file fields: primary_image, images, video, audio.`, 400));
           }
           if (err.code === 'LIMIT_FILE_COUNT') {
-            return next(new AppError(`Too many files uploaded for field "${err.field}".`, 400));
+            return next(new AppError(`Too many files uploaded for field "${err.field || 'files'}".`, 400));
           }
           return next(new AppError(`Upload error (${err.code}): ${err.message}`, 400));
         }
@@ -342,7 +358,7 @@ const carMediaUploadRaw = multer({
   fileFilter: carMediaFileFilter,
 }).fields([
   { name: 'primary_image', maxCount: 1 },
-  { name: 'images', maxCount: 10 },
+  { name: 'images', maxCount: MAX_CAR_IMAGES },
   { name: 'video', maxCount: 1 },
   { name: 'audio', maxCount: 1 },
 ]);
@@ -353,6 +369,8 @@ module.exports = {
   uploadAudio: wrapMulter(uploadAudioRaw.single('audio')),
   carMediaUpload: wrapMulter(carMediaUploadRaw),
   wrapMulter,
+  MAX_CAR_IMAGES,
+  FIELD_MAX_COUNTS,
   brandUpload: createUpload('brands'),
   carUpload: createUpload('cars'),
   profileUpload: createUpload('profiles'),

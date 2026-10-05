@@ -257,6 +257,130 @@ describe('Car Multimedia (Video & Audio) Integration Tests', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/unexpected field/i);
+    expect(res.body.message).toMatch(/unexpected field "videoFile"/i);
+  });
+
+  test('9. POST /api/v1/cars - successfully upload 20 photos under images + primary_image + video + audio', async () => {
+    const { token } = await setupUser();
+    const primaryImg = createTempImageFile(`primary-bulk-${Date.now()}.png`);
+    const videoFile = createTempVideoFile(`video-bulk-${Date.now()}.mp4`);
+    const audioFile = createTempAudioFile(`audio-bulk-${Date.now()}.mp3`);
+
+    const reqObj = request(app)
+      .post('/api/v1/cars')
+      .set('Authorization', `Bearer ${token}`)
+      .field('brand', 'Honda')
+      .field('model', 'City')
+      .field('variant', 'VX')
+      .field('year', '2022')
+      .field('price', '1250000')
+      .field('km_driven', '22000')
+      .field('fuel_type', 'petrol')
+      .field('transmission', 'manual')
+      .field('ownership', '1st owner')
+      .field('body_type', 'Sedan')
+      .field('board_type', 'own board')
+      .attach('primary_image', primaryImg)
+      .attach('video', videoFile)
+      .attach('audio', audioFile);
+
+    // Attach 20 secondary images
+    for (let i = 0; i < 20; i++) {
+      const imgPath = createTempImageFile(`img-${i}-${Date.now()}.png`);
+      reqObj.attach('images', imgPath);
+    }
+
+    const res = await reqObj;
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.car.video_url).toBeTruthy();
+    expect(res.body.data.car.audio_url).toBeTruthy();
+
+    const carId = res.body.data.car.id;
+    const detailRes = await request(app).get(`/api/v1/cars/${carId}`);
+    expect(detailRes.status).toBe(200);
+    // Should have 1 primary + 20 secondary = 21 image records total
+    expect(detailRes.body.data.car.images.length).toBe(21);
+  });
+
+  test('10. PUT /api/v1/cars/:id - successfully update car with 20 photos under images', async () => {
+    const { token } = await setupUser();
+    const createRes = await postTestCar(token, { withVideo: false, withAudio: false });
+    expect(createRes.status).toBe(200);
+    const carId = createRes.body.data.car.id;
+
+    const reqObj = request(app)
+      .put(`/api/v1/cars/${carId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('price', '1300000')
+      .field('replace_images', 'true');
+
+    for (let i = 0; i < 20; i++) {
+      const imgPath = createTempImageFile(`update-img-${i}-${Date.now()}.png`);
+      reqObj.attach('images', imgPath);
+    }
+
+    const res = await reqObj;
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const checkRes = await request(app).get(`/api/v1/cars/${carId}`);
+    expect(checkRes.status).toBe(200);
+    expect(checkRes.body.data.car.images.length).toBe(20);
+  });
+
+  test('11. POST /api/v1/cars - reject upload when images exceed 20 files with informative error', async () => {
+    const { token } = await setupUser();
+    const primaryImg = createTempImageFile(`primary-over-${Date.now()}.png`);
+
+    const reqObj = request(app)
+      .post('/api/v1/cars')
+      .set('Authorization', `Bearer ${token}`)
+      .field('brand', 'Toyota')
+      .field('model', 'Innova')
+      .field('year', '2021')
+      .field('price', '2500000')
+      .field('km_driven', '35000')
+      .field('transmission', 'manual')
+      .field('ownership', '1st owner')
+      .attach('primary_image', primaryImg);
+
+    // Attach 21 images (exceeds maxCount 20)
+    for (let i = 0; i < 21; i++) {
+      const imgPath = createTempImageFile(`overlimit-img-${i}-${Date.now()}.png`);
+      reqObj.attach('images', imgPath);
+    }
+
+    const res = await reqObj;
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe('Too many files uploaded for field "images". Maximum allowed is 20.');
+  });
+
+  test('12. POST /api/v1/cars - reject upload when video exceeds 1 file with informative error', async () => {
+    const { token } = await setupUser();
+    const primaryImg = createTempImageFile(`primary-v2-${Date.now()}.png`);
+    const video1 = createTempVideoFile(`video1-${Date.now()}.mp4`);
+    const video2 = createTempVideoFile(`video2-${Date.now()}.mp4`);
+
+    const res = await request(app)
+      .post('/api/v1/cars')
+      .set('Authorization', `Bearer ${token}`)
+      .field('brand', 'Toyota')
+      .field('model', 'Innova')
+      .field('year', '2021')
+      .field('price', '2500000')
+      .field('km_driven', '35000')
+      .field('transmission', 'manual')
+      .field('ownership', '1st owner')
+      .attach('primary_image', primaryImg)
+      .attach('video', video1)
+      .attach('video', video2);
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe('Too many files uploaded for field "video". Maximum allowed is 1.');
   });
 });

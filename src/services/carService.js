@@ -1130,13 +1130,6 @@ exports.getCarById = async (carId, userId = null) => {
     });
     if (!car) throw new AppError('Car not found.', 404);
 
-    // Limit images to 6 (1 primary + 5 secondary)
-    if (car.images && car.images.length > 6) {
-      const primary = car.images.find(img => img.is_primary) || car.images[0];
-      const secondary = car.images.filter(img => img.id !== primary.id).slice(0, 5);
-      car.images = [primary, ...secondary];
-    }
-
     const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
     const baseTransformed = transformCarImages(car, baseUrl);
 

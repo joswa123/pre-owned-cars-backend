@@ -30,12 +30,28 @@ const globalErrorHandler = (err, req, res, next) => {
       let limitDesc = '10MB for images, 20MB for audio, 100MB for video';
       if (field === 'video') limitDesc = '100MB';
       else if (field === 'audio') limitDesc = '20MB';
-      else if (field === 'primary_image' || field === 'images' || field === 'image') limitDesc = '10MB';
+      else if (field === 'primary_image' || field === 'images' || field === 'image' || field === 'profile_picture' || field === 'customerProfile' || field === 'dealerProfile') limitDesc = '10MB';
       error = new AppError(`File size exceeds allowable limit (${limitDesc}) for field "${field || 'file'}".`, 413);
     } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-      error = new AppError(`Unexpected field "${err.field}". Allowed file fields: primary_image, images, video, audio.`, 400);
+      const maxCarImages = parseInt(process.env.MAX_CAR_IMAGES, 10) || 20;
+      const fieldMaxCounts = {
+        primary_image: 1,
+        images: maxCarImages,
+        video: 1,
+        audio: 1,
+        profile_picture: 1,
+        customerProfile: 1,
+        dealerProfile: 1,
+        image: 1,
+      };
+
+      if (err.field && fieldMaxCounts[err.field] !== undefined) {
+        error = new AppError(`Too many files uploaded for field "${err.field}". Maximum allowed is ${fieldMaxCounts[err.field]}.`, 400);
+      } else {
+        error = new AppError(`Unexpected field "${err.field}". Allowed file fields: primary_image, images, video, audio.`, 400);
+      }
     } else if (err.code === 'LIMIT_FILE_COUNT') {
-      error = new AppError(`Too many files uploaded for field "${err.field}".`, 400);
+      error = new AppError(`Too many files uploaded for field "${err.field || 'files'}".`, 400);
     } else {
       error = new AppError(`File upload error: ${err.message}`, 400);
     }

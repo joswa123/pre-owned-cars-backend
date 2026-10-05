@@ -27,6 +27,9 @@ const redisClient = createClient({
   socket: {
     keepAlive: 30000,
     reconnectStrategy: (retries) => {
+      if (process.env.NODE_ENV === 'test') {
+        return false;
+      }
       if (retries > 10) {
         logger.error('❌ Redis reconnect limit reached');
         return new Error('Redis reconnect limit reached');
