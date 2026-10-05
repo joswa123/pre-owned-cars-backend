@@ -50,4 +50,18 @@ router.get("/reports", carReportController.getReports);
 router.get("/reports/:id", carReportController.getReportById);
 router.patch("/reports/:id", validate(updateCarReportStatusSchema, { allowUnknown: false }), carReportController.updateReportStatus);
 
+// ── Report Reasons (Admin CRUD) ───────────────────────────────────────────────
+const reportReasonController = require("../../controllers/reportReasonController");
+const {
+  createReportReasonSchema,
+  updateReportReasonSchema,
+  queryReportReasonSchema,
+} = require("../../validations/reportReasonValidation");
+
+router.get("/report-reasons", validate(queryReportReasonSchema, { allowUnknown: true }), reportReasonController.getAllReasons);
+router.get("/report-reasons/:id", reportReasonController.getReasonById);
+router.post("/report-reasons", validate(createReportReasonSchema, { allowUnknown: false }), reportReasonController.createReason);
+router.patch("/report-reasons/:id", validate(updateReportReasonSchema, { allowUnknown: false }), reportReasonController.updateReason);
+router.delete("/report-reasons/:id", reportReasonController.deleteReason);
+
 module.exports = router;

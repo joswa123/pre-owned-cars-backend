@@ -1,5 +1,5 @@
 // services/carReportService.js
-const { CarReport, Car, User, Brand, Model, CarImage } = require('../models');
+const { CarReport, Car, User, Brand, Model, CarImage, ReportReason } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 
 /**
@@ -8,6 +8,15 @@ const { AppError } = require('../utils/errorHandler');
 exports.createReport = async (reporterUser, data) => {
   if (!reporterUser || !reporterUser.id) {
     throw new AppError('Authentication required. Only registered users can report a listing.', 401);
+  }
+
+  // Validate that the submitted reason matches an ACTIVE ReportReason
+  const cleanReason = (data.reason || '').trim().toLowerCase();
+  const reasonRecord = await ReportReason.findOne({
+    where: { value: cleanReason, is_active: true },
+  });
+  if (!reasonRecord) {
+    throw new AppError('Invalid report reason. Please select a valid active reason.', 400);
   }
 
   const car = await Car.findByPk(data.car_id);

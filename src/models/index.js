@@ -27,6 +27,7 @@ const Highlight = require('./Highlight');
 const CarHighlight = require('./CarHighlight');
 const Notification = require('./Notification');
 const CarReport = require('./CarReport');
+const ReportReason = require('./ReportReason');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -233,6 +234,7 @@ const models = {
   CarHighlightMapping: CarHighlight,
   Notification,
   CarReport,
+  ReportReason,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk

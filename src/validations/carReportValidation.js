@@ -16,9 +16,13 @@ const REPORT_STATUSES = ['pending', 'in_review', 'resolved', 'dismissed'];
 const createCarReportSchema = Joi.object({
   car_id: Joi.string().uuid().required(),
   dealer_id: Joi.string().uuid().optional(),
-  reason: Joi.string().valid(...REPORT_REASONS).required(),
+  reason: Joi.string().trim().max(60).pattern(/^[a-z0-9]+(_[a-z0-9]+)*$/).required().messages({
+    'string.empty': 'Reason is required',
+    'any.required': 'Reason is required',
+    'string.pattern.base': 'Reason must be a valid snake_case string',
+  }),
   description: Joi.string().trim().max(500).allow('', null).optional(),
-  // Optional overrides for guests
+  // Optional overrides
   reporter_name: Joi.string().trim().max(100).optional(),
   reporter_phone: Joi.string().trim().pattern(/^[0-9]{10,15}$/).optional(),
 }).unknown(false);
@@ -34,7 +38,7 @@ const carReportQuerySchema = Joi.object({
   status: Joi.string().valid(...REPORT_STATUSES).optional(),
   car_id: Joi.string().uuid().optional(),
   dealer_id: Joi.string().uuid().optional(),
-  reason: Joi.string().valid(...REPORT_REASONS).optional(),
+  reason: Joi.string().trim().optional(),
   sortBy: Joi.string().optional(),
   sortOrder: Joi.string().valid('ASC', 'DESC', 'asc', 'desc').optional(),
 }).unknown(true);
