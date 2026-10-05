@@ -243,15 +243,13 @@ const carMediaCloudinaryStorage = new CloudinaryStorage({
 const carMediaStorage = isTestEnv
   ? {
       _handleFile(req, file, cb) {
-        // In test mode, allow dummy non-video buffers for video/audio without failing on Cloudinary's ffmpeg checker
         if (file.fieldname === 'video' || file.fieldname === 'audio') {
           return createTestMediaStorage('video')._handleFile(req, file, cb);
         }
-        // Images ALWAYS stream directly to Cloudinary
-        return carMediaCloudinaryStorage._handleFile(req, file, cb);
+        return createTestMediaStorage('image')._handleFile(req, file, cb);
       },
       _removeFile(req, file, cb) {
-        return carMediaCloudinaryStorage._removeFile(req, file, cb);
+        cb(null);
       },
     }
   : carMediaCloudinaryStorage;

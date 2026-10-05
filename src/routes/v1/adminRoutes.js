@@ -38,4 +38,16 @@ router.patch("/users/:id/reject", adminController.rejectUser);
 router.get("/subscriptions", adminController.getSubscriptions);
 router.get("/payments", adminController.getPayments);
 
+// ── Car Reports ───────────────────────────────────────────────────────────────
+const carReportController = require("../../controllers/carReportController");
+const validate = require("../../middlewares/validate");
+const { updateCarReportStatusSchema } = require("../../validations/carReportValidation");
+
+router.get("/car-reports", carReportController.getReports);
+router.get("/car-reports/:id", carReportController.getReportById);
+router.patch("/car-reports/:id", validate(updateCarReportStatusSchema, { allowUnknown: false }), carReportController.updateReportStatus);
+router.get("/reports", carReportController.getReports);
+router.get("/reports/:id", carReportController.getReportById);
+router.patch("/reports/:id", validate(updateCarReportStatusSchema, { allowUnknown: false }), carReportController.updateReportStatus);
+
 module.exports = router;

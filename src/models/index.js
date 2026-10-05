@@ -26,6 +26,7 @@ const CarInteraction = require('./CarInteraction');
 const Highlight = require('./Highlight');
 const CarHighlight = require('./CarHighlight');
 const Notification = require('./Notification');
+const CarReport = require('./CarReport');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -194,6 +195,14 @@ Highlight.belongsToMany(Car, {
   otherKey: 'car_id',
 });
 
+// CarReport Associations
+CarReport.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
+CarReport.belongsTo(User, { foreignKey: 'dealer_id', as: 'dealer' });
+CarReport.belongsTo(User, { foreignKey: 'reporter_id', as: 'reporter' });
+Car.hasMany(CarReport, { foreignKey: 'car_id', as: 'reports' });
+User.hasMany(CarReport, { foreignKey: 'dealer_id', as: 'dealerReports' });
+User.hasMany(CarReport, { foreignKey: 'reporter_id', as: 'filedReports' });
+
 const models = {
   User,
   CustomerProfile,
@@ -223,6 +232,7 @@ const models = {
   CarHighlight,
   CarHighlightMapping: CarHighlight,
   Notification,
+  CarReport,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk
