@@ -1418,7 +1418,9 @@ exports.updateCar = async (carId, userId, updateData, files) => {
         }
       }
     }
-    if (mapped.price_negotiable !== undefined) filteredData.price_negotiable = mapped.price_negotiable;
+    if (mapped.price_negotiable !== undefined) {
+      filteredData.price_negotiable = mapped.price_negotiable === true || mapped.price_negotiable === 'true' || mapped.price_negotiable === 1 || mapped.price_negotiable === '1';
+    }
     if (mapped.km_driven !== undefined) filteredData.km_driven = mapped.km_driven;
     if (mapped.fuel_type !== undefined) filteredData.fuel_type = mapped.fuel_type;
     if (normalizedTransmission !== undefined) filteredData.transmission = normalizedTransmission;
@@ -1427,10 +1429,17 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (mapped.board_type !== undefined) filteredData.board_type = mapped.board_type;
     if (mapped.insurance_expiry_date !== undefined) filteredData.insurance_expiry_date = mapped.insurance_expiry_date;
     if (mapped.insurance_type !== undefined) filteredData.insurance_type = mapped.insurance_type;
-    if (mapped.b2b_listing !== undefined) filteredData.b2b_listing = mapped.b2b_listing;
+    if (mapped.b2b_listing !== undefined) {
+      filteredData.b2b_listing = mapped.b2b_listing === true || mapped.b2b_listing === 'true' || mapped.b2b_listing === 1 || mapped.b2b_listing === '1';
+    }
     if (mapped.status !== undefined) filteredData.status = mapped.status;
     if (mapped.engine_cc !== undefined) filteredData.engine_cc = mapped.engine_cc;
     if (mapped.description !== undefined) filteredData.description = mapped.description;
+    if (mapped.color !== undefined) filteredData.color = mapped.color;
+    if (mapped.number_plate !== undefined) filteredData.number_plate = mapped.number_plate;
+    if (mapped.prior_appointemnts !== undefined) {
+      filteredData.prior_appointemnts = mapped.prior_appointemnts === true || mapped.prior_appointemnts === 'true' || mapped.prior_appointemnts === 1 || mapped.prior_appointemnts === '1';
+    }
 
     if (files) {
       const getFileUrl = (f) => {

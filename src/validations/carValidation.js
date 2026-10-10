@@ -258,8 +258,30 @@ const mapToDbValues = (data) => {
   if (data.numberplate !== undefined && mapped.number_plate === undefined) {
     mapped.number_plate = data.numberplate;
   }
+  if (data.registration_number !== undefined && mapped.number_plate === undefined) {
+    mapped.number_plate = data.registration_number;
+  }
+  if (data.reg_no !== undefined && mapped.number_plate === undefined) {
+    mapped.number_plate = data.reg_no;
+  }
+
+  // Prior Appointments aliases and boolean normalization
   if (data.prior_appointments !== undefined && mapped.prior_appointemnts === undefined) {
     mapped.prior_appointemnts = data.prior_appointments;
+  }
+  if (data.priorAppointments !== undefined && mapped.prior_appointemnts === undefined) {
+    mapped.prior_appointemnts = data.priorAppointments;
+  }
+  if (mapped.prior_appointemnts !== undefined) {
+    mapped.prior_appointemnts = mapped.prior_appointemnts === true || mapped.prior_appointemnts === 'true' || mapped.prior_appointemnts === 1 || mapped.prior_appointemnts === '1';
+  }
+
+  // Price Negotiable aliases and boolean normalization
+  if (data.priceNegotiable !== undefined && mapped.price_negotiable === undefined) {
+    mapped.price_negotiable = data.priceNegotiable;
+  }
+  if (mapped.price_negotiable !== undefined) {
+    mapped.price_negotiable = mapped.price_negotiable === true || mapped.price_negotiable === 'true' || mapped.price_negotiable === 1 || mapped.price_negotiable === '1';
   }
 
   const rawFuel = (mapped.fuel_type || '').toString().trim();
@@ -283,6 +305,9 @@ const mapToDbValues = (data) => {
 
   if (data.b2b !== undefined && mapped.b2b_listing === undefined) {
     mapped.b2b_listing = data.b2b === true || data.b2b === 'true' || data.b2b === 1 || data.b2b === '1';
+  }
+  if (data.b2bListing !== undefined && mapped.b2b_listing === undefined) {
+    mapped.b2b_listing = data.b2bListing === true || data.b2bListing === 'true' || data.b2bListing === 1 || data.b2bListing === '1';
   }
   if (mapped.b2b_listing !== undefined) {
     mapped.b2b_listing = mapped.b2b_listing === true || mapped.b2b_listing === 'true' || mapped.b2b_listing === 1 || mapped.b2b_listing === '1';
