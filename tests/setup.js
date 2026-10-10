@@ -74,6 +74,10 @@ beforeEach(async () => {
 
 afterAll(async () => {
   try {
+    const notificationQueue = require('../src/queues/notificationQueue');
+    await notificationQueue.close();
+  } catch (e) {}
+  try {
     await sequelize.close();
   } catch (e) {}
   if (redisClient.isOpen) {

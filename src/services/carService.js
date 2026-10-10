@@ -566,6 +566,9 @@ exports.getCars = async (
     if (filters.b2b_listing !== undefined) {
       where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
     }
+    if (filters.has_price_drop !== undefined) {
+      where.has_price_drop = filters.has_price_drop === 'true' || filters.has_price_drop === true;
+    }
 
     if (filters.board_types && filters.board_types.length) {
       const boards = Array.isArray(filters.board_types) ? filters.board_types : filters.board_types.split(',');
@@ -1326,7 +1329,11 @@ exports.getUserCars = async (userId, options = {}) => {
 exports.updateCar = async (carId, userId, updateData, files) => {
   const transaction = await sequelize.transaction();
   try {
-    const car = await Car.findOne({ where: { id: carId, user_id: userId }, transaction });
+    const car = await Car.findOne({
+      where: { id: carId, user_id: userId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
     if (!car) throw new AppError('Car not found or unauthorized.', 404);
 
     const mapped = mapToDbValues(updateData || {});
@@ -1378,7 +1385,39 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (modelId) filteredData.model_id = modelId;
     if (variantId) filteredData.variant_id = variantId;
     if (mapped.year !== undefined) filteredData.year = mapped.year;
-    if (mapped.price !== undefined) filteredData.price = mapped.price;
+
+    // Price Drop Tracking with dynamic threshold & price hike reset
+    let hasPriceDropOccurred = false;
+    if (mapped.price !== undefined && mapped.price !== null && mapped.price !== '') {
+      const newPrice = Number(mapped.price);
+      const currentPrice = Number(car.price);
+
+      if (!isNaN(newPrice) && newPrice > 0) {
+        // Dynamic drop threshold: MAX(₹5,000, 1% of current price)
+        const minDropThreshold = Math.max(5000, currentPrice * 0.01);
+        const priceDifference = currentPrice - newPrice;
+
+        if (priceDifference >= minDropThreshold) {
+          // Qualified price drop
+          filteredData.previous_price = currentPrice;
+          filteredData.has_price_drop = true;
+          filteredData.price = newPrice;
+          hasPriceDropOccurred = true;
+        } else if (newPrice > currentPrice) {
+          // Price hike / increase: reset price drop status to prevent inverted or stale discount
+          filteredData.previous_price = null;
+          filteredData.has_price_drop = false;
+          filteredData.price = newPrice;
+        } else {
+          // Negligible price drop or unchanged price
+          filteredData.price = newPrice;
+          if (car.previous_price !== null && Number(car.previous_price) <= newPrice) {
+            filteredData.previous_price = null;
+            filteredData.has_price_drop = false;
+          }
+        }
+      }
+    }
     if (mapped.price_negotiable !== undefined) filteredData.price_negotiable = mapped.price_negotiable;
     if (mapped.km_driven !== undefined) filteredData.km_driven = mapped.km_driven;
     if (mapped.fuel_type !== undefined) filteredData.fuel_type = mapped.fuel_type;
@@ -1569,6 +1608,13 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     }
 
     await transaction.commit();
+
+    // Trigger async background notification / requirement matching on qualified price drop
+    if (hasPriceDropOccurred) {
+      notificationQueue.add({ carId: car.id, event: 'price_drop' }).catch((err) => {
+        console.warn('[Notification Queue] Error adding price drop job:', err.message);
+      });
+    }
 
     const updatedCar = await Car.findByPk(car.id, {
       include: [

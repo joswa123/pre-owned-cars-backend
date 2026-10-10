@@ -239,6 +239,10 @@ const mapToDbValues = (data) => {
   if (!data) return {};
   const mapped = { ...data };
 
+  // Never allow clients to directly manipulate internal price-drop tracking fields
+  delete mapped.previous_price;
+  delete mapped.has_price_drop;
+
   if (data.kmdriven !== undefined && mapped.km_driven === undefined) {
     mapped.km_driven = data.kmdriven;
   }
