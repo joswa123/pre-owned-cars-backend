@@ -120,11 +120,17 @@ exports.getUserCars = catchAsync(async (req, res) => {
   const userId = req.user.id;
   const result = await carService.getUserCars(userId, req.query);
   const cars = result.cars || result;
+  const total = result.total ?? result.pagination?.total ?? (Array.isArray(cars) ? cars.length : 0);
+  const totalPages = result.totalPages ?? result.pagination?.totalPages ?? 1;
 
   res.status(200).json({
     status: "success",
     data: { 
       cars,
+      total,
+      totalPages,
+      page: result.pagination?.page || 1,
+      limit: result.pagination?.limit || 50,
       pagination: result.pagination,
     },
   });

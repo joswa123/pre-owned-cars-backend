@@ -1239,7 +1239,7 @@ exports.getUserCars = async (userId, options = {}) => {
   const rawStatus = typeof options === 'string' ? options : options?.status;
   const status = rawStatus ? String(rawStatus).trim().toLowerCase() : null;
   const page = typeof options === 'object' && options.page ? parseInt(options.page) : 1;
-  const limit = typeof options === 'object' && options.limit ? parseInt(options.limit) : 20;
+  const limit = typeof options === 'object' && options.limit ? parseInt(options.limit) : 50;
   const cursor = typeof options === 'object' ? options.cursor : null;
 
   const whereClause = { user_id: userId };
@@ -1255,8 +1255,38 @@ exports.getUserCars = async (userId, options = {}) => {
   }
 
   if (typeof options === 'object') {
-    if (options.brand_id) whereClause.brand_id = options.brand_id;
-    if (options.model_id) whereClause.model_id = options.model_id;
+    // Search query across number_plate, color, description, brand, or model
+    if (options.search || options.q) {
+      const searchTerm = String(options.search || options.q).trim();
+      if (searchTerm) {
+        whereClause[Op.or] = [
+          { number_plate: { [Op.like]: `%${searchTerm}%` } },
+          { color: { [Op.like]: `%${searchTerm}%` } },
+          { description: { [Op.like]: `%${searchTerm}%` } },
+          sequelize.literal(`EXISTS (SELECT 1 FROM brands WHERE brands.id = Car.brand_id AND brands.name LIKE '%${searchTerm.replace(/'/g, "''")}%')`),
+          sequelize.literal(`EXISTS (SELECT 1 FROM models WHERE models.id = Car.model_id AND models.name LIKE '%${searchTerm.replace(/'/g, "''")}%')`),
+        ];
+      }
+    }
+
+    if (options.brand_id) {
+      whereClause.brand_id = options.brand_id;
+    } else if (options.brand) {
+      whereClause[Op.and] = whereClause[Op.and] || [];
+      whereClause[Op.and].push(
+        sequelize.literal(`EXISTS (SELECT 1 FROM brands WHERE brands.id = Car.brand_id AND (brands.name LIKE '%${String(options.brand).trim().replace(/'/g, "''")}%' OR brands.id = '${String(options.brand).trim().replace(/'/g, "''")}'))`)
+      );
+    }
+
+    if (options.model_id) {
+      whereClause.model_id = options.model_id;
+    } else if (options.model) {
+      whereClause[Op.and] = whereClause[Op.and] || [];
+      whereClause[Op.and].push(
+        sequelize.literal(`EXISTS (SELECT 1 FROM models WHERE models.id = Car.model_id AND (models.name LIKE '%${String(options.model).trim().replace(/'/g, "''")}%' OR models.id = '${String(options.model).trim().replace(/'/g, "''")}'))`)
+      );
+    }
+
     if (options.board_type) whereClause.board_type = options.board_type;
     if (options.fuel_type) whereClause.fuel_type = options.fuel_type;
     if (options.transmission) whereClause.transmission = options.transmission;
@@ -1264,7 +1294,43 @@ exports.getUserCars = async (userId, options = {}) => {
     if (options.b2b_listing !== undefined) {
       whereClause.b2b_listing = options.b2b_listing === true || options.b2b_listing === 'true';
     }
+
+    // Price filters
+    if (options.min_price || options.minPrice) {
+      const minP = parseFloat(options.min_price || options.minPrice);
+      if (!isNaN(minP)) {
+        whereClause.price = { ...whereClause.price, [Op.gte]: minP };
+      }
+    }
+    if (options.max_price || options.maxPrice) {
+      const maxP = parseFloat(options.max_price || options.maxPrice);
+      if (!isNaN(maxP)) {
+        whereClause.price = { ...whereClause.price, [Op.lte]: maxP };
+      }
+    }
+
+    // Year filters
+    if (options.year) {
+      whereClause.year = parseInt(options.year, 10);
+    }
+    if (options.min_year || options.minYear) {
+      const minY = parseInt(options.min_year || options.minYear, 10);
+      if (!isNaN(minY)) {
+        whereClause.year = { ...whereClause.year, [Op.gte]: minY };
+      }
+    }
+    if (options.max_year || options.maxYear) {
+      const maxY = parseInt(options.max_year || options.maxYear, 10);
+      if (!isNaN(maxY)) {
+        whereClause.year = { ...whereClause.year, [Op.lte]: maxY };
+      }
+    }
   }
+
+  // Sorting
+  const validSortCols = ['created_at', 'price', 'year', 'km_driven', 'status'];
+  const sortBy = options.sortBy && validSortCols.includes(options.sortBy) ? options.sortBy : 'created_at';
+  const sortOrder = options.sortOrder && ['ASC', 'DESC'].includes(options.sortOrder.toUpperCase()) ? options.sortOrder.toUpperCase() : 'DESC';
 
   // Keyset Cursor Pagination (High-Speed O(1) Seek for infinite scroll)
   if (cursor) {
@@ -1286,7 +1352,7 @@ exports.getUserCars = async (userId, options = {}) => {
       { model: CarStat, as: 'stats', required: false },
       { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
     ],
-    order: [['created_at', 'DESC']],
+    order: [[sortBy, sortOrder]],
     limit: parseInt(limit),
   };
 
@@ -1295,6 +1361,7 @@ exports.getUserCars = async (userId, options = {}) => {
     queryOptions.offset = (page - 1) * parseInt(limit);
   }
 
+  const total = await queryModel.count({ where: whereClause });
   const cars = await queryModel.findAll(queryOptions);
 
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
@@ -1323,13 +1390,20 @@ exports.getUserCars = async (userId, options = {}) => {
   const lastCar = cars.length > 0 ? cars[cars.length - 1] : null;
   const next_cursor = lastCar && lastCar.created_at ? lastCar.created_at.toISOString() : null;
 
+  const parsedLimit = parseInt(limit);
+  const totalPages = Math.ceil(total / parsedLimit) || 1;
+
   return {
     cars: transformedCars,
+    total,
+    totalPages,
     pagination: {
-      limit: parseInt(limit),
+      total,
+      totalPages,
+      limit: parsedLimit,
       page: cursor ? null : page,
       next_cursor,
-      has_more: cars.length === parseInt(limit),
+      has_more: cursor ? cars.length === parsedLimit : (page * parsedLimit < total),
     },
   };
 };
