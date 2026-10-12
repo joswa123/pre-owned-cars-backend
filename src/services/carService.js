@@ -179,8 +179,19 @@ const transformCarImages = (car, baseUrl = null) => {
     return null;
   };
 
+  const previousPrice = (carJson.previous_price !== null && carJson.previous_price !== undefined)
+    ? Number(carJson.previous_price)
+    : null;
+  const price = (carJson.price !== null && carJson.price !== undefined)
+    ? Number(carJson.price)
+    : carJson.price;
+  const hasPriceDrop = Boolean(carJson.has_price_drop);
+
   return {
     ...carJson,
+    price,
+    previous_price: previousPrice,
+    has_price_drop: hasPriceDrop,
     video_url: formatMediaUrl(carJson.video_url),
     audio_url: formatMediaUrl(carJson.audio_url),
     highlights: carJson.highlights || [],
@@ -1003,7 +1014,7 @@ exports.getCars = async (
 
     const queryResult = await Car.findAndCountAll({
       attributes: [
-        'id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
+        'id', 'model_id', 'variant_id', 'year', 'price', 'previous_price', 'has_price_drop', 'price_negotiable', 'km_driven',
         'fuel_type', 'transmission', 'ownership', 'body_type', 'board_type',
         'insurance_expiry_date', 'insurance_type', 'b2b_listing', 'posted_by_type',
         'status', 'description', 'color', 'number_plate', 'prior_appointemnts',
@@ -1989,7 +2000,7 @@ exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limi
     col: 'id',
     where: whereClause,
     attributes: [
-      'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable', 'km_driven',
+      'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'previous_price', 'has_price_drop', 'price_negotiable', 'km_driven',
       'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id', 'body_type',
       'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
     ],
@@ -2103,7 +2114,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         ].filter(Boolean)
       },
       attributes: [
-        'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+        'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'previous_price', 'has_price_drop', 'price_negotiable',
         'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
         'created_at', 'brand_id', 'body_type',
         'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
@@ -2156,7 +2167,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         order: [['created_at', 'DESC']],
         limit: 4,
         attributes: [
-          'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+          'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'previous_price', 'has_price_drop', 'price_negotiable',
           'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
           'created_at', 'brand_id', 'body_type',
           'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
@@ -2251,7 +2262,7 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           status: 'active'
         },
         attributes: [
-          'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'price_negotiable',
+          'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'previous_price', 'has_price_drop', 'price_negotiable',
           'km_driven', 'fuel_type', 'transmission', 'ownership', 'status',
           'created_at', 'brand_id', 'body_type',
           'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'

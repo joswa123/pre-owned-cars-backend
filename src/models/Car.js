@@ -83,18 +83,30 @@ const Car = sequelize.define('Car', {
   price: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
+    get() {
+      const val = this.getDataValue('price');
+      return val !== null && val !== undefined ? Number(val) : val;
+    },
   },
   previous_price: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
     defaultValue: null,
     comment: 'Prior price before a qualified price drop occurred',
+    get() {
+      const val = this.getDataValue('previous_price');
+      return val !== null && val !== undefined ? Number(val) : null;
+    },
   },
   has_price_drop: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
     defaultValue: false,
     comment: 'Flag indicating whether this car currently has a valid active price drop',
+    get() {
+      const val = this.getDataValue('has_price_drop');
+      return Boolean(val);
+    },
   },
   price_negotiable: {
     type: DataTypes.BOOLEAN,

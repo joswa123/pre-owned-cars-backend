@@ -56,7 +56,7 @@ exports.createReport = async (reporterUser, data) => {
       {
         model: Car,
         as: 'car',
-        attributes: ['id', 'year', 'price', 'status'],
+        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status'],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
@@ -94,7 +94,7 @@ exports.getReports = async (query = {}) => {
       {
         model: Car,
         as: 'car',
-        attributes: ['id', 'year', 'price', 'status', 'brand_id', 'model_id', 'body_type'],
+        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'brand_id', 'model_id', 'body_type'],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },

@@ -102,7 +102,7 @@ exports.getLeadById = async (leadId) => {
       {
         model: Car,
         as: 'car',
-        attributes: ['id', 'year', 'price', 'status', 'brand_id', 'model_id', 'variant_id', 'body_type'],
+        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'brand_id', 'model_id', 'variant_id', 'body_type'],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
@@ -596,7 +596,7 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
         as: 'car',
         where: Object.keys(carWhere).length > 0 ? carWhere : undefined,
         required: Object.keys(carWhere).length > 0,
-        attributes: ['id', 'year', 'price', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
+        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
@@ -676,7 +676,7 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
         as: 'car',
         where: Object.keys(carWhere).length > 0 ? carWhere : undefined,
         required: Object.keys(carWhere).length > 0,
-        attributes: ['id', 'year', 'price', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
+        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
@@ -821,7 +821,7 @@ exports.getAllLeadsForAdmin = async (filters = {}) => {
       {
         model: Car,
         as: 'car',
-        attributes: ['id', 'year', 'price', 'status', 'brand_id', 'model_id', 'variant_id', 'body_type'],
+        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'brand_id', 'model_id', 'variant_id', 'body_type'],
         include: [
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },

@@ -13,7 +13,7 @@ exports.getNotifications = async (req, res, next) => {
         {
           model: Car,
           as: 'car',
-          attributes: ['id', 'year', 'price', 'brand_id', 'model_id'],
+          attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'brand_id', 'model_id'],
           include: [
             { model: Brand, as: 'brand', attributes: ['name'] },
             { model: Model, as: 'carModel', attributes: ['name'] }

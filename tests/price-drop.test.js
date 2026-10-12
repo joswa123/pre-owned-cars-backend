@@ -148,4 +148,46 @@ describe('Price Drop Tracking Feature Tests', () => {
     expect(hackedCar.previous_price).toBeNull();
     expect(hackedCar.has_price_drop).toBe(false);
   });
+
+  test('6. GET /api/v1/cars/:id returns normalized previous_price and has_price_drop', async () => {
+    const { token } = await setupUser();
+    const car = await createTestCar(token, '1000000');
+
+    await request(app)
+      .put(`/api/v1/cars/${car.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('price', '900000');
+
+    const getRes = await request(app).get(`/api/v1/cars/${car.id}`);
+    expect(getRes.status).toBe(200);
+    const fetchedCar = getRes.body.data.car;
+
+    expect(fetchedCar.price).toBe(900000);
+    expect(typeof fetchedCar.price).toBe('number');
+    expect(fetchedCar.previous_price).toBe(1000000);
+    expect(typeof fetchedCar.previous_price).toBe('number');
+    expect(fetchedCar.has_price_drop).toBe(true);
+    expect(typeof fetchedCar.has_price_drop).toBe('boolean');
+  });
+
+  test('7. GET /api/v1/cars returns previous_price and has_price_drop in list items', async () => {
+    const { token } = await setupUser();
+    const car = await createTestCar(token, '1000000');
+
+    await request(app)
+      .put(`/api/v1/cars/${car.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('price', '850000');
+
+    const listRes = await request(app).get(`/api/v1/cars`);
+    expect(listRes.status).toBe(200);
+    const foundCar = listRes.body.data.cars.find(c => c.id === car.id);
+    expect(foundCar).toBeDefined();
+    expect(foundCar.price).toBe(850000);
+    expect(typeof foundCar.price).toBe('number');
+    expect(foundCar.previous_price).toBe(1000000);
+    expect(typeof foundCar.previous_price).toBe('number');
+    expect(foundCar.has_price_drop).toBe(true);
+    expect(typeof foundCar.has_price_drop).toBe('boolean');
+  });
 });
