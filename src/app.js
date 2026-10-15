@@ -193,6 +193,8 @@ app.use('/api/v1/requirements', require('./routes/v1/requirementRoutes'));
 app.use('/api/v1/notifications', require('./routes/v1/notificationRoutes'));
 app.use('/api/v1/highlights', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/highlightRoutes'));
 app.use('/api/v1/car-highlights', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/highlightRoutes'));
+app.use('/api/highlights', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/highlightRoutes'));
+app.use('/api/car-highlights', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/highlightRoutes'));
 app.use('/api/v1/car-reports', require('./routes/v1/carReportRoutes'));
 app.use('/api/v1/reports', require('./routes/v1/carReportRoutes'));
 app.use('/api/v1/report-reasons', require('./routes/v1/reportReasonRoutes'));
@@ -201,7 +203,9 @@ app.use('/api/report-reasons', require('./routes/v1/reportReasonRoutes'));
 app.use('/api/v1/admin', require('./routes/v1/adminRoutes'));
 app.use('/api/admin', require('./routes/v1/adminRoutes'));
 app.use('/api/v1/admin/banners', require('./routes/v1/admin/bannerRoutes'));
+app.use('/api/admin/banners', require('./routes/v1/admin/bannerRoutes'));
 app.use('/api/v1/admin/highlights', require('./routes/v1/admin/highlightRoutes'));
+app.use('/api/admin/highlights', require('./routes/v1/admin/highlightRoutes'));
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

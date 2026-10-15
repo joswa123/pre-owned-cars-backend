@@ -226,6 +226,7 @@ const {
 exports.resolveBrandId = resolveBrandId;
 exports.resolveModelId = resolveModelId;
 exports.resolveVariantId = resolveVariantId;
+exports.clearCachePattern = clearCachePattern;
 
 /**
  * Create a car listing with auto-assigned posted_by_type and b2b_listing logic
