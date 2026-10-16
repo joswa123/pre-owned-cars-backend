@@ -268,6 +268,11 @@ const Car = sequelize.define('Car', {
     { fields: ['status', 'b2b_listing'] },
     { fields: ['status', 'brand_id'] },
     { name: 'idx_cars_status_posted_created', fields: ['status', 'posted_by_type', 'created_at'] },
+    // Dealer inventory optimized composite indexes (M2, M5)
+    { name: 'idx_cars_dealer_status_del_created', fields: ['user_id', 'status', 'deleted_at', 'created_at'] },
+    { name: 'idx_cars_dealer_status_del_price', fields: ['user_id', 'status', 'deleted_at', 'price'] },
+    { name: 'idx_cars_dealer_status_del_brand', fields: ['user_id', 'status', 'deleted_at', 'brand_id'] },
+    { name: 'idx_cars_dealer_search_fulltext', type: 'FULLTEXT', fields: ['description', 'number_plate'] },
   ],
 });
 

@@ -23,9 +23,13 @@ const clearCache = async (key) => {
 const clearCachePattern = async (pattern) => {
   try {
     if (redisClient.isOpen) {
-      for await (const chunk of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
-        const batch = Array.isArray(chunk) ? chunk : (chunk ? [chunk] : []);
-        if (batch.length > 0) {
+      const keys = [];
+      for await (const key of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+        if (key) keys.push(key);
+      }
+      if (keys.length > 0) {
+        for (let i = 0; i < keys.length; i += 100) {
+          const batch = keys.slice(i, i + 100);
           await redisClient.del(batch);
         }
       }
@@ -38,7 +42,7 @@ const clearCachePattern = async (pattern) => {
 /**
  * Universal cache invalidator for car mutations
  */
-const invalidateCarCaches = async (carId = null, userId = null) => {
+const invalidateCarCaches = async (carId = null, userId = null, oldUserId = null) => {
   try {
     // 1. Service-level exact & pattern cache keys
     await clearCache('brands:with_counts');
@@ -53,15 +57,33 @@ const invalidateCarCaches = async (carId = null, userId = null) => {
     await clearCachePattern('seller:lead_summary:*');
     await clearCachePattern('seller:leads:*');
 
+    // Invalidate dealer namespace (covers dealer:{uuid}:filters:* and dealer:{uuid}:cars:*)
+    if (userId) {
+      await clearCachePattern(`dealer:${userId}:*`);
+    }
+    if (oldUserId && oldUserId !== userId) {
+      await clearCachePattern(`dealer:${oldUserId}:*`);
+    }
+
     // 2. HTTP middleware cache keys
     const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
     await clearHttpCache('/api/v1/cars');
     await clearHttpCache('/api/v1/catalog');
+    if (userId) {
+      await clearHttpCache(`/api/v1/dealers/${userId}/cars`);
+    }
+    if (oldUserId && oldUserId !== userId) {
+      await clearHttpCache(`/api/v1/dealers/${oldUserId}/cars`);
+    }
 
     // 3. User Dashboard summary cache
     if (userId) {
       const dashboardService = require('./dashboardService');
       await dashboardService.invalidateDashboardCache(userId);
+    }
+    if (oldUserId && oldUserId !== userId) {
+      const dashboardService = require('./dashboardService');
+      await dashboardService.invalidateDashboardCache(oldUserId);
     }
   } catch (err) {
     console.error('Car cache invalidation error:', err);
@@ -1725,7 +1747,7 @@ exports.updateCar = async (carId, userId, updateData, files) => {
       ],
     });
 
-    await invalidateCarCaches(updatedCar.id, userId);
+    await invalidateCarCaches(updatedCar.id, updatedCar.user_id, car.user_id);
 
     return transformCarImages(updatedCar);
   } catch (error) {
@@ -2416,3 +2438,5 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
 
   return videoUrl;
 };
+
+exports.invalidateCarCaches = invalidateCarCaches;

@@ -85,6 +85,10 @@ const globalErrorHandler = (err, req, res, next) => {
   error.statusCode = error.statusCode || 500;
   error.status = error.status || 'error';
 
+  if (error.statusCode === 503 && error.retryAfter) {
+    res.set('Retry-After', String(error.retryAfter));
+  }
+
   if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
     res.status(error.statusCode).json({
       status: error.status,
