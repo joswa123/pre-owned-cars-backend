@@ -14,6 +14,7 @@ const dealerFilterLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
   keyGenerator: (req) => `${req.ip || 'ip'}_${req.params.id || 'all'}`,
+  validate: false,
   message: {
     status: 'error',
     message: 'Too many filter requests for this dealer. Please try again later.',

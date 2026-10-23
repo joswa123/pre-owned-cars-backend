@@ -36,6 +36,10 @@ const seedLocations = async () => {
   });
 };
 
+redisClient.on('error', (err) => {
+  // Prevent unhandled Redis connection/quota errors from crashing automated Jest runner
+});
+
 beforeAll(async () => {
   await sequelize.authenticate();
   if (!redisClient.isOpen) {

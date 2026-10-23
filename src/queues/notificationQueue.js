@@ -12,7 +12,9 @@ const notificationQueue = new Queue('car-matching', {
     keepAlive: 30000,
     tls: process.env.REDIS_PASSWORD ? {} : undefined, // Upstash requires TLS when using password
     retryStrategy: (times) => {
-      // Keep retrying endlessly but max out delay at 3 seconds
+      if (process.env.NODE_ENV === 'test' || times > 3) {
+        return null;
+      }
       return Math.min(times * 50, 3000);
     }
   }

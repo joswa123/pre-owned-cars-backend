@@ -255,29 +255,47 @@ const carMediaStorage = isTestEnv
   : carMediaCloudinaryStorage;
 
 // ─── Factory: Create a Cloudinary-backed Multer instance for Other Entities ─
-function createUpload(folderName, extraParams = {}) {
-  const storage = new CloudinaryStorage({
-    cloudinary,
-    params: async (req, file) => {
-      const uuid = crypto.randomUUID();
-      const prefix = folderName === 'banners' ? 'banner' : (folderName === 'brands' ? 'brand' : folderName);
-      return {
-        folder: `autodeal4u/${folderName}`,
-        allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp'],
-        transformation: IMAGE_UPLOAD_TRANSFORMATION,
-        public_id: `${prefix}-${uuid}`,
-        ...extraParams,
-      };
-    },
-  });
+function createUpload(folderName, extraParams = {}, fieldName = 'image', maxFileSize = 5 * 1024 * 1024) {
+  const prefix = folderName === 'banners' ? 'banner' : (folderName === 'brands' ? 'brand' : (folderName === 'categories' ? 'category' : folderName));
+  const storage = isTestEnv
+    ? {
+        _handleFile(req, file, cb) {
+          file.stream.resume();
+          const uuid = crypto.randomUUID();
+          const publicId = `autodeal4u/${folderName}/${prefix}-${uuid}`;
+          const secureUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME || 'demo'}/image/upload/v${Date.now()}/${publicId}.png`;
+          cb(null, {
+            path: secureUrl,
+            filename: publicId,
+            size: 1024,
+            mimetype: file.mimetype || 'image/png',
+          });
+        },
+        _removeFile(req, file, cb) {
+          cb(null);
+        },
+      }
+    : new CloudinaryStorage({
+        cloudinary,
+        params: async (req, file) => {
+          const uuid = crypto.randomUUID();
+          return {
+            folder: `autodeal4u/${folderName}`,
+            allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp'],
+            transformation: IMAGE_UPLOAD_TRANSFORMATION,
+            public_id: `${prefix}-${uuid}`,
+            ...extraParams,
+          };
+        },
+      });
 
   const rawMulter = multer({
     storage,
-    limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024 },
+    limits: { fileSize: maxFileSize },
     fileFilter: imageFileFilter,
   });
 
-  return wrapMulter(rawMulter.single('image'));
+  return wrapMulter(rawMulter.single(fieldName));
 }
 
 const MAX_CAR_IMAGES = parseInt(process.env.MAX_CAR_IMAGES, 10) || 20;
@@ -291,6 +309,7 @@ const FIELD_MAX_COUNTS = {
   customerProfile: 1,
   dealerProfile: 1,
   image: 1,
+  icon: 1,
 };
 
 // ─── Multer Error Handling Wrapper ───────────────────────
@@ -304,14 +323,14 @@ function wrapMulter(multerMiddleware) {
             let limitDesc = '10MB for images, 20MB for audio, 100MB for video';
             if (field === 'video') limitDesc = '100MB';
             else if (field === 'audio') limitDesc = '20MB';
-            else if (field === 'primary_image' || field === 'images' || field === 'image' || field === 'profile_picture' || field === 'customerProfile' || field === 'dealerProfile') limitDesc = '10MB';
-            return next(new AppError(`File size exceeds allowable limit (${limitDesc}) for field "${field || 'file'}".`, 413));
+            else if (field === 'primary_image' || field === 'images' || field === 'image' || field === 'icon' || field === 'profile_picture' || field === 'customerProfile' || field === 'dealerProfile') limitDesc = '5MB';
+            return next(new AppError(`File size exceeds allowable limit (${limitDesc}) for field "${field || 'file'}".`, 413, 'FILE_TOO_LARGE'));
           }
           if (err.code === 'LIMIT_UNEXPECTED_FILE') {
             if (err.field && FIELD_MAX_COUNTS[err.field] !== undefined) {
               return next(new AppError(`Too many files uploaded for field "${err.field}". Maximum allowed is ${FIELD_MAX_COUNTS[err.field]}.`, 400));
             }
-            return next(new AppError(`Unexpected field "${err.field}". Allowed file fields: primary_image, images, video, audio.`, 400));
+            return next(new AppError(`Unexpected field "${err.field}". Allowed file fields: primary_image, images, video, audio, image, icon.`, 400));
           }
           if (err.code === 'LIMIT_FILE_COUNT') {
             return next(new AppError(`Too many files uploaded for field "${err.field || 'files'}".`, 400));
@@ -322,7 +341,7 @@ function wrapMulter(multerMiddleware) {
           return next(err);
         }
         if (err.http_code || (err.message && /cloudinary|cloud_name|api_key/i.test(err.message))) {
-          return next(new AppError(`Cloudinary upload failed: ${err.message}`, err.http_code || 400));
+          return next(new AppError(`Cloudinary upload failed: ${err.message}`, err.http_code || 400, 'UPLOAD_FAILED'));
         }
         return next(new AppError(err.message || 'File upload failed', 400));
       }
@@ -375,4 +394,10 @@ module.exports = {
   bannerUpload: createUpload('banners', {
     transformation: [{ width: 1920, height: 600, crop: 'fill', quality: 'auto:good', fetch_format: 'auto' }],
   }),
+  categoryUpload: createUpload('categories', {
+    transformation: [{ width: 800, height: 800, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' }],
+  }, 'image', 5 * 1024 * 1024),
+  carTypeUpload: createUpload('categories', {
+    transformation: [{ width: 800, height: 800, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' }],
+  }, 'image', 5 * 1024 * 1024),
 };

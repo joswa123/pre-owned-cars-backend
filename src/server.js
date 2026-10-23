@@ -6,6 +6,23 @@ const sequelize = require('./config/database');
 const logger = require('./utils/logger');
 const PORT = process.env.PORT || 5000;
 
+// ─── Global Process Safety Handlers ──────────────────────────────────────────
+process.on('unhandledRejection', (reason) => {
+  if (reason && reason.message && (reason.message.includes('max requests limit exceeded') || reason.code === 'ECONNRESET')) {
+    logger.warn(`⚠️ Background Redis notice (non-fatal): ${reason.message}`);
+    return;
+  }
+  logger.error('Unhandled Rejection at:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  if (err && err.message && (err.message.includes('max requests limit exceeded') || err.code === 'ECONNRESET')) {
+    logger.warn(`⚠️ Background Redis notice (non-fatal): ${err.message}`);
+    return;
+  }
+  logger.error('💥 Uncaught Exception:', err);
+});
+
 // ─── Database Connection with Exponential Backoff Retry ───────────────────
 const connectWithRetry = async (maxRetries = 5, initialDelayMs = 1000) => {
   let delay = initialDelayMs;
@@ -58,7 +75,11 @@ const connectWithRetry = async (maxRetries = 5, initialDelayMs = 1000) => {
     }
     
     // 3.5.1 Start Notification Queue Worker
-    require('./queues/notificationQueue');
+    try {
+      require('./queues/notificationQueue');
+    } catch (queueErr) {
+      logger.warn('⚠️ Notification queue initialization warning:', queueErr.message);
+    }
 
     // 3.6 Start Analytics Metric Flusher (Configurable: default 15s interval)
     const analyticsService = require('./services/analyticsService');
