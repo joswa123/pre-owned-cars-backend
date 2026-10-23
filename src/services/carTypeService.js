@@ -98,24 +98,6 @@ exports.getAllCarTypes = async (options = {}) => {
     ],
   });
 
-  // Seed baseline reference data if table is completely empty
-  if (carTypes.length === 0) {
-    try {
-      const seedReferenceData = require('../utils/seedReferenceData');
-      await seedReferenceData();
-      carTypes = await CarType.findAll({
-        where,
-        order: [
-          ['order', 'ASC'],
-          ['name', 'ASC'],
-          ['id', 'ASC'],
-        ],
-      });
-    } catch (e) {
-      logger.warn(`Could not auto-seed car types: ${e.message}`);
-    }
-  }
-
   const formatted = carTypes.map((t) => formatCarType(t, isAdmin));
 
   // Set cache for public active list
