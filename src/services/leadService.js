@@ -186,16 +186,11 @@ exports.createLead = async (userId, data) => {
   // Synchronize with Analytics Engine (Redis Buffer + car_stats)
   try {
     const analyticsService = require('./analyticsService');
-    const interactionType = data.source === 'call' ? 'call' : data.source === 'whatsapp' ? 'whatsapp' : 'message';
+    const interactionType = ['call', 'whatsapp', 'message'].includes(data.source) ? data.source : 'message';
     await analyticsService.recordInteraction({
       carId: car.id,
       userId: userId || null,
       type: interactionType,
-    });
-    await analyticsService.recordInteraction({
-      carId: car.id,
-      userId: userId || null,
-      type: 'enquiry',
     });
   } catch (statErr) {
     console.warn('Lead analytics synchronization warning:', statErr.message);
@@ -365,10 +360,11 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     const calls = lData.calls;
     const whatsapp = lData.whatsapp;
     const messages = lData.messages;
+    const other = lData.other;
     const totalLeadCount = lData.total;
-    const views = Math.max(dbViews, stats.views_count || 0);
-    const wishlist = Math.max(dbWishlist, stats.wishlist_count || 0);
-    const enquiries = lData.other > 0 ? lData.other : (stats.enquiries_count || totalLeadCount);
+    const views = stats.views_count !== undefined ? Math.max(dbViews, stats.views_count) : dbViews;
+    const wishlist = dbWishlist; // Single source of truth from base table
+    const enquiries = other; // Non-call/whatsapp/message enquiries
 
     return {
       car_id: json.id,

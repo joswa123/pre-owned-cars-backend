@@ -1170,29 +1170,36 @@ exports.getCarById = async (carId, userId = null) => {
     const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
     const baseTransformed = transformCarImages(car, baseUrl);
 
-    // Compute live metrics
-    const stats = car.stats || {};
+    // Compute live metrics (self-healing via ensureCarStats)
+    const analyticsService = require('./analyticsService');
+    let stats = car.stats;
+    if (!stats) {
+      stats = await analyticsService.ensureCarStats(car.id);
+    }
+
     const [dbViewsCount, dbWishlistCount] = await Promise.all([
       View.count({ where: { car_id: car.id } }),
       Wishlist.count({ where: { car_id: car.id } }),
     ]);
 
-    const viewsCount = Math.max(stats.views_count || 0, dbViewsCount);
-    const subqueryWishlistCount = parseInt(car.get('wishlist_count') || 0, 10);
-    const wishlistCount = Math.max(stats.wishlist_count || 0, dbWishlistCount, subqueryWishlistCount);
-    const enquiriesCount = stats.enquiries_count || (car.leads?.length || 0);
+    const viewsCount = stats?.views_count !== undefined ? Math.max(stats.views_count, dbViewsCount) : dbViewsCount;
+    const wishlistCount = dbWishlistCount; // Single source of truth from base table
+    const calls = stats?.calls_count || 0;
+    const whatsapp = stats?.whatsapp_count || 0;
+    const messages = stats?.messages_count || 0;
+    const enquiriesCount = calls + whatsapp + messages + (stats?.enquiries_count || 0) || (car.leads?.length || 0);
 
     const metrics = {
       views: viewsCount,
       views_count: viewsCount,
       enquiries: enquiriesCount,
       enquiry_count: enquiriesCount,
-      calls: stats.calls_count || 0,
-      calls_count: stats.calls_count || 0,
-      whatsapp: stats.whatsapp_count || 0,
-      whatsapp_count: stats.whatsapp_count || 0,
-      messages: stats.messages_count || 0,
-      messages_count: stats.messages_count || 0,
+      calls,
+      calls_count: calls,
+      whatsapp,
+      whatsapp_count: whatsapp,
+      messages,
+      messages_count: messages,
       wishlist_count: wishlistCount,
       wishlists: wishlistCount,
     };
@@ -1388,23 +1395,36 @@ exports.getUserCars = async (userId, options = {}) => {
   const cars = await queryModel.findAll(queryOptions);
 
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  const analyticsService = require('./analyticsService');
+
+  // Self-heal any missing stats on read so seller dashboard never reads false zeros
+  for (const car of cars) {
+    if (!car.stats) {
+      car.stats = await analyticsService.ensureCarStats(car.id);
+    }
+  }
+
   const transformedCars = cars.map((car) => {
     const transformed = transformCarImages(car, baseUrl);
     const is_expired = transformed.created_at && (Date.now() - new Date(transformed.created_at).getTime()) > 90 * 24 * 60 * 60 * 1000;
 
     const stats = car.stats || {};
-    const enquiries = stats.enquiries_count || (car.leads?.length || 0);
+    const calls = stats.calls_count || 0;
+    const whatsapp = stats.whatsapp_count || 0;
+    const messages = stats.messages_count || 0;
+    const otherEnquiries = stats.enquiries_count || 0;
+    const totalLeads = calls + whatsapp + messages + otherEnquiries || (car.leads?.length || 0);
 
     return {
       ...transformed,
-      enquiry_count: enquiries,
+      enquiry_count: totalLeads,
       is_expired,
       metrics: {
         views: stats.views_count || 0,
-        enquiries,
-        calls: stats.calls_count || 0,
-        whatsapp: stats.whatsapp_count || 0,
-        messages: stats.messages_count || 0,
+        enquiries: totalLeads,
+        calls,
+        whatsapp,
+        messages,
         wishlist_count: stats.wishlist_count || 0,
       },
     };
@@ -2028,17 +2048,12 @@ exports.getBoardTypeStats = async () => {
  * Record a car view (Unique per user tracking & live metrics)
  */
 exports.recordView = async (carId, userId = null, ipAddress = null) => {
-  if (!userId) return; // guests not tracked
-
   // Fetch the car to check owner
-  const car = await Car.findByPk(carId, { attributes: ['user_id'] });
+  const car = await Car.findByPk(carId, { attributes: ['id', 'user_id'] });
   if (!car) return;
-  if (car.user_id === userId) return; // ✅ Don't count seller's own views
+  if (userId && car.user_id === userId) return; // ✅ Don't count seller's own views
 
-  const existing = await View.findOne({ where: { car_id: carId, user_id: userId } });
-  if (!existing) {
-    await View.create({ car_id: carId, user_id: userId });
-  }
+  const analyticsService = require('./analyticsService');
 
   if (userId) {
     const existing = await View.findOne({
@@ -2046,15 +2061,14 @@ exports.recordView = async (carId, userId = null, ipAddress = null) => {
     });
     if (!existing) {
       await View.create({ car_id: carId, user_id: userId, timestamp: new Date() });
-      const analyticsService = require('./analyticsService');
       await analyticsService.recordInteraction({ carId, userId, type: 'view', ipAddress });
     } else {
       // Update the timestamp to reflect the latest view time without inflating records
       await existing.update({ timestamp: new Date() });
     }
   } else {
-    // Guest view: record aggregated metrics with rate limiting
-    const analyticsService = require('./analyticsService');
+    // Guest view: record in View table with user_id: null and trigger aggregated interaction
+    await View.create({ car_id: carId, user_id: null, timestamp: new Date() });
     await analyticsService.recordInteraction({ carId, userId: null, type: 'view', ipAddress });
   }
 

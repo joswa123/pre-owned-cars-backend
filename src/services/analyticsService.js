@@ -38,13 +38,21 @@ exports.recordInteraction = async ({ carId, userId = null, type = 'view', ipAddr
     }
 
     // 2. Atomic Redis buffer increment
+    let redisSuccess = false;
     if (redisClient.isOpen) {
-      const bufferKey = `counter:buffer:${carId}:${type}`;
-      await redisClient.incr(bufferKey);
-      await redisClient.expire(bufferKey, 7 * 24 * 3600); // 7-day safety TTL
-      await redisClient.sAdd('dirty:car_metrics', `${carId}:${type}`);
-    } else {
-      // Direct DB fallback if Redis is unavailable
+      try {
+        const bufferKey = `counter:buffer:${carId}:${type}`;
+        await redisClient.incr(bufferKey);
+        await redisClient.expire(bufferKey, 7 * 24 * 3600); // 7-day safety TTL
+        await redisClient.sAdd('dirty:car_metrics', `${carId}:${type}`);
+        redisSuccess = true;
+      } catch (redisErr) {
+        logger.warn(`Redis buffer incr failed, falling back to direct DB: ${redisErr.message}`);
+      }
+    }
+
+    if (!redisSuccess) {
+      // Direct DB fallback if Redis is unavailable or threw quota/connection error
       const col = COLUMN_MAP[type];
       if (col) {
         await sequelize.query(
@@ -72,6 +80,203 @@ exports.recordInteraction = async ({ carId, userId = null, type = 'view', ipAddr
 };
 
 /**
+ * Decrement a customer interaction (e.g. wishlist removal)
+ * Enforces floor guard (never negative)
+ */
+exports.decrementInteraction = async ({ carId, type = 'wishlist' }) => {
+  if (!carId || !VALID_INTERACTION_TYPES.includes(type)) return;
+
+  try {
+    let redisSuccess = false;
+    if (redisClient.isOpen) {
+      try {
+        const bufferKey = `counter:buffer:${carId}:${type}`;
+        await redisClient.decr(bufferKey);
+        await redisClient.expire(bufferKey, 7 * 24 * 3600);
+        await redisClient.sAdd('dirty:car_metrics', `${carId}:${type}`);
+        redisSuccess = true;
+      } catch (redisErr) {
+        logger.warn(`Redis buffer decr failed, falling back to direct DB: ${redisErr.message}`);
+      }
+    }
+
+    if (!redisSuccess) {
+      const col = COLUMN_MAP[type];
+      if (col) {
+        await sequelize.query(
+          `INSERT INTO car_stats (car_id, ${col}, created_at, updated_at) 
+           VALUES (:carId, 0, NOW(), NOW()) 
+           ON DUPLICATE KEY UPDATE ${col} = GREATEST(CAST(${col} AS SIGNED) - 1, 0), updated_at = NOW()`,
+          { replacements: { carId } }
+        );
+      }
+    }
+  } catch (err) {
+    logger.error(`decrementInteraction error for car ${carId}: ${err.message}`);
+  }
+};
+
+/**
+ * Ensure car_stats row exists for a car (self-healing backfill-on-read)
+ */
+exports.ensureCarStats = async (carId) => {
+  if (!carId) return null;
+
+  try {
+    let stat = await CarStat.findOne({ where: { car_id: carId } });
+    if (stat) return stat;
+
+    // Self-heal: Compute from live tables and insert
+    const { View, Wishlist, Lead } = require('../models');
+    const [viewsCount, wishlistCount, leadStats] = await Promise.all([
+      View.count({ where: { car_id: carId } }),
+      Wishlist.count({ where: { car_id: carId } }),
+      Lead.findAll({
+        attributes: [
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'call' THEN 1 ELSE 0 END")), 'calls'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'whatsapp' THEN 1 ELSE 0 END")), 'whatsapp'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) IN ('message', 'chat') THEN 1 ELSE 0 END")), 'messages'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message', 'chat') THEN 1 ELSE 0 END")), 'enquiries'],
+        ],
+        where: { car_id: carId },
+        raw: true,
+      }),
+    ]);
+
+    const l = leadStats[0] || {};
+    const calls = parseInt(l.calls, 10) || 0;
+    const whatsapp = parseInt(l.whatsapp, 10) || 0;
+    const messages = parseInt(l.messages, 10) || 0;
+    const enquiries = parseInt(l.enquiries, 10) || 0;
+
+    stat = await CarStat.create({
+      car_id: carId,
+      views_count: viewsCount,
+      wishlist_count: wishlistCount,
+      calls_count: calls,
+      whatsapp_count: whatsapp,
+      messages_count: messages,
+      enquiries_count: enquiries,
+    });
+
+    return stat;
+  } catch (err) {
+    logger.error(`ensureCarStats error for car ${carId}: ${err.message}`);
+    return null;
+  }
+};
+
+/**
+ * Reconcile car_stats for one, many, or all cars against live truth tables
+ */
+exports.reconcileCarStats = async (carIds = null) => {
+  const whereClause = carIds ? { id: carIds } : {};
+  const { Car } = require('../models');
+  const cars = await Car.findAll({ where: whereClause, attributes: ['id'], raw: true });
+
+  const results = {
+    total: cars.length,
+    updated: 0,
+    drifts: [],
+  };
+
+  for (const car of cars) {
+    const cId = car.id;
+    const { View, Wishlist, Lead } = require('../models');
+    const [liveViews, liveWishlist, leadStats, currentStat] = await Promise.all([
+      View.count({ where: { car_id: cId } }),
+      Wishlist.count({ where: { car_id: cId } }),
+      Lead.findAll({
+        attributes: [
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'call' THEN 1 ELSE 0 END")), 'calls'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'whatsapp' THEN 1 ELSE 0 END")), 'whatsapp'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) IN ('message', 'chat') THEN 1 ELSE 0 END")), 'messages'],
+          [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message', 'chat') THEN 1 ELSE 0 END")), 'enquiries'],
+        ],
+        where: { car_id: cId },
+        raw: true,
+      }),
+      CarStat.findOne({ where: { car_id: cId } }),
+    ]);
+
+    const l = leadStats[0] || {};
+    const liveCalls = parseInt(l.calls, 10) || 0;
+    const liveWhatsapp = parseInt(l.whatsapp, 10) || 0;
+    const liveMessages = parseInt(l.messages, 10) || 0;
+    const liveEnquiries = parseInt(l.enquiries, 10) || 0;
+
+    const current = currentStat || {
+      views_count: 0,
+      wishlist_count: 0,
+      calls_count: 0,
+      whatsapp_count: 0,
+      messages_count: 0,
+      enquiries_count: 0,
+    };
+
+    const hasDrift =
+      current.views_count !== liveViews ||
+      current.wishlist_count !== liveWishlist ||
+      current.calls_count !== liveCalls ||
+      current.whatsapp_count !== liveWhatsapp ||
+      current.messages_count !== liveMessages ||
+      current.enquiries_count !== liveEnquiries ||
+      !currentStat;
+
+    if (hasDrift) {
+      results.drifts.push({
+        car_id: cId,
+        before: currentStat ? {
+          views: current.views_count,
+          wishlists: current.wishlist_count,
+          calls: current.calls_count,
+          whatsapp: current.whatsapp_count,
+          messages: current.messages_count,
+          enquiries: current.enquiries_count,
+        } : 'MISSING',
+        after: {
+          views: liveViews,
+          wishlists: liveWishlist,
+          calls: liveCalls,
+          whatsapp: liveWhatsapp,
+          messages: liveMessages,
+          enquiries: liveEnquiries,
+        },
+      });
+
+      await sequelize.query(
+        `INSERT INTO car_stats (
+          car_id, views_count, calls_count, whatsapp_count, messages_count, enquiries_count, wishlist_count, created_at, updated_at
+        ) VALUES (
+          :carId, :views, :calls, :whatsapp, :messages, :enquiries, :wishlist, NOW(), NOW()
+        ) ON DUPLICATE KEY UPDATE
+          views_count = VALUES(views_count),
+          calls_count = VALUES(calls_count),
+          whatsapp_count = VALUES(whatsapp_count),
+          messages_count = VALUES(messages_count),
+          enquiries_count = VALUES(enquiries_count),
+          wishlist_count = VALUES(wishlist_count),
+          updated_at = NOW()`,
+        {
+          replacements: {
+            carId: cId,
+            views: liveViews,
+            calls: liveCalls,
+            whatsapp: liveWhatsapp,
+            messages: liveMessages,
+            enquiries: liveEnquiries,
+            wishlist: liveWishlist,
+          },
+        }
+      );
+      results.updated++;
+    }
+  }
+
+  return results;
+};
+
+/**
  * High-Scale Multi-Row Bulk Flusher with Atomic Staging
  * Eliminates race condition data loss by staging dirty keys before processing.
  */
@@ -82,8 +287,7 @@ exports.flushMetricsToDb = async () => {
     const activeKey = 'dirty:car_metrics';
     const processingKey = 'dirty:car_metrics:processing';
 
-    // 1. If a prior batch is still in processing (e.g. from an earlier crash), resume it.
-    // Otherwise, atomically promote the active dirty set to the processing set.
+    // 1. If a prior batch is still in processing, resume it.
     const hasProcessing = await redisClient.exists(processingKey);
 
     if (!hasProcessing) {
@@ -93,7 +297,6 @@ exports.flushMetricsToDb = async () => {
       try {
         await redisClient.rename(activeKey, processingKey);
       } catch (renameErr) {
-        // If key did not exist or was renamed concurrently, safely return
         return;
       }
     }
@@ -117,7 +320,7 @@ exports.flushMetricsToDb = async () => {
       const countStr = await redisClient.getSet(bufferKey, '0');
       const incrementBy = parseInt(countStr) || 0;
 
-      if (incrementBy > 0) {
+      if (incrementBy !== 0) {
         if (!aggregatedByCar[carId]) {
           aggregatedByCar[carId] = {
             view: 0,
@@ -134,7 +337,7 @@ exports.flushMetricsToDb = async () => {
 
     const carIds = Object.keys(aggregatedByCar);
 
-    // 3. If there are positive counts, perform the atomic bulk UPSERT in MySQL
+    // 3. If there are pending adjustments, perform the atomic bulk UPSERT in MySQL with floor guards
     if (carIds.length > 0) {
       const valuePlaceholders = [];
       const replacements = {};
@@ -158,7 +361,7 @@ exports.flushMetricsToDb = async () => {
         replacements[pWish] = metrics.wishlist || 0;
 
         valuePlaceholders.push(
-          `(:${pCarId}, :${pViews}, :${pCalls}, :${pWa}, :${pMsg}, :${pEnq}, :${pWish}, NOW(), NOW())`
+          `(:${pCarId}, GREATEST(:${pViews}, 0), GREATEST(:${pCalls}, 0), GREATEST(:${pWa}, 0), GREATEST(:${pMsg}, 0), GREATEST(:${pEnq}, 0), GREATEST(:${pWish}, 0), NOW(), NOW())`
         );
       });
 
@@ -168,12 +371,12 @@ exports.flushMetricsToDb = async () => {
         )
         VALUES ${valuePlaceholders.join(', ')}
         ON DUPLICATE KEY UPDATE
-          views_count = views_count + VALUES(views_count),
-          calls_count = calls_count + VALUES(calls_count),
-          whatsapp_count = whatsapp_count + VALUES(whatsapp_count),
-          messages_count = messages_count + VALUES(messages_count),
-          enquiries_count = enquiries_count + VALUES(enquiries_count),
-          wishlist_count = wishlist_count + VALUES(wishlist_count),
+          views_count = GREATEST(CAST(views_count AS SIGNED) + VALUES(views_count), 0),
+          calls_count = GREATEST(CAST(calls_count AS SIGNED) + VALUES(calls_count), 0),
+          whatsapp_count = GREATEST(CAST(whatsapp_count AS SIGNED) + VALUES(whatsapp_count), 0),
+          messages_count = GREATEST(CAST(messages_count AS SIGNED) + VALUES(messages_count), 0),
+          enquiries_count = GREATEST(CAST(enquiries_count AS SIGNED) + VALUES(enquiries_count), 0),
+          wishlist_count = GREATEST(CAST(wishlist_count AS SIGNED) + VALUES(wishlist_count), 0),
           updated_at = NOW();
       `;
 

@@ -107,6 +107,8 @@ exports.toggleWishlist = async (userId, carId) => {
 
   if (existing) {
     await existing.destroy();
+    const analyticsService = require('./analyticsService');
+    await analyticsService.decrementInteraction({ carId, type: 'wishlist' });
     await invalidateWishlistCaches(userId, carId, car.user_id);
     return {
       is_wishlisted: false,
@@ -136,6 +138,8 @@ exports.removeFromWishlist = async (userId, carId) => {
   const car = await Car.findByPk(carId);
   const deletedCount = await Wishlist.destroy({ where: { user_id: userId, car_id: carId } });
   if (deletedCount > 0) {
+    const analyticsService = require('./analyticsService');
+    await analyticsService.decrementInteraction({ carId, type: 'wishlist' });
     await invalidateWishlistCaches(userId, carId, car?.user_id);
   }
   return { success: true, message: 'Removed from wishlist' };
