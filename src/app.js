@@ -182,8 +182,10 @@ app.use('/api/v1/transmissions', cacheMiddleware(300, { ignoreAuth: true }), req
 app.use('/api/v1/models', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/modelRoutes'));
 app.use('/api/v1/variants', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/variantRoutes'));
 app.use('/api/v1/car-types', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/carTypeRoutes'));
-app.use('/api/v1/categories', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/carTypeRoutes'));
-app.use('/api/categories', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/carTypeRoutes'));
+app.use('/api/car-types', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/carTypeRoutes'));
+app.use('/api/v1/categories', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/categoryRoutes'));
+app.use('/api/categories', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/categoryRoutes'));
+app.use('/api/v1/categroeries', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/categoryRoutes'));
 app.use('/api/v1/catalog', require('./routes/v1/catalogRoutes'));
 app.use('/api/v1/wishlist', require('./routes/v1/wishlistRoutes'));
 app.use('/api/v1/views', require('./routes/v1/viewRoutes'));
@@ -210,8 +212,9 @@ app.use('/api/v1/admin/highlights', require('./routes/v1/admin/highlightRoutes')
 app.use('/api/admin/highlights', require('./routes/v1/admin/highlightRoutes'));
 app.use('/api/v1/admin/car-types', require('./routes/v1/admin/carTypeRoutes'));
 app.use('/api/admin/car-types', require('./routes/v1/admin/carTypeRoutes'));
-app.use('/api/v1/admin/categories', require('./routes/v1/admin/carTypeRoutes'));
-app.use('/api/admin/categories', require('./routes/v1/admin/carTypeRoutes'));
+app.use('/api/v1/admin/categories', require('./routes/v1/admin/categoryRoutes'));
+app.use('/api/admin/categories', require('./routes/v1/admin/categoryRoutes'));
+app.use('/api/v1/admin/categroeries', require('./routes/v1/admin/categoryRoutes'));
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

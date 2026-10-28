@@ -79,7 +79,9 @@ beforeEach(async () => {
 afterAll(async () => {
   try {
     const notificationQueue = require('../src/queues/notificationQueue');
-    await notificationQueue.close();
+    if (notificationQueue && typeof notificationQueue.close === 'function') {
+      await notificationQueue.close().catch(() => {});
+    }
   } catch (e) {}
   try {
     await sequelize.close();

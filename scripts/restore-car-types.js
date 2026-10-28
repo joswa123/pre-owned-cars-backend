@@ -3,7 +3,6 @@
 require('dotenv').config();
 const sequelize = require('../src/config/database');
 const { CarType } = require('../src/models');
-const redisClient = require('../src/config/redis');
 
 const CANONICAL_CAR_TYPES = [
   { name: 'Sedan', slug: 'sedan', icon_url: 'https://res.cloudinary.com/fub1whjx/image/upload/v1787720191/sedan_pskci0.png', order: 1 },
@@ -24,10 +23,19 @@ async function restoreCarTypes() {
   await sequelize.authenticate();
   console.log('Connected to database:', sequelize.config.database);
 
-  console.log('1. Clearing current car_types...');
+  console.log('1. Backing up existing categories to categories table...');
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS categories LIKE car_types;
+  `);
+  await sequelize.query(`
+    INSERT IGNORE INTO categories SELECT * FROM car_types;
+  `);
+  console.log('✅ Current categories safely backed up to categories table.');
+
+  console.log('2. Clearing current car_types...');
   await sequelize.query('DELETE FROM car_types;');
 
-  console.log('2. Inserting canonical car body types (Sedan, SUV, Hatchback, etc.)...');
+  console.log('3. Inserting canonical car body types (Sedan, SUV, Hatchback, etc.)...');
   for (const item of CANONICAL_CAR_TYPES) {
     await CarType.create({
       name: item.name,
@@ -41,6 +49,7 @@ async function restoreCarTypes() {
 
   // Clear Redis Cache
   try {
+    const redisClient = require('../src/config/redis');
     if (redisClient && redisClient.isOpen) {
       const patterns = [
         '__express__/api/v1/car-types*',

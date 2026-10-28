@@ -14,6 +14,7 @@ const Variant = require('./Variant');
 const FuelType = require('./FuelType');
 const Transmission = require('./Transmission');
 const CarType = require('./CarType');
+const Category = require('./Category');
 const RefreshToken = require('./RefreshToken');
 const Wishlist = require('./Wishlist');
 const Lead = require('./Lead');
@@ -220,6 +221,7 @@ const models = {
   FuelType,
   Transmission,
   CarType,
+  Category,
   RefreshToken,
   Wishlist,
   Lead,
