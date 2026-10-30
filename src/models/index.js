@@ -14,7 +14,9 @@ const Variant = require('./Variant');
 const FuelType = require('./FuelType');
 const Transmission = require('./Transmission');
 const CarType = require('./CarType');
+const VehicleType = require('./VehicleType');
 const Category = require('./Category');
+const BrandType = require('./BrandType');
 const RefreshToken = require('./RefreshToken');
 const Wishlist = require('./Wishlist');
 const Lead = require('./Lead');
@@ -134,6 +136,44 @@ User.belongsTo(City, { foreignKey: 'city_id', as: 'cityDetail' });
 // ==========================================
 // CATALOG & OTHER RELATIONSHIPS
 // ==========================================
+// ==========================================
+// VEHICLE TYPE, CATEGORY & BRAND RELATIONSHIPS
+// ==========================================
+Category.hasMany(VehicleType, { foreignKey: 'category_id', as: 'vehicleTypes' });
+VehicleType.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
+Category.hasMany(CarType, { foreignKey: 'category_id', as: 'carTypes' });
+CarType.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
+
+// Direct 1-to-Many link (optional/fallback)
+VehicleType.hasMany(Brand, { foreignKey: 'type_id', as: 'directBrands' });
+Brand.belongsTo(VehicleType, { foreignKey: 'type_id', as: 'primaryType' });
+
+// Many-to-Many through BrandType junction table
+VehicleType.belongsToMany(Brand, {
+  through: BrandType,
+  foreignKey: 'type_id',
+  otherKey: 'brand_id',
+  as: 'brands',
+});
+Brand.belongsToMany(VehicleType, {
+  through: BrandType,
+  foreignKey: 'brand_id',
+  otherKey: 'type_id',
+  as: 'brandTypes',
+});
+Brand.belongsToMany(VehicleType, {
+  through: BrandType,
+  foreignKey: 'brand_id',
+  otherKey: 'type_id',
+  as: 'vehicleTypes',
+});
+
+// Direct junction access
+Brand.hasMany(BrandType, { foreignKey: 'brand_id', as: 'brandTypeMappings', onDelete: 'CASCADE' });
+BrandType.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });
+VehicleType.hasMany(BrandType, { foreignKey: 'type_id', as: 'typeBrandMappings', onDelete: 'CASCADE' });
+BrandType.belongsTo(VehicleType, { foreignKey: 'type_id', as: 'vehicleType' });
+
 Brand.hasMany(Model, { foreignKey: 'brandId', onDelete: 'CASCADE' });
 Model.belongsTo(Brand, { foreignKey: 'brandId', as: 'brand' });
 
@@ -221,7 +261,9 @@ const models = {
   FuelType,
   Transmission,
   CarType,
+  VehicleType,
   Category,
+  BrandType,
   RefreshToken,
   Wishlist,
   Lead,

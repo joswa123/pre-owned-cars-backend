@@ -36,6 +36,15 @@ const CarType = sequelize.define('CarType', {
     allowNull: false,
     defaultValue: true,
   },
+  category_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'categories',
+      key: 'id',
+    },
+    comment: 'Links to categories (Car, Commercial, Bike, etc.)',
+  },
 }, {
   tableName: 'car_types',
   timestamps: true,

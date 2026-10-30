@@ -295,7 +295,37 @@ function createUpload(folderName, extraParams = {}, fieldName = 'image', maxFile
     fileFilter: imageFileFilter,
   });
 
-  return wrapMulter(rawMulter.single(fieldName));
+  const middleware = (req, res, next) => {
+    // If request is application/json or no multipart boundary, skip multer execution
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.includes('multipart/form-data')) {
+      return next();
+    }
+    rawMulter.fields([
+      { name: fieldName, maxCount: 1 },
+      { name: 'logo', maxCount: 1 },
+      { name: 'image', maxCount: 1 },
+      { name: 'icon', maxCount: 1 },
+    ])(req, res, (err) => {
+      if (err) return next(err);
+      if (!req.file && req.files) {
+        req.file = req.files[fieldName]?.[0] || req.files.logo?.[0] || req.files.image?.[0] || req.files.icon?.[0] || null;
+      }
+      next();
+    });
+  };
+
+  const wrapped = wrapMulter(middleware);
+  wrapped.single = (field) => wrapMulter((req, res, next) => {
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.includes('multipart/form-data')) {
+      return next();
+    }
+    rawMulter.single(field)(req, res, next);
+  });
+  wrapped.fields = (fields) => wrapMulter(rawMulter.fields(fields));
+
+  return wrapped;
 }
 
 const MAX_CAR_IMAGES = parseInt(process.env.MAX_CAR_IMAGES, 10) || 20;
@@ -310,6 +340,7 @@ const FIELD_MAX_COUNTS = {
   dealerProfile: 1,
   image: 1,
   icon: 1,
+  logo: 1,
 };
 
 // ─── Multer Error Handling Wrapper ───────────────────────

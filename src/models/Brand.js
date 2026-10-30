@@ -1,10 +1,11 @@
-const path = require('path');
+'use strict';
+
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
 /**
  * Brand Model
- * Stores vehicle manufacturers (e.g. Maruti Suzuki, Hyundai, Tata).
+ * Stores vehicle manufacturers (e.g. Maruti Suzuki, Hyundai, Tata, Ashok Leyland).
  */
 const Brand = sequelize.define('Brand', {
   id: {
@@ -17,9 +18,22 @@ const Brand = sequelize.define('Brand', {
     allowNull: false,
     unique: true,
   },
+  slug: {
+    type: DataTypes.STRING(120),
+    allowNull: true,
+  },
   logo: {
     type: DataTypes.STRING(255),
     allowNull: true,
+  },
+  type_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'car_types',
+      key: 'id',
+    },
+    comment: 'Primary or direct linked vehicle type (fallback / 1-to-many link)',
   },
   is_active: {
     type: DataTypes.BOOLEAN,
@@ -38,6 +52,12 @@ const Brand = sequelize.define('Brand', {
       return this.getDataValue('logo');
     },
   },
+  logo_url: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('logo');
+    },
+  },
 }, {
   tableName: 'brands',
   timestamps: true,
@@ -45,6 +65,8 @@ const Brand = sequelize.define('Brand', {
   indexes: [
     { unique: true, fields: ['name'] },
     { unique: true, fields: ['external_id'] },
+    { fields: ['slug'] },
+    { fields: ['type_id'] },
     { fields: ['is_active'] },
   ],
 });
