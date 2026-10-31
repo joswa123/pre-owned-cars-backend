@@ -112,6 +112,7 @@ Car.belongsTo(District, { foreignKey: 'district_id', as: 'district' });
 District.hasMany(Car, { foreignKey: 'district_id' });
 
 Car.belongsTo(City, { foreignKey: 'city_id', as: 'city' });
+Car.belongsTo(City, { foreignKey: 'city_id', as: 'cities' });
 City.hasMany(Car, { foreignKey: 'city_id' });
 
 // ==========================================

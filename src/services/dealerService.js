@@ -115,9 +115,9 @@ exports.getDealerById = async (dealerId) => {
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
           { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-          { model: State, as: 'state', attributes: ['name'] },
-          { model: District, as: 'district', attributes: ['name'] },
-          { model: City, as: 'city', attributes: ['name'] },
+          { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+          { model: District, as: 'district', attributes: ['id', 'name'] },
+          { model: City, as: 'city', attributes: ['id', 'name'] },
         ],
       },
     ],
@@ -125,10 +125,16 @@ exports.getDealerById = async (dealerId) => {
 
   if (!dealer) throw new AppError('Dealer not found', 404);
 
+  const { transformCarImages } = require('./carService');
+  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
   const dealerJson = dealer.toJSON();
   dealerJson.location_text = [dealerJson.cityDetail?.name, dealerJson.districtDetail?.name, dealerJson.stateDetail?.name]
     .filter(Boolean)
     .join(', ');
+
+  if (Array.isArray(dealerJson.postedCars)) {
+    dealerJson.postedCars = dealerJson.postedCars.map(c => transformCarImages(c, baseUrl));
+  }
   return dealerJson;
 };
 
@@ -635,7 +641,7 @@ exports.getDealerCars = async (
       { model: Brand, as: 'brand', attributes: ['id', 'name', 'logo'] },
       { model: Model, as: 'carModel', attributes: ['id', 'name'] },
       { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
     ],
@@ -644,16 +650,20 @@ exports.getDealerCars = async (
     offset,
   });
 
+  const { transformCarImages } = require('./carService');
+  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  const transformedCars = cars.map(c => transformCarImages(c, baseUrl));
+
   if (isCacheEligible && redisClient.isOpen) {
     try {
-      await redisClient.setEx(carsCacheKey, 120, JSON.stringify(cars)).catch(() => {}); // 2 min TTL
+      await redisClient.setEx(carsCacheKey, 120, JSON.stringify(transformedCars)).catch(() => {}); // 2 min TTL
     } catch (err) {
       console.error('[DealerService] Redis set cars error:', err);
     }
   }
 
   return {
-    cars,
+    cars: transformedCars,
     pagination: {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),

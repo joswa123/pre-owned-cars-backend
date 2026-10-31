@@ -37,6 +37,24 @@ const Car = sequelize.define('Car', {
     references: { model: 'cities', key: 'id' },
     onDelete: 'SET NULL',
   },
+  stateName: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.state?.name || null;
+    }
+  },
+  districtName: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.district?.name || null;
+    }
+  },
+  cityName: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.city?.name || this.cities?.name || null;
+    }
+  },
 
   brand_id: {
     type: DataTypes.UUID,
@@ -203,7 +221,8 @@ const Car = sequelize.define('Car', {
     type: DataTypes.VIRTUAL,
     get() {
       const parts = [];
-      if (this.city?.name) parts.push(this.city.name);
+      const cName = this.city?.name || this.cities?.name;
+      if (cName) parts.push(cName);
       if (this.district?.name) parts.push(this.district.name);
       if (this.state?.name) parts.push(this.state.name);
       return parts.length > 0 ? parts.join(', ') : null;

@@ -70,7 +70,7 @@ exports.getCars = catchAsync(async (req, res) => {
   }
 
   // Parse arrays
-  const arrayFields = ['brands', 'models', 'fuel_types', 'body_types', 'ownerships', 'transmissions', 'colors', 'variants'];
+  const arrayFields = ['brands', 'models', 'fuel_types', 'body_types', 'ownerships', 'transmissions', 'colors', 'variants', 'states', 'districts', 'cities'];
   arrayFields.forEach(field => {
     if (filters[field] && typeof filters[field] === 'string') {
       filters[field] = filters[field].split(',').map(item => item.trim()).filter(Boolean);

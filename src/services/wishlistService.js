@@ -169,7 +169,7 @@ exports.getWishlist = async (userId) => {
           { model: Brand, as: 'brand', attributes: ['id', 'name'] },
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
           { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-          { model: State, as: 'state', attributes: ['id', 'name'] },
+          { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
           { model: District, as: 'district', attributes: ['id', 'name'] },
           { model: City, as: 'city', attributes: ['id', 'name'] },
         ],
@@ -178,9 +178,12 @@ exports.getWishlist = async (userId) => {
     order: [['created_at', 'DESC']],
   });
   // Extract cars from wishlist entries, safely filtering out nulls for deleted cars
+  const { transformCarImages } = require('./carService');
+  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
   return wishlist
     .map(w => (w.car || w.Car || null))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(c => transformCarImages(c, baseUrl));
 };
 
 /**

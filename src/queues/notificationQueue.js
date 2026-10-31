@@ -1,8 +1,8 @@
 const Queue = require('bull');
 const { matchRequirementsForCar } = require('../services/requirementMatchingService');
 
-// In local dev, if Redis is down or has exceeded free quota, allow disabling Bull to prevent lockup
-if (process.env.DISABLE_BULL_IN_DEV === 'true') {
+// In local dev or test, if Redis is down or has exceeded free quota, allow disabling Bull to prevent lockup
+if (process.env.DISABLE_BULL_IN_DEV === 'true' || process.env.NODE_ENV === 'test') {
   module.exports = {
     add: async (data) => {
       console.log(`[Notification Queue Mock] Running matching synchronously for carId: ${data.carId}`);

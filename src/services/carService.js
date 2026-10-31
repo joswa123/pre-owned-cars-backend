@@ -169,6 +169,62 @@ const transformCarImages = (car, baseUrl = null) => {
     delete carJson.seller.dealerProfile;
   }
 
+  // Resolve and format State, District, City / Cities
+  let stateObj = carJson.state || (car.state ? (typeof car.state.toJSON === 'function' ? car.state.toJSON() : car.state) : null);
+  let districtObj = carJson.district || (car.district ? (typeof car.district.toJSON === 'function' ? car.district.toJSON() : car.district) : null);
+  let cityObj = carJson.city || carJson.cities || (car.city ? (typeof car.city.toJSON === 'function' ? car.city.toJSON() : car.city) : null) || (car.cities ? (typeof car.cities.toJSON === 'function' ? car.cities.toJSON() : car.cities) : null);
+
+  if (typeof stateObj === 'string') stateObj = { name: stateObj };
+  if (typeof districtObj === 'string') districtObj = { name: districtObj };
+  if (typeof cityObj === 'string') cityObj = { name: cityObj };
+
+  // Fallback to seller location if car's direct location fields are not present
+  const rawSeller = car.seller;
+  if (!districtObj && (rawSeller?.district || rawSeller?.districtDetail || carJson.seller?.district)) {
+    const sDist = rawSeller?.districtDetail || rawSeller?.district || carJson.seller?.district;
+    districtObj = typeof sDist === 'object' ? (typeof sDist.toJSON === 'function' ? sDist.toJSON() : sDist) : { name: sDist };
+  }
+  if (!cityObj && (rawSeller?.cityDetail || rawSeller?.city || carJson.seller?.city)) {
+    const sCity = rawSeller?.cityDetail || rawSeller?.city || carJson.seller?.city;
+    cityObj = typeof sCity === 'object' ? (typeof sCity.toJSON === 'function' ? sCity.toJSON() : sCity) : { name: sCity };
+  }
+  if (!stateObj && (rawSeller?.stateDetail || rawSeller?.state || carJson.seller?.state)) {
+    const sState = rawSeller?.stateDetail || rawSeller?.state || carJson.seller?.state;
+    stateObj = typeof sState === 'object' ? (typeof sState.toJSON === 'function' ? sState.toJSON() : sState) : { name: sState };
+  }
+
+  // Cross-derive hierarchy if partial location info is available
+  if (cityObj && typeof cityObj === 'object') {
+    if (!districtObj && (cityObj.district || cityObj.districtDetail)) {
+      districtObj = cityObj.district || cityObj.districtDetail;
+    }
+    if (!stateObj && (cityObj.state || cityObj.stateDetail)) {
+      stateObj = cityObj.state || cityObj.stateDetail;
+    }
+  }
+  if (districtObj && typeof districtObj === 'object') {
+    if (!stateObj && (districtObj.state || districtObj.stateDetail)) {
+      stateObj = districtObj.state || districtObj.stateDetail;
+    }
+  }
+
+  const districtName = districtObj?.name || null;
+  const cityName = cityObj?.name || null;
+  const stateName = stateObj?.name || null;
+  const locationText = [cityName, districtName, stateName].filter(Boolean).join(', ') || carJson.location_text || null;
+
+  carJson.state = stateObj;
+  carJson.district = districtObj;
+  carJson.city = cityObj;
+  carJson.cities = cityObj; // alias requested: "we need district, cities, state"
+  carJson.districtName = districtName;
+  carJson.cityName = cityName;
+  carJson.stateName = stateName;
+  carJson.district_name = districtName;
+  carJson.city_name = cityName;
+  carJson.state_name = stateName;
+  carJson.location_text = locationText;
+
   // Attach icon URL directly for body type
   const normalizedBodyType = carJson.body_type ? carJson.body_type.toString().toLowerCase().trim() : '';
   const matchedIcon = CAR_TYPE_ICONS[normalizedBodyType]
@@ -313,8 +369,13 @@ exports.createCar = async (userId, carData, files) => {
     }
 
     if (cityId) {
-      const cityExists = await City.findByPk(cityId, { transaction });
-      if (!cityExists) cityId = null;
+      const city = await City.findByPk(cityId, { transaction });
+      if (city) {
+        if (!districtId && city.district_id) districtId = city.district_id;
+        if (!stateId && city.state_id) stateId = city.state_id;
+      } else {
+        cityId = null;
+      }
     }
 
     if (stateId) {
@@ -509,7 +570,7 @@ exports.createCar = async (userId, carData, files) => {
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
         { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
@@ -672,6 +733,7 @@ exports.getCars = async (
               ...(/^\d+$/.test(brandStr) ? [{ external_id: parseInt(brandStr, 10) }] : []),
             ],
           },
+          attributes: ['id'],
         });
         where.brand_id = brand ? brand.id : '00000000-0000-0000-0000-000000000000';
       }
@@ -687,6 +749,7 @@ exports.getCars = async (
               ...(/^\d+$/.test(brandStr) ? [{ external_id: parseInt(brandStr, 10) }] : []),
             ],
           },
+          attributes: ['id'],
         });
         where.brand_id = brand ? brand.id : '00000000-0000-0000-0000-000000000000';
       }
@@ -990,11 +1053,134 @@ exports.getCars = async (
     if (minCreatedAt) {
       where.created_at = { ...where.created_at, [Op.gte]: minCreatedAt };
     }
+    // Location: State, District, City / Cities
+    // 1. State Filter (supports state_id, state name/code, states array/csv)
+    if (filters.states && filters.states.length) {
+      const stateItems = Array.isArray(filters.states) ? filters.states : String(filters.states).split(',');
+      const resolvedStateIds = [];
+      const nameStateItems = [];
+      for (const item of stateItems) {
+        const trimmed = String(item).trim();
+        if (!trimmed) continue;
+        if (isUuid(trimmed)) {
+          resolvedStateIds.push(trimmed);
+        } else {
+          nameStateItems.push(trimmed);
+        }
+      }
+      if (nameStateItems.length) {
+        const foundStates = await State.findAll({
+          where: {
+            [Op.or]: [
+              { name: { [Op.in]: nameStateItems } },
+              { code: { [Op.in]: nameStateItems } },
+            ],
+          },
+          attributes: ['id'],
+        });
+        resolvedStateIds.push(...foundStates.map(s => s.id));
+      }
+      const uniqueStateIds = [...new Set(resolvedStateIds)];
+      where.state_id = { [Op.in]: uniqueStateIds.length ? uniqueStateIds : ['00000000-0000-0000-0000-000000000000'] };
+    } else if (filters.state_id) {
+      const stateStr = String(filters.state_id).trim();
+      where.state_id = isUuid(stateStr) ? stateStr : filters.state_id;
+    } else if (filters.state) {
+      const stateStr = String(filters.state).trim();
+      if (isUuid(stateStr)) {
+        where.state_id = stateStr;
+      } else {
+        const foundState = await State.findOne({
+          where: {
+            [Op.or]: [
+              { name: stateStr },
+              { code: stateStr },
+              { name: { [Op.like]: `${stateStr}%` } },
+            ],
+          },
+          attributes: ['id'],
+        });
+        where.state_id = foundState ? foundState.id : '00000000-0000-0000-0000-000000000000';
+      }
+    }
 
-    // Location
-    if (filters.state_id) where.state_id = filters.state_id;
-    if (filters.district_id) where.district_id = filters.district_id;
-    if (filters.city_id) where.city_id = filters.city_id;
+    // 2. District Filter (supports district_id, district name, districts array/csv)
+    if (filters.districts && filters.districts.length) {
+      const distItems = Array.isArray(filters.districts) ? filters.districts : String(filters.districts).split(',');
+      const resolvedDistIds = [];
+      const nameDistItems = [];
+      for (const item of distItems) {
+        const trimmed = String(item).trim();
+        if (!trimmed) continue;
+        if (isUuid(trimmed)) {
+          resolvedDistIds.push(trimmed);
+        } else {
+          nameDistItems.push(trimmed);
+        }
+      }
+      if (nameDistItems.length) {
+        const foundDists = await District.findAll({
+          where: { name: { [Op.in]: nameDistItems } },
+          attributes: ['id'],
+        });
+        resolvedDistIds.push(...foundDists.map(d => d.id));
+      }
+      const uniqueDistIds = [...new Set(resolvedDistIds)];
+      where.district_id = { [Op.in]: uniqueDistIds.length ? uniqueDistIds : ['00000000-0000-0000-0000-000000000000'] };
+    } else if (filters.district_id) {
+      const distStr = String(filters.district_id).trim();
+      where.district_id = isUuid(distStr) ? distStr : filters.district_id;
+    } else if (filters.district) {
+      const distStr = String(filters.district).trim();
+      if (isUuid(distStr)) {
+        where.district_id = distStr;
+      } else {
+        const foundDist = await District.findOne({
+          where: {
+            [Op.or]: [
+              { name: distStr },
+              { name: { [Op.like]: `${distStr}%` } },
+            ],
+          },
+          attributes: ['id'],
+        });
+        where.district_id = foundDist ? foundDist.id : '00000000-0000-0000-0000-000000000000';
+      }
+    }
+
+    // 3. City / Cities Filter (supports city_id, city name, cities array/csv)
+    const cityFilterInput = filters.cities || filters.city;
+    if (cityFilterInput && (Array.isArray(cityFilterInput) || typeof cityFilterInput === 'string')) {
+      const cityItems = Array.isArray(cityFilterInput) ? cityFilterInput : String(cityFilterInput).split(',');
+      const resolvedCityIds = [];
+      const nameCityItems = [];
+      for (const item of cityItems) {
+        const trimmed = String(item).trim();
+        if (!trimmed) continue;
+        if (isUuid(trimmed)) {
+          resolvedCityIds.push(trimmed);
+        } else {
+          nameCityItems.push(trimmed);
+        }
+      }
+      if (nameCityItems.length) {
+        const foundCities = await City.findAll({
+          where: {
+            [Op.or]: [
+              { name: { [Op.in]: nameCityItems } },
+              ...nameCityItems.map(n => ({ name: { [Op.like]: `${n}%` } })),
+            ],
+          },
+          attributes: ['id'],
+        });
+        resolvedCityIds.push(...foundCities.map(c => c.id));
+      }
+      const uniqueCityIds = [...new Set(resolvedCityIds)];
+      where.city_id = { [Op.in]: uniqueCityIds.length ? uniqueCityIds : ['00000000-0000-0000-0000-000000000000'] };
+    } else if (filters.city_id) {
+      const cityStr = String(filters.city_id).trim();
+      where.city_id = isUuid(cityStr) ? cityStr : filters.city_id;
+    }
 
     // User / Seller / Posted by me filters
     // Note: user_id / seller_id arbitrary query param is allowed only for admin users or when explicitly 'me'
@@ -1060,7 +1246,7 @@ exports.getCars = async (
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
         { model: Lead, as: 'leads', attributes: ['id'] },
@@ -1157,7 +1343,7 @@ exports.getCarById = async (carId, userId = null) => {
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
         { model: Lead, as: 'leads', attributes: ['id'], required: false },
@@ -1239,7 +1425,9 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+      { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
       { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
@@ -1324,6 +1512,9 @@ exports.getUserCars = async (userId, options = {}) => {
     if (options.b2b_listing !== undefined) {
       whereClause.b2b_listing = options.b2b_listing === true || options.b2b_listing === 'true';
     }
+    if (options.state_id) whereClause.state_id = options.state_id;
+    if (options.district_id) whereClause.district_id = options.district_id;
+    if (options.city_id) whereClause.city_id = options.city_id;
 
     // Price filters
     if (options.min_price || options.minPrice) {
@@ -1568,6 +1759,27 @@ exports.updateCar = async (carId, userId, updateData, files) => {
     if (mapped.prior_appointemnts !== undefined) {
       filteredData.prior_appointemnts = mapped.prior_appointemnts === true || mapped.prior_appointemnts === 'true' || mapped.prior_appointemnts === 1 || mapped.prior_appointemnts === '1';
     }
+    if (mapped.state_id !== undefined) filteredData.state_id = mapped.state_id || null;
+    if (mapped.district_id !== undefined) filteredData.district_id = mapped.district_id || null;
+    if (mapped.city_id !== undefined) filteredData.city_id = mapped.city_id || null;
+
+    if (filteredData.district_id) {
+      const dist = await District.findByPk(filteredData.district_id, { transaction });
+      if (dist) {
+        if (!filteredData.state_id) filteredData.state_id = dist.state_id;
+        if (!filteredData.city_id) {
+          const city = await City.findOne({ where: { district_id: filteredData.district_id }, transaction });
+          if (city) filteredData.city_id = city.id;
+        }
+      }
+    }
+    if (filteredData.city_id) {
+      const city = await City.findByPk(filteredData.city_id, { transaction });
+      if (city) {
+        if (!filteredData.district_id && city.district_id) filteredData.district_id = city.district_id;
+        if (!filteredData.state_id && city.state_id) filteredData.state_id = city.state_id;
+      }
+    }
 
     if (files) {
       const getFileUrl = (f) => {
@@ -1760,7 +1972,7 @@ exports.updateCar = async (carId, userId, updateData, files) => {
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
         { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
@@ -1918,6 +2130,19 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
   if (filters.state_id) where.state_id = filters.state_id;
   if (filters.district_id) where.district_id = filters.district_id;
   if (filters.city_id) where.city_id = filters.city_id;
+  if (filters.district && !filters.district_id) {
+    const d = await District.findOne({ where: { name: filters.district } });
+    if (d) where.district_id = d.id;
+  }
+  const cityInput = filters.cities || filters.city;
+  if (cityInput && !filters.city_id) {
+    const c = await City.findOne({ where: { name: cityInput } });
+    if (c) where.city_id = c.id;
+  }
+  if (filters.state && !filters.state_id) {
+    const s = await State.findOne({ where: { [Op.or]: [{ name: filters.state }, { code: filters.state }] } });
+    if (s) where.state_id = s.id;
+  }
 
   const { count, rows } = await queryModel.findAndCountAll({
     distinct: true,
@@ -1927,7 +2152,9 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+      { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
     ],
@@ -2235,9 +2462,9 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
         { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
         { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-        { model: State, as: 'state', attributes: ['name'] },
-        { model: District, as: 'district', attributes: ['name'] },
-        { model: City, as: 'city', attributes: ['name'] }
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] }
       ]
     });
 
@@ -2288,16 +2515,17 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
           { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-          { model: State, as: 'state', attributes: ['name'] },
-          { model: District, as: 'district', attributes: ['name'] },
-          { model: City, as: 'city', attributes: ['name'] }
+          { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+          { model: District, as: 'district', attributes: ['id', 'name'] },
+          { model: City, as: 'city', attributes: ['id', 'name'] }
         ]
       });
       scoredCandidates = fallbackCars.map(car => ({ car, score: 0 }));
     }
 
     const total = scoredCandidates.length;
-    const paginatedCars = scoredCandidates.slice(offset, offset + limit).map(sc => sc.car);
+    const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+    const paginatedCars = scoredCandidates.slice(offset, offset + limit).map(sc => transformCarImages(sc.car, baseUrl));
 
     similarCarsData = {
       data: paginatedCars,
@@ -2383,14 +2611,18 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           { model: Model, as: 'carModel', attributes: ['id', 'name'] },
           { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
-          { model: State, as: 'state', attributes: ['name'] },
-          { model: District, as: 'district', attributes: ['name'] },
-          { model: City, as: 'city', attributes: ['name'] }
+          { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+          { model: District, as: 'district', attributes: ['id', 'name'] },
+          { model: City, as: 'city', attributes: ['id', 'name'] }
         ]
       });
 
       // Order correctly based on the ids
-      recommendedCarsData = recommendedCarIds.map(id => recCars.find(c => c.id === id)).filter(Boolean);
+      const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+      recommendedCarsData = recommendedCarIds
+        .map(id => recCars.find(c => c.id === id))
+        .filter(Boolean)
+        .map(c => transformCarImages(c, baseUrl));
     } else {
       recommendedCarsData = [];
     }
@@ -2410,7 +2642,9 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
     similarCars: similarCarsData,
     recommendedCars: recommendedCarsData
   };
-};exports.uploadCarVideo = async (carId, userId, file) => {
+};
+
+exports.uploadCarVideo = async (carId, userId, file) => {
   const { Car } = require('../models');
   const { AppError } = require('../utils/errorHandler');
   const { cloudinary } = require('../config/cloudinary');
