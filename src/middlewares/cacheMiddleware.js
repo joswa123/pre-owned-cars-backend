@@ -95,7 +95,7 @@ const clearCache = async (prefix) => {
     const pattern = `__express__${prefix}*`;
     let count = 0;
     for await (const chunk of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
-      const batch = Array.isArray(chunk) ? chunk : (chunk ? [chunk] : []);
+      const batch = Array.isArray(chunk) ? chunk.filter(Boolean) : (chunk ? [chunk] : []);
       if (batch.length > 0) {
         await redisClient.del(batch);
         count += batch.length;

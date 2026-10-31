@@ -23,13 +23,9 @@ const clearCache = async (key) => {
 const clearCachePattern = async (pattern) => {
   try {
     if (redisClient.isOpen) {
-      const keys = [];
-      for await (const key of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
-        if (key) keys.push(key);
-      }
-      if (keys.length > 0) {
-        for (let i = 0; i < keys.length; i += 100) {
-          const batch = keys.slice(i, i + 100);
+      for await (const chunk of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+        const batch = Array.isArray(chunk) ? chunk.filter(Boolean) : (chunk ? [chunk] : []);
+        if (batch.length > 0) {
           await redisClient.del(batch);
         }
       }
@@ -89,7 +85,14 @@ const invalidateCarCaches = async (carId = null, userId = null, oldUserId = null
     console.error('Car cache invalidation error:', err);
   }
 };
-const { mapToDbValues, FUEL_TYPE_MAP, TRANSMISSION_MAP } = require('../validations/carValidation');
+const {
+  mapToDbValues,
+  FUEL_TYPE_MAP,
+  TRANSMISSION_MAP,
+  BODY_TYPE_MAP,
+  OWNERSHIP_MAP,
+  BOARD_TYPE_MAP,
+} = require('../validations/carValidation');
 
 const sellerInclude = {
   model: User,
@@ -610,6 +613,648 @@ exports.createCar = async (userId, carData, files) => {
   }
 };
 
+/**
+ * Unifies car filter resolution and builds Sequelize whereClause & queryModel
+ * Used across public getCars, user-scoped getUserCars, and admin getAdminCars
+ */
+const buildCarFiltersWhere = async (rawFilters = {}, { isUserScope = false, userId = null, userRole = null } = {}) => {
+  const filters = {};
+  for (const [key, value] of Object.entries(rawFilters || {})) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    filters[key] = value;
+  }
+
+  const where = {};
+  let queryModel = Car;
+
+  // 1. Status Scoping
+  const rawStatus = filters.status ? String(filters.status).trim().toLowerCase() : null;
+  if (isUserScope) {
+    if (userId) {
+      where.user_id = userId;
+    }
+    if (rawStatus && rawStatus !== 'all') {
+      where.status = rawStatus;
+      if (rawStatus === 'deleted') {
+        queryModel = Car.unscoped();
+      }
+    } else if (rawStatus === 'all') {
+      queryModel = Car.unscoped();
+    }
+  } else {
+    // Public or admin feed
+    if (rawStatus && rawStatus !== 'all') {
+      where.status = rawStatus;
+      if (rawStatus === 'deleted') {
+        queryModel = Car.unscoped();
+      }
+    } else if (rawStatus === 'all') {
+      if (userRole === 'admin') {
+        queryModel = Car.unscoped();
+      } else {
+        where.status = { [Op.ne]: 'deleted' };
+      }
+    } else {
+      where.status = 'active';
+    }
+  }
+
+  // 2. User / Seller / Posted by me filters (for public/admin feeds)
+  if (!isUserScope) {
+    if (filters.user_id) {
+      if (userRole === 'admin' || filters.user_id === 'me') {
+        const targetUserId = filters.user_id === 'me' ? userId : filters.user_id;
+        if (targetUserId) where.user_id = targetUserId;
+      }
+    } else if (filters.seller_id) {
+      if (userRole === 'admin' || filters.seller_id === 'me') {
+        const targetSellerId = filters.seller_id === 'me' ? userId : filters.seller_id;
+        if (targetSellerId) where.user_id = targetSellerId;
+      }
+    } else if (filters.posted_by_me === true || filters.posted_by_me === 'true' || filters.mine === true || filters.mine === 'true') {
+      if (userId) where.user_id = userId;
+    }
+  }
+
+  // 3. Search query (across number_plate, color, description, brand name, model name)
+  if (filters.search || filters.q) {
+    const searchTerm = String(filters.search || filters.q).trim();
+    if (searchTerm) {
+      const sanitized = searchTerm.replace(/'/g, "''");
+      const searchWhere = [
+        { number_plate: { [Op.like]: `%${searchTerm}%` } },
+        { color: { [Op.like]: `%${searchTerm}%` } },
+        { description: { [Op.like]: `%${searchTerm}%` } },
+        sequelize.literal(`EXISTS (SELECT 1 FROM brands WHERE brands.id = Car.brand_id AND brands.name LIKE '%${sanitized}%')`),
+        sequelize.literal(`EXISTS (SELECT 1 FROM models WHERE models.id = Car.model_id AND models.name LIKE '%${sanitized}%')`),
+      ];
+      if (!where[Op.and]) where[Op.and] = [];
+      where[Op.and].push({ [Op.or]: searchWhere });
+    }
+  }
+
+  // 4. Posted by type
+  if (filters.posted_by_type && ['dealer', 'customer'].includes(String(filters.posted_by_type).toLowerCase())) {
+    where.posted_by_type = String(filters.posted_by_type).toLowerCase();
+  }
+
+  // 5. B2B & Board type
+  if (filters.b2b_listing !== undefined) {
+    where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
+  } else if (filters.b2b !== undefined) {
+    where.b2b_listing = filters.b2b === 'true' || filters.b2b === true;
+  }
+
+  if (filters.has_price_drop !== undefined) {
+    where.has_price_drop = filters.has_price_drop === 'true' || filters.has_price_drop === true;
+  }
+
+  if (filters.board_types && filters.board_types.length) {
+    const boards = (Array.isArray(filters.board_types) ? filters.board_types : String(filters.board_types).split(','))
+      .map(b => String(b).trim())
+      .filter(Boolean);
+    if (boards.length) {
+      where.board_type = { [Op.in]: boards };
+    }
+  } else if (filters.board_type) {
+    const bt = String(filters.board_type).trim();
+    if (bt.toUpperCase() === 'B2B') {
+      where.b2b_listing = true;
+    } else {
+      where.board_type = bt;
+    }
+  }
+
+  // 6. Price range & exact price
+  const exactPrice = filters.price;
+  if (exactPrice !== undefined && exactPrice !== null && exactPrice !== '') {
+    const parsedPrice = parseFloat(exactPrice);
+    if (!isNaN(parsedPrice)) where.price = parsedPrice;
+  } else {
+    const minPrice = filters.min_price ?? filters.minPrice;
+    const maxPrice = filters.max_price ?? filters.maxPrice;
+    if (minPrice !== undefined && minPrice !== null && minPrice !== '') {
+      const parsedMin = parseFloat(minPrice);
+      if (!isNaN(parsedMin)) {
+        where.price = { ...(where.price || {}), [Op.gte]: parsedMin };
+      }
+    }
+    if (maxPrice !== undefined && maxPrice !== null && maxPrice !== '') {
+      const parsedMax = parseFloat(maxPrice);
+      if (!isNaN(parsedMax)) {
+        where.price = { ...(where.price || {}), [Op.lte]: parsedMax };
+      }
+    }
+  }
+
+  // 7. Year range & exact year
+  const exactYear = filters.year;
+  if (exactYear !== undefined && exactYear !== null && exactYear !== '') {
+    const parsedYear = parseInt(exactYear, 10);
+    if (!isNaN(parsedYear)) where.year = parsedYear;
+  } else {
+    const minYear = filters.min_year ?? filters.minYear;
+    const maxYear = filters.max_year ?? filters.maxYear;
+    if (minYear !== undefined && minYear !== null && minYear !== '') {
+      const parsedMinY = parseInt(minYear, 10);
+      if (!isNaN(parsedMinY)) {
+        where.year = { ...(where.year || {}), [Op.gte]: parsedMinY };
+      }
+    }
+    if (maxYear !== undefined && maxYear !== null && maxYear !== '') {
+      const parsedMaxY = parseInt(maxYear, 10);
+      if (!isNaN(parsedMaxY)) {
+        where.year = { ...(where.year || {}), [Op.lte]: parsedMaxY };
+      }
+    }
+  }
+
+  // 8. KM Driven range & exact km
+  const exactKm = filters.km_driven ?? filters.kmdriven;
+  if (exactKm !== undefined && exactKm !== null && exactKm !== '') {
+    const parsedKm = parseFloat(exactKm);
+    if (!isNaN(parsedKm)) where.km_driven = parsedKm;
+  } else {
+    const minKm = filters.min_km ?? filters.minKm;
+    const maxKm = filters.max_km ?? filters.maxKm;
+    if (minKm !== undefined && minKm !== null && minKm !== '') {
+      const parsedMinKm = parseFloat(minKm);
+      if (!isNaN(parsedMinKm)) {
+        where.km_driven = { ...(where.km_driven || {}), [Op.gte]: parsedMinKm };
+      }
+    }
+    if (maxKm !== undefined && maxKm !== null && maxKm !== '') {
+      const parsedMaxKm = parseFloat(maxKm);
+      if (!isNaN(parsedMaxKm)) {
+        where.km_driven = { ...(where.km_driven || {}), [Op.lte]: parsedMaxKm };
+      }
+    }
+  }
+
+  // 9. Brands filter (supports brands array/csv, brand_id, brand name/id)
+  if (filters.brands && filters.brands.length) {
+    const brandItems = Array.isArray(filters.brands) ? filters.brands : String(filters.brands).split(',');
+    const resolvedBrandIds = [];
+    const numericBrandIds = [];
+    const nameBrandItems = [];
+
+    for (const item of brandItems) {
+      const trimmed = String(item).trim();
+      if (!trimmed) continue;
+      if (isUuid(trimmed)) {
+        resolvedBrandIds.push(trimmed);
+      } else {
+        if (/^\d+$/.test(trimmed)) {
+          numericBrandIds.push(parseInt(trimmed, 10));
+        }
+        nameBrandItems.push(trimmed);
+      }
+    }
+
+    if (numericBrandIds.length || nameBrandItems.length) {
+      const foundBrands = await Brand.findAll({
+        where: {
+          [Op.or]: [
+            ...(nameBrandItems.length ? [{ name: { [Op.in]: nameBrandItems } }] : []),
+            ...(numericBrandIds.length ? [{ external_id: { [Op.in]: numericBrandIds } }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      resolvedBrandIds.push(...foundBrands.map(b => b.id));
+    }
+
+    const uniqueBrandIds = [...new Set(resolvedBrandIds)];
+    where.brand_id = { [Op.in]: uniqueBrandIds.length ? uniqueBrandIds : ['00000000-0000-0000-0000-000000000000'] };
+  } else if (filters.brand_id) {
+    const brandStr = String(filters.brand_id).trim();
+    if (isUuid(brandStr)) {
+      where.brand_id = brandStr;
+    } else {
+      const brand = await Brand.findOne({
+        where: {
+          [Op.or]: [
+            { name: brandStr },
+            ...(/^\d+$/.test(brandStr) ? [{ external_id: parseInt(brandStr, 10) }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      where.brand_id = brand ? brand.id : '00000000-0000-0000-0000-000000000000';
+    }
+  } else if (filters.brand) {
+    const brandStr = String(filters.brand).trim();
+    if (isUuid(brandStr)) {
+      where.brand_id = brandStr;
+    } else {
+      const brand = await Brand.findOne({
+        where: {
+          [Op.or]: [
+            { name: brandStr },
+            ...(/^\d+$/.test(brandStr) ? [{ external_id: parseInt(brandStr, 10) }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      where.brand_id = brand ? brand.id : '00000000-0000-0000-0000-000000000000';
+    }
+  }
+
+  // 10. Models filter (supports models array/csv, model_ids array/csv, model_id, model name/id)
+  const rawModels = filters.models || filters.model_ids;
+  if (rawModels && rawModels.length) {
+    const modelItems = Array.isArray(rawModels) ? rawModels : String(rawModels).split(',');
+    const resolvedModelIds = [];
+    const numericModelIds = [];
+    const nameModelItems = [];
+
+    for (const item of modelItems) {
+      const trimmed = String(item).trim();
+      if (!trimmed) continue;
+      if (isUuid(trimmed)) {
+        resolvedModelIds.push(trimmed);
+      } else {
+        if (/^\d+$/.test(trimmed)) {
+          numericModelIds.push(parseInt(trimmed, 10));
+        }
+        nameModelItems.push(trimmed);
+      }
+    }
+
+    if (numericModelIds.length || nameModelItems.length) {
+      const foundModels = await Model.findAll({
+        where: {
+          [Op.or]: [
+            ...(nameModelItems.length ? [{ name: { [Op.in]: nameModelItems } }] : []),
+            ...(numericModelIds.length ? [{ external_id: { [Op.in]: numericModelIds } }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      resolvedModelIds.push(...foundModels.map(m => m.id));
+    }
+
+    const uniqueModelIds = [...new Set(resolvedModelIds)];
+    where.model_id = { [Op.in]: uniqueModelIds.length ? uniqueModelIds : ['00000000-0000-0000-0000-000000000000'] };
+  } else if (filters.model_id) {
+    const modelStr = String(filters.model_id).trim();
+    if (isUuid(modelStr)) {
+      where.model_id = modelStr;
+    } else {
+      const model = await Model.findOne({
+        where: {
+          [Op.or]: [
+            { name: modelStr },
+            ...(/^\d+$/.test(modelStr) ? [{ external_id: parseInt(modelStr, 10) }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      where.model_id = model ? model.id : '00000000-0000-0000-0000-000000000000';
+    }
+  } else if (filters.model) {
+    const modelStr = String(filters.model).trim();
+    if (isUuid(modelStr)) {
+      where.model_id = modelStr;
+    } else {
+      const foundModel = await Model.findOne({
+        where: {
+          [Op.or]: [
+            { name: modelStr },
+            { name: { [Op.like]: `${modelStr}%` } },
+            ...(/^\d+$/.test(modelStr) ? [{ external_id: parseInt(modelStr, 10) }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      where.model_id = foundModel ? foundModel.id : '00000000-0000-0000-0000-000000000000';
+    }
+  }
+
+  // 11. Variants filter (supports variants array/csv, variant_ids array/csv, variant_id, variant name/id)
+  const rawVariants = filters.variants || filters.variant_ids;
+  if (rawVariants && rawVariants.length) {
+    const variantItems = Array.isArray(rawVariants) ? rawVariants : String(rawVariants).split(',');
+    const resolvedVariantIds = [];
+    const numericVariantIds = [];
+    const nameVariantItems = [];
+
+    for (const item of variantItems) {
+      const trimmed = String(item).trim();
+      if (!trimmed) continue;
+      if (isUuid(trimmed)) {
+        resolvedVariantIds.push(trimmed);
+      } else {
+        if (/^\d+$/.test(trimmed)) {
+          numericVariantIds.push(parseInt(trimmed, 10));
+        }
+        nameVariantItems.push(trimmed);
+      }
+    }
+
+    if (numericVariantIds.length || nameVariantItems.length) {
+      const foundVariants = await Variant.findAll({
+        where: {
+          [Op.or]: [
+            ...(nameVariantItems.length ? [{ name: { [Op.in]: nameVariantItems } }] : []),
+            ...(numericVariantIds.length ? [{ external_id: { [Op.in]: numericVariantIds } }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      resolvedVariantIds.push(...foundVariants.map(v => v.id));
+    }
+
+    const uniqueVariantIds = [...new Set(resolvedVariantIds)];
+    where.variant_id = { [Op.in]: uniqueVariantIds.length ? uniqueVariantIds : ['00000000-0000-0000-0000-000000000000'] };
+  } else if (filters.variant_id) {
+    const variantStr = String(filters.variant_id).trim();
+    if (isUuid(variantStr)) {
+      where.variant_id = variantStr;
+    } else {
+      const variant = await Variant.findOne({
+        where: {
+          [Op.or]: [
+            { name: variantStr },
+            ...(/^\d+$/.test(variantStr) ? [{ external_id: parseInt(variantStr, 10) }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      where.variant_id = variant ? variant.id : '00000000-0000-0000-0000-000000000000';
+    }
+  } else if (filters.variant) {
+    const variantStr = String(filters.variant).trim();
+    if (isUuid(variantStr)) {
+      where.variant_id = variantStr;
+    } else {
+      const foundVariant = await Variant.findOne({
+        where: {
+          [Op.or]: [
+            { name: variantStr },
+            { name: { [Op.like]: `${variantStr}%` } },
+            ...(/^\d+$/.test(variantStr) ? [{ external_id: parseInt(variantStr, 10) }] : []),
+          ],
+        },
+        attributes: ['id'],
+      });
+      where.variant_id = foundVariant ? foundVariant.id : '00000000-0000-0000-0000-000000000000';
+    }
+  }
+
+  // 12. Fuel types
+  const rawFuelInput = filters.fuel_types || filters.fuel_type || filters.fueltype;
+  if (rawFuelInput && (Array.isArray(rawFuelInput) || typeof rawFuelInput === 'string')) {
+    const fuelList = Array.isArray(rawFuelInput) ? rawFuelInput : String(rawFuelInput).split(',');
+    const resolvedFuels = new Set();
+    fuelList.forEach(f => {
+      const trimmed = String(f).trim();
+      if (!trimmed) return;
+      resolvedFuels.add(trimmed);
+      const mapped = FUEL_TYPE_MAP[trimmed.toLowerCase()];
+      if (mapped) resolvedFuels.add(mapped);
+      resolvedFuels.add(trimmed.toLowerCase());
+      resolvedFuels.add(trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase());
+    });
+    if (resolvedFuels.size) {
+      where.fuel_type = { [Op.in]: Array.from(resolvedFuels) };
+    }
+  }
+
+  // 13. Transmissions
+  const rawTransInput = filters.transmissions || filters.transmission;
+  if (rawTransInput && (Array.isArray(rawTransInput) || typeof rawTransInput === 'string')) {
+    const transList = Array.isArray(rawTransInput) ? rawTransInput : String(rawTransInput).split(',');
+    const transConditions = [];
+    const directMatches = new Set();
+
+    transList.forEach(t => {
+      const trimmed = String(t).trim();
+      if (!trimmed) return;
+      directMatches.add(trimmed);
+      const mapped = TRANSMISSION_MAP[trimmed.toLowerCase()];
+      if (mapped) directMatches.add(mapped);
+      directMatches.add(trimmed.toLowerCase());
+      directMatches.add(trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase());
+
+      if (trimmed.toLowerCase().startsWith('auto')) {
+        transConditions.push({ transmission: { [Op.like]: 'Auto%' } });
+      } else if (trimmed.toLowerCase().startsWith('manu')) {
+        transConditions.push({ transmission: { [Op.like]: 'Manu%' } });
+      }
+    });
+
+    if (directMatches.size) {
+      transConditions.push({ transmission: { [Op.in]: Array.from(directMatches) } });
+    }
+
+    if (transConditions.length === 1) {
+      Object.assign(where, transConditions[0]);
+    } else if (transConditions.length > 1) {
+      if (!where[Op.and]) where[Op.and] = [];
+      where[Op.and].push({ [Op.or]: transConditions });
+    }
+  }
+
+  // 14. Body types
+  const rawBodyInput = filters.body_types || filters.body_type;
+  if (rawBodyInput && (Array.isArray(rawBodyInput) || typeof rawBodyInput === 'string')) {
+    const bodyList = Array.isArray(rawBodyInput) ? rawBodyInput : String(rawBodyInput).split(',');
+    const resolvedBodies = new Set();
+    bodyList.forEach(b => {
+      const trimmed = String(b).trim();
+      if (!trimmed) return;
+      resolvedBodies.add(trimmed);
+      const mapped = BODY_TYPE_MAP[trimmed.toLowerCase()];
+      if (mapped) resolvedBodies.add(mapped);
+      resolvedBodies.add(trimmed.toLowerCase());
+      resolvedBodies.add(trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase());
+    });
+    if (resolvedBodies.size) {
+      where.body_type = { [Op.in]: Array.from(resolvedBodies) };
+    }
+  }
+
+  // 15. Ownerships
+  const rawOwnInput = filters.ownerships || filters.ownership;
+  if (rawOwnInput && (Array.isArray(rawOwnInput) || typeof rawOwnInput === 'string')) {
+    const ownList = Array.isArray(rawOwnInput) ? rawOwnInput : String(rawOwnInput).split(',');
+    const resolvedOwns = new Set();
+    ownList.forEach(o => {
+      const trimmed = String(o).trim();
+      if (!trimmed) return;
+      resolvedOwns.add(trimmed);
+      const mapped = OWNERSHIP_MAP[trimmed.toLowerCase()];
+      if (mapped) resolvedOwns.add(mapped);
+      resolvedOwns.add(trimmed.toLowerCase());
+    });
+    if (resolvedOwns.size) {
+      where.ownership = { [Op.in]: Array.from(resolvedOwns) };
+    }
+  }
+
+  // 16. Colors
+  const rawColorInput = filters.colors || filters.color;
+  if (rawColorInput && (Array.isArray(rawColorInput) || typeof rawColorInput === 'string')) {
+    const colorList = Array.isArray(rawColorInput) ? rawColorInput : String(rawColorInput).split(',');
+    const resolvedColors = colorList.map(c => String(c).trim()).filter(Boolean);
+    if (resolvedColors.length === 1) {
+      where.color = { [Op.like]: `%${resolvedColors[0]}%` };
+    } else if (resolvedColors.length > 1) {
+      where.color = { [Op.in]: resolvedColors };
+    }
+  }
+
+  // 17. Posted within days & Expired
+  let minCreatedAt = null;
+  if (filters.posted_within_days !== undefined && filters.posted_within_days !== null && filters.posted_within_days !== '') {
+    const days = parseInt(filters.posted_within_days, 10);
+    if (!isNaN(days) && days >= 1) {
+      const date = new Date();
+      date.setDate(date.getDate() - days);
+      minCreatedAt = date;
+    }
+  }
+
+  const includeExpired = filters.include_expired === true || filters.include_expired === 'true';
+  const shouldEnforceExpiredCutoff = !includeExpired && (!isUserScope || filters.include_expired !== undefined);
+
+  if (shouldEnforceExpiredCutoff) {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    if (!minCreatedAt || ninetyDaysAgo > minCreatedAt) {
+      minCreatedAt = ninetyDaysAgo;
+    }
+  }
+
+  if (minCreatedAt) {
+    where.created_at = { ...(where.created_at || {}), [Op.gte]: minCreatedAt };
+  }
+
+  // 18. Location: State, District, City
+  // State
+  const rawStateInput = filters.states || filters.state || filters.state_id;
+  if (rawStateInput && (Array.isArray(rawStateInput) || typeof rawStateInput === 'string')) {
+    const stateItems = Array.isArray(rawStateInput) ? rawStateInput : String(rawStateInput).split(',');
+    const resolvedStateIds = [];
+    const nameStateItems = [];
+    for (const item of stateItems) {
+      const trimmed = String(item).trim();
+      if (!trimmed) continue;
+      if (isUuid(trimmed)) {
+        resolvedStateIds.push(trimmed);
+      } else {
+        nameStateItems.push(trimmed);
+      }
+    }
+    if (nameStateItems.length) {
+      const foundStates = await State.findAll({
+        where: {
+          [Op.or]: [
+            { name: { [Op.in]: nameStateItems } },
+            { code: { [Op.in]: nameStateItems } },
+            ...nameStateItems.map(n => ({ name: { [Op.like]: `${n}%` } })),
+          ],
+        },
+        attributes: ['id'],
+      });
+      resolvedStateIds.push(...foundStates.map(s => s.id));
+    }
+    const uniqueStateIds = [...new Set(resolvedStateIds)];
+    where.state_id = { [Op.in]: uniqueStateIds.length ? uniqueStateIds : ['00000000-0000-0000-0000-000000000000'] };
+  }
+
+  // District
+  const rawDistInput = filters.districts || filters.district || filters.district_id;
+  if (rawDistInput && (Array.isArray(rawDistInput) || typeof rawDistInput === 'string')) {
+    const distItems = Array.isArray(rawDistInput) ? rawDistInput : String(rawDistInput).split(',');
+    const resolvedDistIds = [];
+    const nameDistItems = [];
+    for (const item of distItems) {
+      const trimmed = String(item).trim();
+      if (!trimmed) continue;
+      if (isUuid(trimmed)) {
+        resolvedDistIds.push(trimmed);
+      } else {
+        nameDistItems.push(trimmed);
+      }
+    }
+    if (nameDistItems.length) {
+      const foundDists = await District.findAll({
+        where: {
+          [Op.or]: [
+            { name: { [Op.in]: nameDistItems } },
+            ...nameDistItems.map(n => ({ name: { [Op.like]: `${n}%` } })),
+          ],
+        },
+        attributes: ['id'],
+      });
+      resolvedDistIds.push(...foundDists.map(d => d.id));
+    }
+    const uniqueDistIds = [...new Set(resolvedDistIds)];
+    where.district_id = { [Op.in]: uniqueDistIds.length ? uniqueDistIds : ['00000000-0000-0000-0000-000000000000'] };
+  }
+
+  // City / Cities
+  const rawCityInput = filters.cities || filters.city || filters.city_id;
+  if (rawCityInput && (Array.isArray(rawCityInput) || typeof rawCityInput === 'string')) {
+    const cityItems = Array.isArray(rawCityInput) ? rawCityInput : String(rawCityInput).split(',');
+    const resolvedCityIds = [];
+    const nameCityItems = [];
+    for (const item of cityItems) {
+      const trimmed = String(item).trim();
+      if (!trimmed) continue;
+      if (isUuid(trimmed)) {
+        resolvedCityIds.push(trimmed);
+      } else {
+        nameCityItems.push(trimmed);
+      }
+    }
+    if (nameCityItems.length) {
+      const foundCities = await City.findAll({
+        where: {
+          [Op.or]: [
+            { name: { [Op.in]: nameCityItems } },
+            ...nameCityItems.map(n => ({ name: { [Op.like]: `${n}%` } })),
+          ],
+        },
+        attributes: ['id'],
+      });
+      resolvedCityIds.push(...foundCities.map(c => c.id));
+    }
+    const uniqueCityIds = [...new Set(resolvedCityIds)];
+    where.city_id = { [Op.in]: uniqueCityIds.length ? uniqueCityIds : ['00000000-0000-0000-0000-000000000000'] };
+  }
+
+  // 19. Wishlist filters
+  if (filters.has_wishlist !== undefined && filters.has_wishlist !== null && filters.has_wishlist !== '') {
+    const hasWishlist = filters.has_wishlist === 'true' || filters.has_wishlist === true;
+    if (!where[Op.and]) where[Op.and] = [];
+    where[Op.and].push(
+      sequelize.literal(`(
+        SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
+      ) ${hasWishlist ? '> 0' : '= 0'}`)
+    );
+  }
+
+  if (filters.min_wishlist !== undefined && filters.min_wishlist !== null && filters.min_wishlist !== '') {
+    const minCount = parseInt(filters.min_wishlist, 10);
+    if (!isNaN(minCount)) {
+      if (!where[Op.and]) where[Op.and] = [];
+      where[Op.and].push(
+        sequelize.literal(`(
+          SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
+        ) >= ${minCount}`)
+      );
+    }
+  }
+
+  return { where, queryModel, sanitizedFilters: filters };
+};
+
+exports.buildCarFiltersWhere = buildCarFiltersWhere;
+
 exports.getCars = async (
   rawFilters = {},
   page = 1,
@@ -619,15 +1264,19 @@ exports.getCars = async (
   userId = null,
   userRole = null
 ) => {
-  // Sanitize filters to strip undefined, null, and empty string values
-  const filters = {};
-  for (const [key, value] of Object.entries(rawFilters || {})) {
-    if (value === undefined || value === null) continue;
-    if (typeof value === 'string' && value.trim() === '') continue;
-    filters[key] = value;
-  }
+  const { where, queryModel, sanitizedFilters } = await buildCarFiltersWhere(rawFilters, {
+    isUserScope: false,
+    userId,
+    userRole,
+  });
 
-  const cacheKey = `cars:list:${Buffer.from(JSON.stringify({ filters, page, limit, sortBy, sortOrder })).toString('base64')}`;
+  const parsedPage = sanitizedFilters.page ? parseInt(sanitizedFilters.page, 10) : page;
+  const parsedLimit = sanitizedFilters.limit ? parseInt(sanitizedFilters.limit, 10) : limit;
+  const validSortCols = ['created_at', 'price', 'year', 'km_driven', 'status'];
+  const validSort = sanitizedFilters.sortBy && validSortCols.includes(sanitizedFilters.sortBy) ? sanitizedFilters.sortBy : sortBy;
+  const validOrder = sanitizedFilters.sortOrder && ['ASC', 'DESC'].includes(sanitizedFilters.sortOrder.toUpperCase()) ? sanitizedFilters.sortOrder.toUpperCase() : sortOrder;
+
+  const cacheKey = `cars:list:${Buffer.from(JSON.stringify({ filters: sanitizedFilters, page: parsedPage, limit: parsedLimit, sortBy: validSort, sortOrder: validOrder })).toString('base64')}`;
 
   let cachedData;
   try {
@@ -645,583 +1294,9 @@ exports.getCars = async (
     count = cachedData.count;
     transformedCars = cachedData.transformedCars;
   } else {
-    const offset = (page - 1) * limit;
-    const where = {};
+    const offset = (parsedPage - 1) * parsedLimit;
 
-    // Apply status filter if provided, else default to 'active'
-    if (filters.status && typeof filters.status === 'string' && filters.status.trim() !== '') {
-      where.status = filters.status.trim().toLowerCase();
-    } else {
-      where.status = 'active';
-    }
-
-    if (filters.posted_by_type && ['dealer', 'customer'].includes(filters.posted_by_type.toLowerCase())) {
-      where.posted_by_type = filters.posted_by_type.toLowerCase();
-    }
-    if (filters.b2b_listing !== undefined) {
-      where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
-    }
-    if (filters.has_price_drop !== undefined) {
-      where.has_price_drop = filters.has_price_drop === 'true' || filters.has_price_drop === true;
-    }
-
-    if (filters.board_types && filters.board_types.length) {
-      const boards = Array.isArray(filters.board_types) ? filters.board_types : filters.board_types.split(',');
-      where.board_type = { [Op.in]: boards };
-    } else if (filters.board_type) {
-      if (filters.board_type.toUpperCase() === 'B2B') {
-        where.b2b_listing = true;
-      } else {
-        where.board_type = filters.board_type;
-      }
-    }
-
-    // Price range & exact price
-    if (filters.price !== undefined && filters.price !== null && filters.price !== '') {
-      where.price = parseFloat(filters.price);
-    } else {
-      if (filters.min_price) where.price = { [Op.gte]: parseFloat(filters.min_price) };
-      if (filters.max_price) {
-        where.price = { ...where.price, [Op.lte]: parseFloat(filters.max_price) };
-      }
-    }
-
-    // Brands filter (supports brands array/csv, brand_id, brand name/id)
-    if (filters.brands && filters.brands.length) {
-      const brandItems = Array.isArray(filters.brands) ? filters.brands : String(filters.brands).split(',');
-      const resolvedBrandIds = [];
-      const numericBrandIds = [];
-      const nameBrandItems = [];
-
-      for (const item of brandItems) {
-        const trimmed = String(item).trim();
-        if (!trimmed) continue;
-        if (isUuid(trimmed)) {
-          resolvedBrandIds.push(trimmed);
-        } else {
-          if (/^\d+$/.test(trimmed)) {
-            numericBrandIds.push(parseInt(trimmed, 10));
-          }
-          nameBrandItems.push(trimmed);
-        }
-      }
-
-      if (numericBrandIds.length || nameBrandItems.length) {
-        const foundBrands = await Brand.findAll({
-          where: {
-            [Op.or]: [
-              ...(nameBrandItems.length ? [{ name: { [Op.in]: nameBrandItems } }] : []),
-              ...(numericBrandIds.length ? [{ external_id: { [Op.in]: numericBrandIds } }] : []),
-            ],
-          },
-          attributes: ['id'],
-        });
-        resolvedBrandIds.push(...foundBrands.map(b => b.id));
-      }
-
-      const uniqueBrandIds = [...new Set(resolvedBrandIds)];
-      where.brand_id = { [Op.in]: uniqueBrandIds.length ? uniqueBrandIds : ['00000000-0000-0000-0000-000000000000'] };
-    } else if (filters.brand_id) {
-      const brandStr = String(filters.brand_id).trim();
-      if (isUuid(brandStr)) {
-        where.brand_id = brandStr;
-      } else {
-        const brand = await Brand.findOne({
-          where: {
-            [Op.or]: [
-              { name: brandStr },
-              ...(/^\d+$/.test(brandStr) ? [{ external_id: parseInt(brandStr, 10) }] : []),
-            ],
-          },
-          attributes: ['id'],
-        });
-        where.brand_id = brand ? brand.id : '00000000-0000-0000-0000-000000000000';
-      }
-    } else if (filters.brand) {
-      const brandStr = String(filters.brand).trim();
-      if (isUuid(brandStr)) {
-        where.brand_id = brandStr;
-      } else {
-        const brand = await Brand.findOne({
-          where: {
-            [Op.or]: [
-              { name: brandStr },
-              ...(/^\d+$/.test(brandStr) ? [{ external_id: parseInt(brandStr, 10) }] : []),
-            ],
-          },
-          attributes: ['id'],
-        });
-        where.brand_id = brand ? brand.id : '00000000-0000-0000-0000-000000000000';
-      }
-    }
-
-    // Models filter (supports models array/csv, model_ids array/csv, model_id, model name/id)
-    if (filters.models && filters.models.length) {
-      const modelItems = Array.isArray(filters.models) ? filters.models : String(filters.models).split(',');
-      const resolvedModelIds = [];
-      const numericModelIds = [];
-      const nameModelItems = [];
-
-      for (const item of modelItems) {
-        const trimmed = String(item).trim();
-        if (!trimmed) continue;
-        if (isUuid(trimmed)) {
-          resolvedModelIds.push(trimmed);
-        } else {
-          if (/^\d+$/.test(trimmed)) {
-            numericModelIds.push(parseInt(trimmed, 10));
-          }
-          nameModelItems.push(trimmed);
-        }
-      }
-
-      if (numericModelIds.length || nameModelItems.length) {
-        const foundModels = await Model.findAll({
-          where: {
-            [Op.or]: [
-              ...(nameModelItems.length ? [{ name: { [Op.in]: nameModelItems } }] : []),
-              ...(numericModelIds.length ? [{ external_id: { [Op.in]: numericModelIds } }] : []),
-            ],
-          },
-          attributes: ['id'],
-        });
-        resolvedModelIds.push(...foundModels.map(m => m.id));
-      }
-
-      const uniqueModelIds = [...new Set(resolvedModelIds)];
-      where.model_id = { [Op.in]: uniqueModelIds.length ? uniqueModelIds : ['00000000-0000-0000-0000-000000000000'] };
-    } else if (filters.model_ids && filters.model_ids.length) {
-      const modelItems = Array.isArray(filters.model_ids) ? filters.model_ids : String(filters.model_ids).split(',');
-      const resolvedModelIds = [];
-      const numericModelIds = [];
-      const nameModelItems = [];
-
-      for (const item of modelItems) {
-        const trimmed = String(item).trim();
-        if (!trimmed) continue;
-        if (isUuid(trimmed)) {
-          resolvedModelIds.push(trimmed);
-        } else {
-          if (/^\d+$/.test(trimmed)) {
-            numericModelIds.push(parseInt(trimmed, 10));
-          }
-          nameModelItems.push(trimmed);
-        }
-      }
-
-      if (numericModelIds.length || nameModelItems.length) {
-        const foundModels = await Model.findAll({
-          where: {
-            [Op.or]: [
-              ...(nameModelItems.length ? [{ name: { [Op.in]: nameModelItems } }] : []),
-              ...(numericModelIds.length ? [{ external_id: { [Op.in]: numericModelIds } }] : []),
-            ],
-          },
-          attributes: ['id'],
-        });
-        resolvedModelIds.push(...foundModels.map(m => m.id));
-      }
-
-      const uniqueModelIds = [...new Set(resolvedModelIds)];
-      where.model_id = { [Op.in]: uniqueModelIds.length ? uniqueModelIds : ['00000000-0000-0000-0000-000000000000'] };
-    } else if (filters.model_id) {
-      const modelStr = String(filters.model_id).trim();
-      if (isUuid(modelStr)) {
-        where.model_id = modelStr;
-      } else {
-        const model = await Model.findOne({
-          where: {
-            [Op.or]: [
-              { name: modelStr },
-              ...(/^\d+$/.test(modelStr) ? [{ external_id: parseInt(modelStr, 10) }] : []),
-            ],
-          },
-        });
-        where.model_id = model ? model.id : '00000000-0000-0000-0000-000000000000';
-      }
-    } else if (filters.model) {
-      const modelStr = String(filters.model).trim();
-      if (isUuid(modelStr)) {
-        where.model_id = modelStr;
-      } else {
-        const foundModel = await Model.findOne({
-          where: {
-            [Op.or]: [
-              { name: modelStr },
-              { name: { [Op.like]: `${modelStr}%` } },
-              ...(/^\d+$/.test(modelStr) ? [{ external_id: parseInt(modelStr, 10) }] : []),
-            ],
-          },
-        });
-        where.model_id = foundModel ? foundModel.id : '00000000-0000-0000-0000-000000000000';
-      }
-    }
-
-    // Variants filter (supports variants array/csv, variant_ids array/csv, variant_id, variant name/id)
-    if (filters.variants && filters.variants.length) {
-      const variantItems = Array.isArray(filters.variants) ? filters.variants : String(filters.variants).split(',');
-      const resolvedVariantIds = [];
-      const numericVariantIds = [];
-      const nameVariantItems = [];
-
-      for (const item of variantItems) {
-        const trimmed = String(item).trim();
-        if (!trimmed) continue;
-        if (isUuid(trimmed)) {
-          resolvedVariantIds.push(trimmed);
-        } else {
-          if (/^\d+$/.test(trimmed)) {
-            numericVariantIds.push(parseInt(trimmed, 10));
-          }
-          nameVariantItems.push(trimmed);
-        }
-      }
-
-      if (numericVariantIds.length || nameVariantItems.length) {
-        const foundVariants = await Variant.findAll({
-          where: {
-            [Op.or]: [
-              ...(nameVariantItems.length ? [{ name: { [Op.in]: nameVariantItems } }] : []),
-              ...(numericVariantIds.length ? [{ external_id: { [Op.in]: numericVariantIds } }] : []),
-            ],
-          },
-          attributes: ['id'],
-        });
-        resolvedVariantIds.push(...foundVariants.map(v => v.id));
-      }
-
-      const uniqueVariantIds = [...new Set(resolvedVariantIds)];
-      where.variant_id = { [Op.in]: uniqueVariantIds.length ? uniqueVariantIds : ['00000000-0000-0000-0000-000000000000'] };
-    } else if (filters.variant_ids && filters.variant_ids.length) {
-      const variantItems = Array.isArray(filters.variant_ids) ? filters.variant_ids : String(filters.variant_ids).split(',');
-      const resolvedVariantIds = [];
-      const numericVariantIds = [];
-      const nameVariantItems = [];
-
-      for (const item of variantItems) {
-        const trimmed = String(item).trim();
-        if (!trimmed) continue;
-        if (isUuid(trimmed)) {
-          resolvedVariantIds.push(trimmed);
-        } else {
-          if (/^\d+$/.test(trimmed)) {
-            numericVariantIds.push(parseInt(trimmed, 10));
-          }
-          nameVariantItems.push(trimmed);
-        }
-      }
-
-      if (numericVariantIds.length || nameVariantItems.length) {
-        const foundVariants = await Variant.findAll({
-          where: {
-            [Op.or]: [
-              ...(nameVariantItems.length ? [{ name: { [Op.in]: nameVariantItems } }] : []),
-              ...(numericVariantIds.length ? [{ external_id: { [Op.in]: numericVariantIds } }] : []),
-            ],
-          },
-          attributes: ['id'],
-        });
-        resolvedVariantIds.push(...foundVariants.map(v => v.id));
-      }
-
-      const uniqueVariantIds = [...new Set(resolvedVariantIds)];
-      where.variant_id = { [Op.in]: uniqueVariantIds.length ? uniqueVariantIds : ['00000000-0000-0000-0000-000000000000'] };
-    } else if (filters.variant_id) {
-      const variantStr = String(filters.variant_id).trim();
-      if (isUuid(variantStr)) {
-        where.variant_id = variantStr;
-      } else {
-        const variant = await Variant.findOne({
-          where: {
-            [Op.or]: [
-              { name: variantStr },
-              ...(/^\d+$/.test(variantStr) ? [{ external_id: parseInt(variantStr, 10) }] : []),
-            ],
-          },
-        });
-        where.variant_id = variant ? variant.id : '00000000-0000-0000-0000-000000000000';
-      }
-    } else if (filters.variant) {
-      const variantStr = String(filters.variant).trim();
-      if (isUuid(variantStr)) {
-        where.variant_id = variantStr;
-      } else {
-        const foundVariant = await Variant.findOne({
-          where: {
-            [Op.or]: [
-              { name: variantStr },
-              { name: { [Op.like]: `${variantStr}%` } },
-              ...(/^\d+$/.test(variantStr) ? [{ external_id: parseInt(variantStr, 10) }] : []),
-            ],
-          },
-        });
-        where.variant_id = foundVariant ? foundVariant.id : '00000000-0000-0000-0000-000000000000';
-      }
-    }
-
-    // Year range & exact year
-    if (filters.year !== undefined && filters.year !== null && filters.year !== '') {
-      where.year = parseInt(filters.year);
-    } else {
-      if (filters.min_year) where.year = { [Op.gte]: parseInt(filters.min_year) };
-      if (filters.max_year) {
-        where.year = { ...where.year, [Op.lte]: parseInt(filters.max_year) };
-      }
-    }
-
-    // KM range & exact km
-    if (filters.km_driven !== undefined && filters.km_driven !== null && filters.km_driven !== '') {
-      where.km_driven = parseFloat(filters.km_driven);
-    } else {
-      if (filters.min_km !== undefined && filters.min_km !== null && filters.min_km !== '') {
-        where.km_driven = { [Op.gte]: parseFloat(filters.min_km) };
-      }
-      if (filters.max_km !== undefined && filters.max_km !== null && filters.max_km !== '') {
-        where.km_driven = { ...where.km_driven, [Op.lte]: parseFloat(filters.max_km) };
-      }
-    }
-
-    // Fuel types
-    if (filters.fuel_types && filters.fuel_types.length) {
-      const fuels = (Array.isArray(filters.fuel_types) ? filters.fuel_types : filters.fuel_types.split(','))
-        .map(f => {
-          const trimmed = f.trim();
-          return FUEL_TYPE_MAP[trimmed.toLowerCase()] || trimmed;
-        });
-      where.fuel_type = { [Op.in]: fuels };
-    } else if (filters.fuel_type) {
-      const trimmed = filters.fuel_type.trim();
-      where.fuel_type = FUEL_TYPE_MAP[trimmed.toLowerCase()] || trimmed;
-    }
-
-    // Body types
-    if (filters.body_types && filters.body_types.length) {
-      const bodies = Array.isArray(filters.body_types) ? filters.body_types : filters.body_types.split(',');
-      where.body_type = { [Op.in]: bodies };
-    } else if (filters.body_type) {
-      where.body_type = filters.body_type;
-    }
-
-    // Ownership
-    if (filters.ownerships && filters.ownerships.length) {
-      const owns = Array.isArray(filters.ownerships) ? filters.ownerships : filters.ownerships.split(',');
-      where.ownership = { [Op.in]: owns };
-    }
-
-    // Transmissions
-    if (filters.transmissions && filters.transmissions.length) {
-      const trans = (Array.isArray(filters.transmissions) ? filters.transmissions : filters.transmissions.split(','))
-        .map(t => {
-          const trimmed = t.trim();
-          return TRANSMISSION_MAP[trimmed.toLowerCase()] || trimmed;
-        });
-      where.transmission = { [Op.in]: trans };
-    } else if (filters.transmission) {
-      const trimmed = filters.transmission.trim();
-      where.transmission = TRANSMISSION_MAP[trimmed.toLowerCase()] || trimmed;
-    }
-
-    // Colors
-    if (filters.colors && filters.colors.length) {
-      const colors = Array.isArray(filters.colors) ? filters.colors : filters.colors.split(',');
-      where.color = { [Op.in]: colors };
-    } else if (filters.color) {
-      where.color = filters.color;
-    }
-
-    // Posted within days & expired cars
-    let minCreatedAt = null;
-    if (filters.posted_within_days) {
-      const days = parseInt(filters.posted_within_days, 10);
-      if (!isNaN(days) && days >= 1) {
-        const date = new Date();
-        date.setDate(date.getDate() - days);
-        minCreatedAt = date;
-      }
-    }
-
-    // Expired cars (exclude cars older than 90 days unless include_expired is true)
-    const includeExpired = filters.include_expired === true || filters.include_expired === 'true';
-    if (!includeExpired) {
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-      if (!minCreatedAt || ninetyDaysAgo > minCreatedAt) {
-        minCreatedAt = ninetyDaysAgo;
-      }
-    }
-
-    if (minCreatedAt) {
-      where.created_at = { ...where.created_at, [Op.gte]: minCreatedAt };
-    }
-    // Location: State, District, City / Cities
-    // 1. State Filter (supports state_id, state name/code, states array/csv)
-    if (filters.states && filters.states.length) {
-      const stateItems = Array.isArray(filters.states) ? filters.states : String(filters.states).split(',');
-      const resolvedStateIds = [];
-      const nameStateItems = [];
-      for (const item of stateItems) {
-        const trimmed = String(item).trim();
-        if (!trimmed) continue;
-        if (isUuid(trimmed)) {
-          resolvedStateIds.push(trimmed);
-        } else {
-          nameStateItems.push(trimmed);
-        }
-      }
-      if (nameStateItems.length) {
-        const foundStates = await State.findAll({
-          where: {
-            [Op.or]: [
-              { name: { [Op.in]: nameStateItems } },
-              { code: { [Op.in]: nameStateItems } },
-            ],
-          },
-          attributes: ['id'],
-        });
-        resolvedStateIds.push(...foundStates.map(s => s.id));
-      }
-      const uniqueStateIds = [...new Set(resolvedStateIds)];
-      where.state_id = { [Op.in]: uniqueStateIds.length ? uniqueStateIds : ['00000000-0000-0000-0000-000000000000'] };
-    } else if (filters.state_id) {
-      const stateStr = String(filters.state_id).trim();
-      where.state_id = isUuid(stateStr) ? stateStr : filters.state_id;
-    } else if (filters.state) {
-      const stateStr = String(filters.state).trim();
-      if (isUuid(stateStr)) {
-        where.state_id = stateStr;
-      } else {
-        const foundState = await State.findOne({
-          where: {
-            [Op.or]: [
-              { name: stateStr },
-              { code: stateStr },
-              { name: { [Op.like]: `${stateStr}%` } },
-            ],
-          },
-          attributes: ['id'],
-        });
-        where.state_id = foundState ? foundState.id : '00000000-0000-0000-0000-000000000000';
-      }
-    }
-
-    // 2. District Filter (supports district_id, district name, districts array/csv)
-    if (filters.districts && filters.districts.length) {
-      const distItems = Array.isArray(filters.districts) ? filters.districts : String(filters.districts).split(',');
-      const resolvedDistIds = [];
-      const nameDistItems = [];
-      for (const item of distItems) {
-        const trimmed = String(item).trim();
-        if (!trimmed) continue;
-        if (isUuid(trimmed)) {
-          resolvedDistIds.push(trimmed);
-        } else {
-          nameDistItems.push(trimmed);
-        }
-      }
-      if (nameDistItems.length) {
-        const foundDists = await District.findAll({
-          where: { name: { [Op.in]: nameDistItems } },
-          attributes: ['id'],
-        });
-        resolvedDistIds.push(...foundDists.map(d => d.id));
-      }
-      const uniqueDistIds = [...new Set(resolvedDistIds)];
-      where.district_id = { [Op.in]: uniqueDistIds.length ? uniqueDistIds : ['00000000-0000-0000-0000-000000000000'] };
-    } else if (filters.district_id) {
-      const distStr = String(filters.district_id).trim();
-      where.district_id = isUuid(distStr) ? distStr : filters.district_id;
-    } else if (filters.district) {
-      const distStr = String(filters.district).trim();
-      if (isUuid(distStr)) {
-        where.district_id = distStr;
-      } else {
-        const foundDist = await District.findOne({
-          where: {
-            [Op.or]: [
-              { name: distStr },
-              { name: { [Op.like]: `${distStr}%` } },
-            ],
-          },
-          attributes: ['id'],
-        });
-        where.district_id = foundDist ? foundDist.id : '00000000-0000-0000-0000-000000000000';
-      }
-    }
-
-    // 3. City / Cities Filter (supports city_id, city name, cities array/csv)
-    const cityFilterInput = filters.cities || filters.city;
-    if (cityFilterInput && (Array.isArray(cityFilterInput) || typeof cityFilterInput === 'string')) {
-      const cityItems = Array.isArray(cityFilterInput) ? cityFilterInput : String(cityFilterInput).split(',');
-      const resolvedCityIds = [];
-      const nameCityItems = [];
-      for (const item of cityItems) {
-        const trimmed = String(item).trim();
-        if (!trimmed) continue;
-        if (isUuid(trimmed)) {
-          resolvedCityIds.push(trimmed);
-        } else {
-          nameCityItems.push(trimmed);
-        }
-      }
-      if (nameCityItems.length) {
-        const foundCities = await City.findAll({
-          where: {
-            [Op.or]: [
-              { name: { [Op.in]: nameCityItems } },
-              ...nameCityItems.map(n => ({ name: { [Op.like]: `${n}%` } })),
-            ],
-          },
-          attributes: ['id'],
-        });
-        resolvedCityIds.push(...foundCities.map(c => c.id));
-      }
-      const uniqueCityIds = [...new Set(resolvedCityIds)];
-      where.city_id = { [Op.in]: uniqueCityIds.length ? uniqueCityIds : ['00000000-0000-0000-0000-000000000000'] };
-    } else if (filters.city_id) {
-      const cityStr = String(filters.city_id).trim();
-      where.city_id = isUuid(cityStr) ? cityStr : filters.city_id;
-    }
-
-    // User / Seller / Posted by me filters
-    // Note: user_id / seller_id arbitrary query param is allowed only for admin users or when explicitly 'me'
-    if (filters.user_id) {
-      if (userRole === 'admin' || filters.user_id === 'me') {
-        const targetUserId = filters.user_id === 'me' ? userId : filters.user_id;
-        if (targetUserId) where.user_id = targetUserId;
-      }
-    } else if (filters.seller_id) {
-      if (userRole === 'admin' || filters.seller_id === 'me') {
-        const targetSellerId = filters.seller_id === 'me' ? userId : filters.seller_id;
-        if (targetSellerId) where.user_id = targetSellerId;
-      }
-    } else if (filters.posted_by_me === true || filters.posted_by_me === 'true' || filters.mine === true || filters.mine === 'true') {
-      if (userId) where.user_id = userId;
-    }
-
-    // Wishlist filters
-    if (filters.has_wishlist !== undefined && filters.has_wishlist !== null && filters.has_wishlist !== '') {
-      const hasWishlist = filters.has_wishlist === 'true' || filters.has_wishlist === true;
-      if (!where[Op.and]) where[Op.and] = [];
-      where[Op.and].push(
-        sequelize.literal(`(
-          SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
-        ) ${hasWishlist ? '> 0' : '= 0'}`)
-      );
-    }
-
-    if (filters.min_wishlist !== undefined && filters.min_wishlist !== null && filters.min_wishlist !== '') {
-      const minCount = parseInt(filters.min_wishlist, 10);
-      if (!isNaN(minCount)) {
-        if (!where[Op.and]) where[Op.and] = [];
-        where[Op.and].push(
-          sequelize.literal(`(
-            SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
-          ) >= ${minCount}`)
-        );
-      }
-    }
-
-    const queryResult = await Car.findAndCountAll({
+    const queryResult = await queryModel.findAndCountAll({
       attributes: [
         'id', 'model_id', 'variant_id', 'year', 'price', 'previous_price', 'has_price_drop', 'price_negotiable', 'km_driven',
         'fuel_type', 'transmission', 'ownership', 'body_type', 'board_type',
@@ -1249,12 +1324,13 @@ exports.getCars = async (
         { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: City, as: 'cities', attributes: ['id', 'name'] },
         { model: Lead, as: 'leads', attributes: ['id'] },
         { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
       ],
-      limit,
+      limit: parsedLimit,
       offset,
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[validSort, validOrder.toUpperCase()]],
     });
 
     count = queryResult.count;
@@ -1299,9 +1375,9 @@ exports.getCars = async (
   return {
     total: count,
     cars: carsWithWishlist,
-    page,
-    limit,
-    totalPages: Math.ceil(count / limit),
+    page: parsedPage,
+    limit: parsedLimit,
+    totalPages: Math.ceil(count / parsedLimit),
   };
 };
 
@@ -1346,6 +1422,7 @@ exports.getCarById = async (carId, userId = null) => {
         { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: City, as: 'cities', attributes: ['id', 'name'] },
         { model: Lead, as: 'leads', attributes: ['id'], required: false },
         { model: CarStat, as: 'stats', required: false },
         { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
@@ -1430,6 +1507,7 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
       { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
+      { model: City, as: 'cities', attributes: ['id', 'name'] },
       { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
     ],
     order: [['created_at', 'DESC']],
@@ -1454,135 +1532,53 @@ exports.getUserCars = async (userId, options = {}) => {
     throw new AppError('User ID is required to fetch user listings', 400);
   }
 
-  const rawStatus = typeof options === 'string' ? options : options?.status;
-  const status = rawStatus ? String(rawStatus).trim().toLowerCase() : null;
-  const page = typeof options === 'object' && options.page ? parseInt(options.page) : 1;
-  const limit = typeof options === 'object' && options.limit ? parseInt(options.limit) : 50;
-  const cursor = typeof options === 'object' ? options.cursor : null;
+  const rawOptions = typeof options === 'string' ? { status: options } : (options || {});
+  const { where, queryModel, sanitizedFilters } = await buildCarFiltersWhere(rawOptions, {
+    isUserScope: true,
+    userId,
+  });
 
-  const whereClause = { user_id: userId };
-  let queryModel = Car;
-
-  if (status && status !== 'all') {
-    whereClause.status = status;
-    if (status === 'deleted') {
-      queryModel = Car.unscoped();
-    }
-  } else if (status === 'all') {
-    queryModel = Car.unscoped();
-  }
-
-  if (typeof options === 'object') {
-    // Search query across number_plate, color, description, brand, or model
-    if (options.search || options.q) {
-      const searchTerm = String(options.search || options.q).trim();
-      if (searchTerm) {
-        whereClause[Op.or] = [
-          { number_plate: { [Op.like]: `%${searchTerm}%` } },
-          { color: { [Op.like]: `%${searchTerm}%` } },
-          { description: { [Op.like]: `%${searchTerm}%` } },
-          sequelize.literal(`EXISTS (SELECT 1 FROM brands WHERE brands.id = Car.brand_id AND brands.name LIKE '%${searchTerm.replace(/'/g, "''")}%')`),
-          sequelize.literal(`EXISTS (SELECT 1 FROM models WHERE models.id = Car.model_id AND models.name LIKE '%${searchTerm.replace(/'/g, "''")}%')`),
-        ];
-      }
-    }
-
-    if (options.brand_id) {
-      whereClause.brand_id = options.brand_id;
-    } else if (options.brand) {
-      whereClause[Op.and] = whereClause[Op.and] || [];
-      whereClause[Op.and].push(
-        sequelize.literal(`EXISTS (SELECT 1 FROM brands WHERE brands.id = Car.brand_id AND (brands.name LIKE '%${String(options.brand).trim().replace(/'/g, "''")}%' OR brands.id = '${String(options.brand).trim().replace(/'/g, "''")}'))`)
-      );
-    }
-
-    if (options.model_id) {
-      whereClause.model_id = options.model_id;
-    } else if (options.model) {
-      whereClause[Op.and] = whereClause[Op.and] || [];
-      whereClause[Op.and].push(
-        sequelize.literal(`EXISTS (SELECT 1 FROM models WHERE models.id = Car.model_id AND (models.name LIKE '%${String(options.model).trim().replace(/'/g, "''")}%' OR models.id = '${String(options.model).trim().replace(/'/g, "''")}'))`)
-      );
-    }
-
-    if (options.board_type) whereClause.board_type = options.board_type;
-    if (options.fuel_type) whereClause.fuel_type = options.fuel_type;
-    if (options.transmission) whereClause.transmission = options.transmission;
-    if (options.body_type) whereClause.body_type = options.body_type;
-    if (options.b2b_listing !== undefined) {
-      whereClause.b2b_listing = options.b2b_listing === true || options.b2b_listing === 'true';
-    }
-    if (options.state_id) whereClause.state_id = options.state_id;
-    if (options.district_id) whereClause.district_id = options.district_id;
-    if (options.city_id) whereClause.city_id = options.city_id;
-
-    // Price filters
-    if (options.min_price || options.minPrice) {
-      const minP = parseFloat(options.min_price || options.minPrice);
-      if (!isNaN(minP)) {
-        whereClause.price = { ...whereClause.price, [Op.gte]: minP };
-      }
-    }
-    if (options.max_price || options.maxPrice) {
-      const maxP = parseFloat(options.max_price || options.maxPrice);
-      if (!isNaN(maxP)) {
-        whereClause.price = { ...whereClause.price, [Op.lte]: maxP };
-      }
-    }
-
-    // Year filters
-    if (options.year) {
-      whereClause.year = parseInt(options.year, 10);
-    }
-    if (options.min_year || options.minYear) {
-      const minY = parseInt(options.min_year || options.minYear, 10);
-      if (!isNaN(minY)) {
-        whereClause.year = { ...whereClause.year, [Op.gte]: minY };
-      }
-    }
-    if (options.max_year || options.maxYear) {
-      const maxY = parseInt(options.max_year || options.maxYear, 10);
-      if (!isNaN(maxY)) {
-        whereClause.year = { ...whereClause.year, [Op.lte]: maxY };
-      }
-    }
-  }
+  const page = sanitizedFilters.page ? parseInt(sanitizedFilters.page, 10) : 1;
+  const limit = sanitizedFilters.limit ? parseInt(sanitizedFilters.limit, 10) : 50;
+  const cursor = sanitizedFilters.cursor || null;
 
   // Sorting
   const validSortCols = ['created_at', 'price', 'year', 'km_driven', 'status'];
-  const sortBy = options.sortBy && validSortCols.includes(options.sortBy) ? options.sortBy : 'created_at';
-  const sortOrder = options.sortOrder && ['ASC', 'DESC'].includes(options.sortOrder.toUpperCase()) ? options.sortOrder.toUpperCase() : 'DESC';
+  const sortBy = sanitizedFilters.sortBy && validSortCols.includes(sanitizedFilters.sortBy) ? sanitizedFilters.sortBy : 'created_at';
+  const sortOrder = sanitizedFilters.sortOrder && ['ASC', 'DESC'].includes(sanitizedFilters.sortOrder.toUpperCase()) ? sanitizedFilters.sortOrder.toUpperCase() : 'DESC';
 
   // Keyset Cursor Pagination (High-Speed O(1) Seek for infinite scroll)
   if (cursor) {
-    whereClause.created_at = { [Op.lt]: new Date(cursor) };
+    where.created_at = { ...(where.created_at || {}), [Op.lt]: new Date(cursor) };
   }
 
+  const parsedLimit = parseInt(limit, 10);
   const queryOptions = {
-    where: whereClause,
+    where,
     include: [
       { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
       sellerInclude,
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: Model, as: 'carModel', attributes: ['id', 'name'] },
       { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
+      { model: City, as: 'cities', attributes: ['id', 'name'] },
       { model: Lead, as: 'leads', attributes: ['id'] },
       { model: CarStat, as: 'stats', required: false },
       { model: Highlight, as: 'highlights', attributes: ['id', 'name'], through: { attributes: [] } },
     ],
     order: [[sortBy, sortOrder]],
-    limit: parseInt(limit),
+    limit: parsedLimit,
   };
 
   // If no cursor provided and standard page > 1 requested, use offset fallback
   if (!cursor && page > 1) {
-    queryOptions.offset = (page - 1) * parseInt(limit);
+    queryOptions.offset = (page - 1) * parsedLimit;
   }
 
-  const total = await queryModel.count({ where: whereClause });
+  const total = await queryModel.count({ where });
   const cars = await queryModel.findAll(queryOptions);
 
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
@@ -1624,7 +1620,6 @@ exports.getUserCars = async (userId, options = {}) => {
   const lastCar = cars.length > 0 ? cars[cars.length - 1] : null;
   const next_cursor = lastCar && lastCar.created_at ? lastCar.created_at.toISOString() : null;
 
-  const parsedLimit = parseInt(limit);
   const totalPages = Math.ceil(total / parsedLimit) || 1;
 
   return {
@@ -2113,36 +2108,17 @@ exports.deleteCar = async (carId, userId) => {
  * Admin: Get all cars
  */
 exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'DESC') => {
-  const offset = (page - 1) * limit;
-  const where = {};
-  let queryModel = Car;
+  const { where, queryModel, sanitizedFilters } = await buildCarFiltersWhere(filters, {
+    isUserScope: false,
+    userRole: 'admin',
+  });
 
-  if (filters.posted_by_type) where.posted_by_type = filters.posted_by_type;
-  if (filters.b2b_listing !== undefined) {
-    where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
-  }
-  if (filters.status !== undefined) {
-    where.status = filters.status;
-    if (filters.status === 'deleted') {
-      queryModel = Car.unscoped();
-    }
-  }
-  if (filters.state_id) where.state_id = filters.state_id;
-  if (filters.district_id) where.district_id = filters.district_id;
-  if (filters.city_id) where.city_id = filters.city_id;
-  if (filters.district && !filters.district_id) {
-    const d = await District.findOne({ where: { name: filters.district } });
-    if (d) where.district_id = d.id;
-  }
-  const cityInput = filters.cities || filters.city;
-  if (cityInput && !filters.city_id) {
-    const c = await City.findOne({ where: { name: cityInput } });
-    if (c) where.city_id = c.id;
-  }
-  if (filters.state && !filters.state_id) {
-    const s = await State.findOne({ where: { [Op.or]: [{ name: filters.state }, { code: filters.state }] } });
-    if (s) where.state_id = s.id;
-  }
+  const parsedPage = sanitizedFilters.page ? parseInt(sanitizedFilters.page, 10) : page;
+  const parsedLimit = sanitizedFilters.limit ? parseInt(sanitizedFilters.limit, 10) : limit;
+  const validSortCols = ['created_at', 'price', 'year', 'km_driven', 'status'];
+  const validSort = sanitizedFilters.sortBy && validSortCols.includes(sanitizedFilters.sortBy) ? sanitizedFilters.sortBy : sortBy;
+  const validOrder = sanitizedFilters.sortOrder && ['ASC', 'DESC'].includes(sanitizedFilters.sortOrder.toUpperCase()) ? sanitizedFilters.sortOrder.toUpperCase() : sortOrder;
+  const offset = (parsedPage - 1) * parsedLimit;
 
   const { count, rows } = await queryModel.findAndCountAll({
     distinct: true,
@@ -2157,10 +2133,11 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
       { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
       { model: District, as: 'district', attributes: ['id', 'name'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
+      { model: City, as: 'cities', attributes: ['id', 'name'] },
     ],
-    limit,
+    limit: parsedLimit,
     offset,
-    order: [[sortBy, sortOrder.toUpperCase()]],
+    order: [[validSort, validOrder.toUpperCase()]],
   });
 
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
@@ -2169,9 +2146,9 @@ exports.getAdminCars = async (filters = {}, page = 1, limit = 20, sortBy = 'crea
   return {
     total: count,
     cars: transformedCars,
-    page,
-    limit,
-    totalPages: Math.ceil(count / limit),
+    page: parsedPage,
+    limit: parsedLimit,
+    totalPages: Math.ceil(count / parsedLimit),
   };
 };
 
@@ -2464,7 +2441,8 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
         { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
         { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
         { model: District, as: 'district', attributes: ['id', 'name'] },
-        { model: City, as: 'city', attributes: ['id', 'name'] }
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: City, as: 'cities', attributes: ['id', 'name'] }
       ]
     });
 
@@ -2517,7 +2495,8 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
           { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
           { model: District, as: 'district', attributes: ['id', 'name'] },
-          { model: City, as: 'city', attributes: ['id', 'name'] }
+          { model: City, as: 'city', attributes: ['id', 'name'] },
+          { model: City, as: 'cities', attributes: ['id', 'name'] }
         ]
       });
       scoredCandidates = fallbackCars.map(car => ({ car, score: 0 }));
@@ -2613,7 +2592,8 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
           { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'], where: { is_primary: true }, required: false },
           { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
           { model: District, as: 'district', attributes: ['id', 'name'] },
-          { model: City, as: 'city', attributes: ['id', 'name'] }
+          { model: City, as: 'city', attributes: ['id', 'name'] },
+          { model: City, as: 'cities', attributes: ['id', 'name'] }
         ]
       });
 

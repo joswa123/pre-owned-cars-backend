@@ -118,7 +118,39 @@ exports.getFeaturedCars = catchAsync(async (req, res) => {
  */
 exports.getUserCars = catchAsync(async (req, res) => {
   const userId = req.user.id;
-  const result = await carService.getUserCars(userId, req.query);
+  const cleanedQuery = {};
+  for (const [key, value] of Object.entries(req.query)) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    cleanedQuery[key] = value;
+  }
+
+  const { error } = carQuerySchema.validate(cleanedQuery, { allowUnknown: true });
+  if (error) {
+    return res.status(400).json({
+      status: "error",
+      success: false,
+      message: error.details[0].message,
+    });
+  }
+
+  // Parse arrays
+  const arrayFields = ['brands', 'models', 'fuel_types', 'body_types', 'ownerships', 'transmissions', 'colors', 'variants', 'states', 'districts', 'cities'];
+  arrayFields.forEach(field => {
+    if (cleanedQuery[field] && typeof cleanedQuery[field] === 'string') {
+      cleanedQuery[field] = cleanedQuery[field].split(',').map(item => item.trim()).filter(Boolean);
+    }
+  });
+
+  // Parse booleans
+  if (cleanedQuery.include_expired !== undefined) {
+    cleanedQuery.include_expired = cleanedQuery.include_expired === 'true' || cleanedQuery.include_expired === true;
+  }
+  if (cleanedQuery.has_wishlist !== undefined) {
+    cleanedQuery.has_wishlist = cleanedQuery.has_wishlist === 'true' || cleanedQuery.has_wishlist === true;
+  }
+
+  const result = await carService.getUserCars(userId, cleanedQuery);
   const cars = result.cars || result;
   const total = result.total ?? result.pagination?.total ?? (Array.isArray(cars) ? cars.length : 0);
   const totalPages = result.totalPages ?? result.pagination?.totalPages ?? 1;
