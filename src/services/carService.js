@@ -1440,12 +1440,15 @@ exports.getCarById = async (carId, userId = null) => {
       stats = await analyticsService.ensureCarStats(car.id);
     }
 
-    const [dbViewsCount, dbWishlistCount] = await Promise.all([
+    const [dbViewsCount, dbRegisteredViewsCount, dbWishlistCount] = await Promise.all([
       View.count({ where: { car_id: car.id } }),
+      View.count({ where: { car_id: car.id, user_id: { [Op.ne]: null } } }),
       Wishlist.count({ where: { car_id: car.id } }),
     ]);
 
     const viewsCount = stats?.views_count !== undefined ? Math.max(stats.views_count, dbViewsCount) : dbViewsCount;
+    const registeredViews = Math.min(dbRegisteredViewsCount, viewsCount);
+    const anonymousViews = Math.max(viewsCount - registeredViews, 0);
     const wishlistCount = dbWishlistCount; // Single source of truth from base table
     const calls = stats?.calls_count || 0;
     const whatsapp = stats?.whatsapp_count || 0;
@@ -1455,6 +1458,9 @@ exports.getCarById = async (carId, userId = null) => {
     const metrics = {
       views: viewsCount,
       views_count: viewsCount,
+      total_views: viewsCount,
+      registered_views: registeredViews,
+      anonymous_views: anonymousViews,
       enquiries: enquiriesCount,
       enquiry_count: enquiriesCount,
       calls,
@@ -1471,6 +1477,9 @@ exports.getCarById = async (carId, userId = null) => {
       ...baseTransformed,
       views: viewsCount,
       views_count: viewsCount,
+      total_views: viewsCount,
+      registered_views: registeredViews,
+      anonymous_views: anonymousViews,
       wishlist_count: wishlistCount,
       enquiry_count: enquiriesCount,
       metrics,
@@ -2278,6 +2287,7 @@ exports.recordView = async (carId, userId = null, ipAddress = null) => {
 
   // Invalidate single car cache & HTTP middleware cache
   await clearCache(`car:${carId}`);
+  await clearCachePattern(`car:views:${carId}:*`);
   const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
   await clearHttpCache(`/api/v1/cars/${carId}`);
 };

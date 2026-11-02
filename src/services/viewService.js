@@ -1,4 +1,4 @@
-const { View, Car, User, Brand, Model } = require('../models');
+const { View, Car, User, Brand, Model, CarStat } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const redisClient = require('../config/redis');
@@ -54,15 +54,16 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
     console.error('Redis get cache error in getCarViews:', err);
   }
 
-  const whereClause = {
+  const baseRegisteredWhere = {
     car_id: carId,
     user_id: { [Op.ne]: null },
   };
 
+  const queryWhere = { ...baseRegisteredWhere };
   const decodedCursor = decodeCursor(cursor);
   if (decodedCursor) {
     if (decodedCursor.id) {
-      whereClause[Op.or] = [
+      queryWhere[Op.or] = [
         { timestamp: { [Op.lt]: new Date(decodedCursor.timestamp) } },
         {
           timestamp: new Date(decodedCursor.timestamp),
@@ -70,30 +71,41 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
         },
       ];
     } else {
-      whereClause.timestamp = { [Op.lt]: new Date(decodedCursor.timestamp) };
+      queryWhere.timestamp = { [Op.lt]: new Date(decodedCursor.timestamp) };
     }
   }
 
-  const views = await View.findAll({
-    where: whereClause,
-    include: [
-      {
-        model: User,
-        as: 'user',
-        attributes: ['id', 'full_name', 'phone'],
-      },
-    ],
-    order: [
-      ['timestamp', 'DESC'],
-      ['id', 'DESC'],
-    ],
-    limit: limitNum,
-  });
+  const [registeredResult, totalRegisteredCount, totalDbViews, carStat] = await Promise.all([
+    View.findAndCountAll({
+      where: queryWhere,
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'full_name', 'phone'],
+          required: false,
+        },
+      ],
+      order: [
+        ['timestamp', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      limit: limitNum,
+    }),
+    View.count({ where: baseRegisteredWhere }),
+    View.count({ where: { car_id: carId } }),
+    CarStat.findOne({ where: { car_id: carId } }),
+  ]);
+
+  const views = registeredResult.rows;
+  const registeredViews = totalRegisteredCount;
+  const totalViews = Math.max(carStat?.views_count || 0, totalDbViews);
+  const anonymousViews = Math.max(totalViews - registeredViews, 0);
 
   const formattedViews = views.map((v) => {
     const json = typeof v.toJSON === 'function' ? v.toJSON() : v;
     return {
-      user_name: json.user?.full_name || 'Anonymous',
+      user_name: json.user?.full_name || 'Anonymous Visitor',
       user_phone: json.user?.phone || 'N/A',
       viewed_at: json.timestamp,
     };
@@ -112,8 +124,14 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
       name: carName,
       number_plate: car.number_plate,
     },
+    meta: {
+      total_views: totalViews,
+      registered_views: registeredViews,
+      anonymous_views: anonymousViews,
+    },
     views: formattedViews,
     pagination: {
+      total: registeredViews,
       limit: limitNum,
       next_cursor: nextCursor,
       has_more: formattedViews.length === limitNum,

@@ -9,6 +9,7 @@ const wishlistService = require('../src/services/wishlistService');
 const carService = require('../src/services/carService');
 const leadService = require('../src/services/leadService');
 const analyticsService = require('../src/services/analyticsService');
+const viewService = require('../src/services/viewService');
 
 describe('Car Metrics Remediation Suite (W-01 to S-04)', () => {
   let testCar;
@@ -129,7 +130,7 @@ describe('Car Metrics Remediation Suite (W-01 to S-04)', () => {
     });
   });
 
-  describe('B. Views Counter Invariants (V-01 to V-04)', () => {
+  describe('B. Views Counter Invariants (V-01 to V-05)', () => {
     test('V-01 & V-02: View records once and repeat view does not inflate view count', async () => {
       const initialViews = (await View.count({ where: { car_id: testCar.id } })) || 0;
 
@@ -149,6 +150,39 @@ describe('Car Metrics Remediation Suite (W-01 to S-04)', () => {
       await carService.recordView(testCar.id, null);
       const afterViews = await View.count({ where: { car_id: testCar.id } });
       expect(afterViews).toBe(initialViews + 1);
+    });
+
+    test('V-05: View list parity with car metrics (Option A: Differentiated Transparency)', async () => {
+      // 1. Reset views and car_stats for testCar
+      await View.destroy({ where: { car_id: testCar.id } });
+      await CarStat.update({ views_count: 0 }, { where: { car_id: testCar.id } });
+      const redisClient = require('../src/config/redis');
+      if (redisClient.isOpen) {
+        await redisClient.del(`counter:buffer:${testCar.id}:view`);
+        await redisClient.del(`car:${testCar.id}`);
+        const keys = await redisClient.keys(`car:views:${testCar.id}:*`);
+        if (keys.length > 0) {
+          await redisClient.del(keys);
+        }
+      }
+
+      // 2. Record 2 registered views and 1 anonymous view
+      await carService.recordView(testCar.id, testUserA.id);
+      await carService.recordView(testCar.id, testUserB.id);
+      await carService.recordView(testCar.id, null);
+
+      // 3. Assert carService.getCarById returns views: 3
+      const carDetail = await carService.getCarById(testCar.id, testSeller.id);
+      expect(carDetail.views).toBe(3);
+      expect(carDetail.metrics.views).toBe(3);
+
+      // 4. Assert viewService.getCarViews returns meta breakdown and 2 registered rows
+      const viewsResult = await viewService.getCarViews(testSeller.id, testCar.id);
+      expect(viewsResult.meta).toBeDefined();
+      expect(viewsResult.meta.total_views).toBe(3);
+      expect(viewsResult.meta.registered_views).toBe(2);
+      expect(viewsResult.meta.anonymous_views).toBe(1);
+      expect(viewsResult.views.length).toBe(2);
     });
   });
 
