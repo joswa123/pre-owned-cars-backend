@@ -64,7 +64,8 @@ app.use(
         allowedOrigins.includes(origin) ||
         allowedOrigins.includes(normalizedOrigin) ||
         allowedOrigins.includes('*') ||
-        normalizedOrigin.endsWith('autodeal4u.com')
+        normalizedOrigin.endsWith('autodeal4u.com') ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalizedOrigin)
       ) {
         return callback(null, true);
       }
@@ -174,6 +175,10 @@ app.use('/api/v1/users', require('./routes/v1/userRoutes'));
 app.use('/api/v1/dealers', require('./routes/v1/dealerRoutes'));
 // Apply 60s cache for public car listings (GET only)
 app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
+app.use('/api/v1/commercial', require('./routes/v1/commercialRoutes'));
+app.use('/api/commercial', require('./routes/v1/commercialRoutes'));
+app.use('/api/v1/search', require('./routes/v1/searchRoutes'));
+app.use('/api/search', require('./routes/v1/searchRoutes'));
 // Apply 5m cache for location metadata
 app.use('/api/v1/locations', cacheMiddleware(300, { ignoreAuth: true }), require('./routes/v1/locationRoutes'));
 // Apply 5m cache for vehicle metadata

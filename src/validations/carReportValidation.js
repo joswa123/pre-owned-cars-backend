@@ -14,7 +14,9 @@ const REPORT_REASONS = [
 const REPORT_STATUSES = ['pending', 'in_review', 'resolved', 'dismissed'];
 
 const createCarReportSchema = Joi.object({
-  car_id: Joi.string().uuid().required(),
+  car_id: Joi.string().uuid().optional(),
+  target_id: Joi.string().uuid().optional(),
+  target_type: Joi.string().valid('car', 'commercial').default('car').optional(),
   dealer_id: Joi.string().uuid().optional(),
   reason: Joi.string().trim().max(60).pattern(/^[a-z0-9]+(_[a-z0-9]+)*$/).required().messages({
     'string.empty': 'Reason is required',
@@ -25,7 +27,7 @@ const createCarReportSchema = Joi.object({
   // Optional overrides
   reporter_name: Joi.string().trim().max(100).optional(),
   reporter_phone: Joi.string().trim().pattern(/^[0-9]{10,15}$/).optional(),
-}).unknown(false);
+}).or('car_id', 'target_id').unknown(false);
 
 const updateCarReportStatusSchema = Joi.object({
   status: Joi.string().valid(...REPORT_STATUSES).optional(),

@@ -1,6 +1,7 @@
 // services/carReportService.js
 const { CarReport, Car, User, Brand, Model, CarImage, ReportReason } = require('../models');
 const { AppError } = require('../utils/errorHandler');
+const { resolveTarget } = require('../utils/targetResolver');
 
 /**
  * Submit a report for a car listing (authenticated / registered users only)
@@ -19,13 +20,24 @@ exports.createReport = async (reporterUser, data) => {
     throw new AppError('Invalid report reason. Please select a valid active reason.', 400);
   }
 
-  const car = await Car.findByPk(data.car_id);
-  if (!car) {
-    throw new AppError('Car listing not found.', 404);
-  }
+  const targetType = (data.target_type || (data.car_id ? 'car' : 'commercial')).toLowerCase();
+  const targetId = data.target_id || data.car_id;
 
-  // Resolve dealer (the owner/seller of the car)
-  const dealerId = car.user_id;
+  let car = null;
+  let dealerId = null;
+  if (targetType === 'commercial') {
+    const commercial = await resolveTarget('commercial', targetId);
+    if (!commercial) {
+      throw new AppError('Commercial vehicle listing not found.', 404);
+    }
+    dealerId = commercial.user_id;
+  } else {
+    car = await Car.findByPk(targetId);
+    if (!car) {
+      throw new AppError('Car listing not found.', 404);
+    }
+    dealerId = car.user_id;
+  }
 
   // Resolve reporter identity from registered user
   const reporterId = reporterUser.id;
@@ -41,7 +53,9 @@ exports.createReport = async (reporterUser, data) => {
   }
 
   const report = await CarReport.create({
-    car_id: car.id,
+    car_id: targetType === 'car' ? targetId : null,
+    target_type: targetType,
+    target_id: targetId,
     dealer_id: dealerId,
     reporter_id: reporterId,
     reporter_name: reporterName,
@@ -81,7 +95,9 @@ exports.getReports = async (query = {}) => {
 
   const where = {};
   if (query.status) where.status = query.status;
-  if (query.car_id) where.car_id = query.car_id;
+  if (query.car_id || query.target_id) {
+    where.car_id = query.car_id || query.target_id;
+  }
   if (query.dealer_id) where.dealer_id = query.dealer_id;
   if (query.reason) where.reason = query.reason;
 

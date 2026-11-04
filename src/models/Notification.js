@@ -21,9 +21,18 @@ const Notification = sequelize.define('Notification', {
   },
   car_id: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true,
     references: { model: 'cars', key: 'id' },
     onDelete: 'CASCADE',
+  },
+  target_type: {
+    type: DataTypes.ENUM('car', 'commercial'),
+    allowNull: false,
+    defaultValue: 'car',
+  },
+  target_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
   },
   type: {
     type: DataTypes.STRING(50),
@@ -40,6 +49,22 @@ const Notification = sequelize.define('Notification', {
   tableName: 'notifications',
   timestamps: true,
   underscored: true,
+  hooks: {
+    beforeValidate: (instance) => {
+      if (!instance.target_type) {
+        instance.target_type = 'car';
+      }
+      if (!instance.target_id && instance.car_id) {
+        instance.target_id = instance.car_id;
+      }
+      if (!instance.car_id && instance.target_id && instance.target_type === 'car') {
+        instance.car_id = instance.target_id;
+      }
+    },
+  },
+  indexes: [
+    { fields: ['target_type', 'target_id'] },
+  ],
 });
 
 module.exports = Notification;

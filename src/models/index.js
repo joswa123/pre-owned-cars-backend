@@ -31,6 +31,8 @@ const CarHighlight = require('./CarHighlight');
 const Notification = require('./Notification');
 const CarReport = require('./CarReport');
 const ReportReason = require('./ReportReason');
+const CommercialVehicle = require('./CommercialVehicle');
+const CommercialVehicleImage = require('./CommercialVehicleImage');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -246,6 +248,56 @@ Car.hasMany(CarReport, { foreignKey: 'car_id', as: 'reports' });
 User.hasMany(CarReport, { foreignKey: 'dealer_id', as: 'dealerReports' });
 User.hasMany(CarReport, { foreignKey: 'reporter_id', as: 'filedReports' });
 
+// Commercial Vehicle Associations
+User.hasMany(CommercialVehicle, { foreignKey: 'user_id', as: 'commercialVehicles' });
+CommercialVehicle.belongsTo(User, { foreignKey: 'user_id', as: 'seller' });
+
+CommercialVehicle.belongsTo(VehicleType, { foreignKey: 'vehicle_type_id', as: 'vehicleType' });
+VehicleType.hasMany(CommercialVehicle, { foreignKey: 'vehicle_type_id', as: 'commercialVehicles' });
+CommercialVehicle.belongsTo(CarType, { foreignKey: 'vehicle_type_id', as: 'vehicleType' });
+CarType.hasMany(CommercialVehicle, { foreignKey: 'vehicle_type_id', as: 'commercialVehicles' });
+
+CommercialVehicle.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });
+Brand.hasMany(CommercialVehicle, { foreignKey: 'brand_id', as: 'commercialVehicles' });
+
+CommercialVehicle.belongsTo(State, { foreignKey: 'state_id', as: 'state' });
+CommercialVehicle.belongsTo(District, { foreignKey: 'district_id', as: 'district' });
+CommercialVehicle.belongsTo(City, { foreignKey: 'city_id', as: 'city' });
+CommercialVehicle.belongsTo(City, { foreignKey: 'city_id', as: 'cities' });
+
+CommercialVehicle.belongsTo(User, { foreignKey: 'approved_by', as: 'approver' });
+
+CommercialVehicle.hasMany(CommercialVehicleImage, {
+  foreignKey: 'commercial_vehicle_id',
+  as: 'images',
+  onDelete: 'CASCADE',
+});
+CommercialVehicleImage.belongsTo(CommercialVehicle, {
+  foreignKey: 'commercial_vehicle_id',
+  as: 'vehicle',
+});
+
+CommercialVehicle.hasMany(Wishlist, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'commercial' },
+  as: 'wishlists',
+});
+
+CommercialVehicle.hasMany(Lead, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'commercial' },
+  as: 'leads',
+});
+
+CommercialVehicle.hasMany(CarReport, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'commercial' },
+  as: 'reports',
+});
+
 const models = {
   User,
   CustomerProfile,
@@ -280,6 +332,8 @@ const models = {
   Notification,
   CarReport,
   ReportReason,
+  CommercialVehicle,
+  CommercialVehicleImage,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk

@@ -24,7 +24,7 @@ function slugify(text) {
  * @param {string|null} [excludeId=null] - Optional ID to ignore during collision checking (for updates)
  * @returns {Promise<string>}
  */
-async function generateUniqueSlug(model, name, excludeId = null) {
+async function generateUniqueSlug(model, name, excludeId = null, options = {}) {
   const baseSlug = slugify(name);
   let candidate = baseSlug;
   let counter = 1;
@@ -34,7 +34,11 @@ async function generateUniqueSlug(model, name, excludeId = null) {
     if (excludeId) {
       where.id = { [Op.ne]: excludeId };
     }
-    const existing = await model.findOne({ where, attributes: ['id'] });
+    const findOptions = { where, attributes: ['id'] };
+    if (options && options.transaction) {
+      findOptions.transaction = options.transaction;
+    }
+    const existing = await model.findOne(findOptions);
     if (!existing) {
       return candidate;
     }

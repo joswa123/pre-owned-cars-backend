@@ -10,8 +10,17 @@ const Lead = sequelize.define('Lead', {
   },
   car_id: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true,
     references: { model: 'cars', key: 'id' },
+  },
+  target_type: {
+    type: DataTypes.ENUM('car', 'commercial'),
+    allowNull: false,
+    defaultValue: 'car',
+  },
+  target_id: {
+    type: DataTypes.UUID,
+    allowNull: false,
   },
   buyer_id: {
     type: DataTypes.UUID,
@@ -88,11 +97,26 @@ const Lead = sequelize.define('Lead', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  hooks: {
+    beforeValidate: (instance) => {
+      if (!instance.target_type) {
+        instance.target_type = 'car';
+      }
+      if (!instance.target_id && instance.car_id) {
+        instance.target_id = instance.car_id;
+      }
+      if (!instance.car_id && instance.target_id && instance.target_type === 'car') {
+        instance.car_id = instance.target_id;
+      }
+    },
+  },
   indexes: [
     { fields: ['seller_id', 'status'] },
     { fields: ['car_id'] },
     { fields: ['buyer_id'] },
     { fields: ['created_at'] },
+    { fields: ['target_type', 'target_id'] },
+    { fields: ['buyer_id', 'created_at'] },
   ],
 });
 

@@ -3,18 +3,20 @@ const { transformCarImages } = require('../services/carService');
 const { catchAsync } = require('../utils/errorHandler');
 
 exports.addToWishlist = catchAsync(async (req, res) => {
-  const { carId, car_id } = req.body;
-  const finalCarId = car_id || carId;
+  const { carId, car_id, target_id, target_type } = req.body;
+  const finalTargetId = target_id || car_id || carId;
+  const finalTargetType = target_type || (target_id && !car_id && !carId ? 'commercial' : 'car');
   const userId = req.user.id;
-  const wishlist = await wishlistService.addToWishlist(userId, finalCarId);
+  const wishlist = await wishlistService.addToWishlist(userId, finalTargetId, finalTargetType);
   res.status(200).json({ success: true, message: 'Added to wishlist', data: wishlist });
 });
 
 exports.toggleWishlist = catchAsync(async (req, res) => {
-  const { carId, car_id } = req.body;
-  const finalCarId = car_id || carId;
+  const { carId, car_id, target_id, target_type } = req.body;
+  const finalTargetId = target_id || car_id || carId;
+  const finalTargetType = target_type || (target_id && !car_id && !carId ? 'commercial' : 'car');
   const userId = req.user.id;
-  const result = await wishlistService.toggleWishlist(userId, finalCarId);
+  const result = await wishlistService.toggleWishlist(userId, finalTargetId, finalTargetType);
   res.status(200).json({
     success: true,
     message: result.message,
@@ -25,9 +27,11 @@ exports.toggleWishlist = catchAsync(async (req, res) => {
 });
 
 exports.removeFromWishlist = catchAsync(async (req, res) => {
-  const { carId } = req.params;
+  const { carId, target_id, target_type } = { ...req.params, ...req.body };
+  const finalTargetId = target_id || carId;
+  const finalTargetType = target_type || 'car';
   const userId = req.user.id;
-  await wishlistService.removeFromWishlist(userId, carId);
+  await wishlistService.removeFromWishlist(userId, finalTargetId, finalTargetType);
   res.status(200).json({ success: true, message: 'Removed from wishlist' });
 });
 

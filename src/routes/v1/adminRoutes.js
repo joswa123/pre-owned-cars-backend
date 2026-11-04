@@ -34,6 +34,14 @@ router.get("/users/pending", adminController.getPendingUsers);
 router.patch("/users/:id/approve", adminController.approveUser);
 router.patch("/users/:id/reject", adminController.rejectUser);
 
+// ── Vehicle Listings Moderation Flow ──────────────────────────────────────────
+// GET   /api/v1/admin/listings/pending       — paginated pending vehicle listings (filter by target_type: car | commercial | all)
+// PATCH /api/v1/admin/listings/:id/approve   — approve listing
+// PATCH /api/v1/admin/listings/:id/reject    — reject listing with reason
+router.get("/listings/pending", adminController.getPendingListings);
+router.patch("/listings/:id/approve", adminController.approveListing);
+router.patch("/listings/:id/reject", adminController.rejectListing);
+
 // ── Subscriptions & Payments (future) ────────────────────────────────────────
 router.get("/subscriptions", adminController.getSubscriptions);
 router.get("/payments", adminController.getPayments);

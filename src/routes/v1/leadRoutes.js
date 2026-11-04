@@ -14,6 +14,7 @@ router.post('/', protect, validate(createLeadSchema), leadController.createLead)
 router.get('/summary', protect, leadController.getLeadSummary);
 router.get('/car/:carId', protect, leadController.getCarLeads);
 router.get('/seller', protect, leadController.getSellerLeads);
+router.get('/seller/leads', protect, leadController.getSellerLeads);
 router.get('/seller/summary', protect, leadController.getLeadSummary);
 router.get('/seller/car/:carId', protect, leadController.getCarLeads);
 router.get('/me', protect, leadController.getBuyerLeads);

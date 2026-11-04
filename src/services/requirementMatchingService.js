@@ -131,6 +131,8 @@ exports.matchRequirementsForCar = async (carId) => {
           user_id: req.user_id,
           requirement_id: req.id,
           car_id: car.id,
+          target_type: 'car',
+          target_id: car.id,
           type: 'requirement_match',
           message: message,
         });

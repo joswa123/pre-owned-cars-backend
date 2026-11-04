@@ -304,3 +304,55 @@ exports.rejectUser = catchAsync(async (req, res) => {
     },
   });
 });
+
+const adminModerationService = require('../services/adminModerationService');
+
+/**
+ * Moderation: List pending vehicle listings
+ */
+exports.getPendingListings = catchAsync(async (req, res) => {
+  const { target_type, targetType, page = 1, limit = 20 } = req.query;
+  const result = await adminModerationService.listPending({
+    targetType: target_type || targetType || 'all',
+    page: Number(page),
+    limit: Number(limit),
+  });
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
+/**
+ * Moderation: Approve a vehicle listing
+ */
+exports.approveListing = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { target_type, targetType } = req.body || {};
+  const result = await adminModerationService.approveListing({
+    targetType: target_type || targetType || null,
+    targetId: id,
+    adminId: req.user.id,
+  });
+
+  res.status(200).json(result);
+});
+
+/**
+ * Moderation: Reject a vehicle listing
+ */
+exports.rejectListing = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { target_type, targetType, reason, rejection_reason } = req.body || {};
+  const finalReason = reason || rejection_reason;
+
+  const result = await adminModerationService.rejectListing({
+    targetType: target_type || targetType || null,
+    targetId: id,
+    adminId: req.user.id,
+    reason: finalReason,
+  });
+
+  res.status(200).json(result);
+});

@@ -2,6 +2,7 @@ const { Lead, Car, User, Brand, Model, Variant, CarImage, CarStat, View, Wishlis
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const { AppError } = require('../utils/errorHandler');
+const { resolveTarget } = require('../utils/targetResolver');
 const redisClient = require('../config/redis');
 
 const clearCachePattern = async (pattern) => {
@@ -130,15 +131,35 @@ exports.getLeadById = async (leadId) => {
  * Create a new lead/enquiry
  */
 exports.createLead = async (userId, data) => {
-  const carId = data.car_id || data.carId;
-  if (!carId) throw new AppError('car_id is required', 400);
+  const targetType = (data.target_type || (data.car_id ? 'car' : 'commercial')).toLowerCase();
+  const targetId = data.target_id || data.car_id || data.carId;
 
-  const car = await Car.findByPk(carId);
-  if (!car) throw new AppError('Car not found', 404);
-  if (car.status !== 'active') throw new AppError('Car is not available for enquiry', 400);
+  if (!targetId) throw new AppError('target_id or car_id is required', 400);
 
-  if (car.user_id === userId) {
-    throw new AppError('Cannot enquire on your own car listing', 400);
+  let car = null;
+  let commercialVehicle = null;
+  let sellerId = null;
+
+  if (targetType === 'commercial') {
+    commercialVehicle = await resolveTarget('commercial', targetId);
+    if (!commercialVehicle) {
+      throw new AppError('Commercial vehicle not found', 404);
+    }
+    if (commercialVehicle.status !== 'active') {
+      throw new AppError('Commercial vehicle is not available for enquiry', 400);
+    }
+    if (commercialVehicle.user_id === userId) {
+      throw new AppError('Cannot enquire on your own commercial vehicle listing', 400);
+    }
+    sellerId = commercialVehicle.user_id;
+  } else {
+    car = await Car.findByPk(targetId);
+    if (!car) throw new AppError('Car not found', 404);
+    if (car.status !== 'active') throw new AppError('Car is not available for enquiry', 400);
+    if (car.user_id === userId) {
+      throw new AppError('Cannot enquire on your own car listing', 400);
+    }
+    sellerId = car.user_id;
   }
 
   let buyer = null;
@@ -155,8 +176,10 @@ exports.createLead = async (userId, data) => {
   const buyerEmail = data.email || buyer?.email || null;
 
   const lead = await Lead.create({
-    car_id: car.id,
-    seller_id: car.user_id,
+    car_id: targetType === 'car' ? targetId : null,
+    target_type: targetType,
+    target_id: targetId,
+    seller_id: sellerId,
     buyer_id: userId || null,
     buyer_name: buyerName,
     buyer_phone: buyerPhone,
@@ -170,30 +193,34 @@ exports.createLead = async (userId, data) => {
     contact_unlocked: false,
   });
 
-  await clearCachePattern(`seller:leads:${car.user_id}:*`);
-  await clearCachePattern(`seller:lead_summary:${car.user_id}:*`);
-  await clearCachePattern(`car:leads:${car.id}:*`);
+  await clearCachePattern(`seller:leads:${sellerId}:*`);
+  await clearCachePattern(`seller:lead_summary:${sellerId}:*`);
+  if (targetType === 'car' && car) {
+    await clearCachePattern(`car:leads:${car.id}:*`);
+  }
   if (userId) {
     await clearCachePattern(`buyer:leads:${userId}:*`);
   }
 
   const dashboardService = require('./dashboardService');
-  await dashboardService.invalidateDashboardCache(car.user_id);
+  await dashboardService.invalidateDashboardCache(sellerId);
   if (userId) {
     await dashboardService.invalidateDashboardCache(userId);
   }
 
   // Synchronize with Analytics Engine (Redis Buffer + car_stats)
-  try {
-    const analyticsService = require('./analyticsService');
-    const interactionType = ['call', 'whatsapp', 'message'].includes(data.source) ? data.source : 'message';
-    await analyticsService.recordInteraction({
-      carId: car.id,
-      userId: userId || null,
-      type: interactionType,
-    });
-  } catch (statErr) {
-    console.warn('Lead analytics synchronization warning:', statErr.message);
+  if (targetType === 'car' && car) {
+    try {
+      const analyticsService = require('./analyticsService');
+      const interactionType = ['call', 'whatsapp', 'message'].includes(data.source) ? data.source : 'message';
+      await analyticsService.recordInteraction({
+        carId: car.id,
+        userId: userId || null,
+        type: interactionType,
+      });
+    } catch (statErr) {
+      console.warn('Lead analytics synchronization warning:', statErr.message);
+    }
   }
 
   return await exports.getLeadById(lead.id);
@@ -788,8 +815,8 @@ exports.getAllLeadsForAdmin = async (filters = {}) => {
     where.seller_id = filters.seller_id;
   }
 
-  if (filters.car_id) {
-    where.car_id = filters.car_id;
+  if (filters.car_id || filters.target_id) {
+    where.car_id = filters.car_id || filters.target_id;
   }
 
   if (filters.start_date || filters.end_date) {

@@ -329,9 +329,11 @@ function createUpload(folderName, extraParams = {}, fieldName = 'image', maxFile
 }
 
 const MAX_CAR_IMAGES = parseInt(process.env.MAX_CAR_IMAGES, 10) || 20;
+const MAX_COMMERCIAL_IMAGES = 10;
 
 const FIELD_MAX_COUNTS = {
   primary_image: 1,
+  secondary_images: MAX_COMMERCIAL_IMAGES,
   images: MAX_CAR_IMAGES,
   video: 1,
   audio: 1,
@@ -346,6 +348,10 @@ const FIELD_MAX_COUNTS = {
 // ─── Multer Error Handling Wrapper ───────────────────────
 function wrapMulter(multerMiddleware) {
   return (req, res, next) => {
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.includes('multipart/form-data')) {
+      return next();
+    }
     multerMiddleware(req, res, (err) => {
       if (err) {
         if (err instanceof multer.MulterError) {
@@ -361,7 +367,7 @@ function wrapMulter(multerMiddleware) {
             if (err.field && FIELD_MAX_COUNTS[err.field] !== undefined) {
               return next(new AppError(`Too many files uploaded for field "${err.field}". Maximum allowed is ${FIELD_MAX_COUNTS[err.field]}.`, 400));
             }
-            return next(new AppError(`Unexpected field "${err.field}". Allowed file fields: primary_image, images, video, audio, image, icon.`, 400));
+            return next(new AppError(`Unexpected field "${err.field}". Allowed file fields: primary_image, images, secondary_images, video, audio, image, icon.`, 400));
           }
           if (err.code === 'LIMIT_FILE_COUNT') {
             return next(new AppError(`Too many files uploaded for field "${err.field || 'files'}".`, 400));
@@ -411,11 +417,53 @@ const carMediaUploadRaw = multer({
   { name: 'audio', maxCount: 1 },
 ]);
 
+const commercialMediaCloudinaryStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    const vehicleId = req.commercialVehicleId || req.params?.id || req.body?.commercial_vehicle_id || crypto.randomUUID();
+    req.commercialVehicleId = vehicleId;
+    const uuid = crypto.randomUUID();
+    const prefix = file.fieldname === 'primary_image' ? 'primary' : 'commercial';
+    return {
+      folder: `autodeal4u/commercial/${vehicleId}`,
+      resource_type: 'image',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp'],
+      transformation: IMAGE_UPLOAD_TRANSFORMATION,
+      public_id: `${prefix}-${uuid}`,
+    };
+  },
+});
+
+const commercialMediaStorage = isTestEnv
+  ? {
+      _handleFile(req, file, cb) {
+        return createTestMediaStorage('image')._handleFile(req, file, cb);
+      },
+      _removeFile(req, file, cb) {
+        cb(null);
+      },
+    }
+  : commercialMediaCloudinaryStorage;
+
+const commercialMediaUploadRaw = multer({
+  storage: commercialMediaStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024,
+  },
+  fileFilter: carMediaFileFilter,
+}).fields([
+  { name: 'primary_image', maxCount: 1 },
+  { name: 'secondary_images', maxCount: MAX_COMMERCIAL_IMAGES },
+  { name: 'images', maxCount: MAX_COMMERCIAL_IMAGES },
+]);
+
 // ─── Named Exports ─────────────────────────────────────
 module.exports = {
   uploadVideo: wrapMulter(uploadVideoRaw.single('video')),
   uploadAudio: wrapMulter(uploadAudioRaw.single('audio')),
   carMediaUpload: wrapMulter(carMediaUploadRaw),
+  commercialMediaUpload: wrapMulter(commercialMediaUploadRaw),
+  MAX_COMMERCIAL_IMAGES,
   wrapMulter,
   MAX_CAR_IMAGES,
   FIELD_MAX_COUNTS,
