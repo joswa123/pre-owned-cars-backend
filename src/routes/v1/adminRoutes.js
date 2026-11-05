@@ -51,6 +51,8 @@ const carReportController = require("../../controllers/carReportController");
 const validate = require("../../middlewares/validate");
 const { updateCarReportStatusSchema } = require("../../validations/carReportValidation");
 
+router.get("/car-reports/unread-count", carReportController.getUnreadCount);
+router.get("/reports/unread-count", carReportController.getUnreadCount);
 router.get("/car-reports", carReportController.getReports);
 router.get("/car-reports/:id", carReportController.getReportById);
 router.patch("/car-reports/:id", validate(updateCarReportStatusSchema, { allowUnknown: false }), carReportController.updateReportStatus);

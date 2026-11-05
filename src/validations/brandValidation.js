@@ -28,6 +28,24 @@ const brandSchema = Joi.object({
     Joi.array().items(Joi.string().trim().max(36)),
     Joi.string().trim()
   ).optional(),
+  vehicle_type_id: Joi.string()
+    .trim()
+    .max(36)
+    .allow('', null)
+    .optional(),
+  vehicle_type_ids: Joi.alternatives().try(
+    Joi.array().items(Joi.string().trim().max(36)),
+    Joi.string().trim()
+  ).optional(),
+  vehicle_type: Joi.string()
+    .trim()
+    .max(36)
+    .allow('', null)
+    .optional(),
+  types: Joi.alternatives().try(
+    Joi.array(),
+    Joi.string().trim()
+  ).optional(),
   is_active: Joi.boolean()
     .optional()
     .default(true),
@@ -56,6 +74,24 @@ const brandUpdateSchema = Joi.object({
     .optional(),
   type_ids: Joi.alternatives().try(
     Joi.array().items(Joi.string().trim().max(36)),
+    Joi.string().trim()
+  ).optional(),
+  vehicle_type_id: Joi.string()
+    .trim()
+    .max(36)
+    .allow('', null)
+    .optional(),
+  vehicle_type_ids: Joi.alternatives().try(
+    Joi.array().items(Joi.string().trim().max(36)),
+    Joi.string().trim()
+  ).optional(),
+  vehicle_type: Joi.string()
+    .trim()
+    .max(36)
+    .allow('', null)
+    .optional(),
+  types: Joi.alternatives().try(
+    Joi.array(),
     Joi.string().trim()
   ).optional(),
   is_active: Joi.boolean()

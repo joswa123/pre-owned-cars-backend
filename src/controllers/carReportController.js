@@ -31,6 +31,19 @@ exports.getReports = catchAsync(async (req, res) => {
 });
 
 /**
+ * Get count of unread (pending) reports (Admin only)
+ */
+exports.getUnreadCount = catchAsync(async (req, res) => {
+  const count = await carReportService.getUnreadCount();
+
+  res.status(200).json({
+    status: 'success',
+    success: true,
+    data: { count },
+  });
+});
+
+/**
  * Get single car report by ID (Admin only)
  */
 exports.getReportById = catchAsync(async (req, res) => {

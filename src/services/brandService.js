@@ -18,6 +18,8 @@ async function invalidateBrandCaches() {
     const patterns = [
       '__express__/api/v1/types*',
       '__express__/api/types*',
+      '__express__/api/v1/brands*',
+      '__express__/api/brands*',
       '__express__/api/v1/catalog*',
       '__express__/api/v1/admin/brands*',
       'brands:*',
@@ -37,19 +39,21 @@ async function invalidateBrandCaches() {
 
 /**
  * Helper to normalize type_ids input (handles array, JSON string, or comma-separated)
+ * Also accepts aliases: vehicle_type_ids, vehicle_type_id, vehicle_type, types, type_id
  */
 function normalizeTypeIds(data = {}) {
   let typeIds = [];
 
-  if (Array.isArray(data.type_ids)) {
-    typeIds = data.type_ids.map(id => String(id).trim()).filter(Boolean);
-  } else if (typeof data.type_ids === 'string' && data.type_ids.trim()) {
-    const raw = data.type_ids.trim();
+  const rawList = data.type_ids || data.vehicle_type_ids || data.types;
+  if (Array.isArray(rawList)) {
+    typeIds = rawList.map(id => (typeof id === 'object' && id !== null ? (id.id || id.type_id || id.value) : String(id)).trim()).filter(Boolean);
+  } else if (typeof rawList === 'string' && rawList.trim()) {
+    const raw = rawList.trim();
     if (raw.startsWith('[') && raw.endsWith(']')) {
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          typeIds = parsed.map(id => String(id).trim()).filter(Boolean);
+          typeIds = parsed.map(id => (typeof id === 'object' && id !== null ? (id.id || id.type_id || id.value) : String(id)).trim()).filter(Boolean);
         }
       } catch (e) {
         typeIds = raw.replace(/[\[\]"]/g, '').split(',').map(s => s.trim()).filter(Boolean);
@@ -59,9 +63,10 @@ function normalizeTypeIds(data = {}) {
     }
   }
 
-  // Also include single type_id if provided and not already included
-  if (data.type_id && !typeIds.includes(String(data.type_id).trim())) {
-    typeIds.push(String(data.type_id).trim());
+  // Also include single type_id / vehicle_type_id / vehicle_type if provided and not already included
+  const single = data.type_id || data.vehicle_type_id || data.vehicle_type;
+  if (single && !typeIds.includes(String(single).trim())) {
+    typeIds.push(String(single).trim());
   }
 
   return typeIds;
@@ -85,15 +90,23 @@ function formatBrand(brand, isAdmin = false) {
     external_id: raw.external_id || null,
   };
 
-  if (raw.brandTypes || raw.vehicleTypes) {
-    const types = raw.brandTypes || raw.vehicleTypes || [];
-    result.types = types.map(t => ({
+  const typesList = raw.brandTypes || raw.vehicleTypes || [];
+  if (typesList.length > 0) {
+    result.types = typesList.map(t => ({
       id: t.id,
       name: t.name,
       slug: t.slug,
       order: t.order,
       category_id: t.category_id || null,
     }));
+  } else if (raw.primaryType) {
+    result.types = [{
+      id: raw.primaryType.id,
+      name: raw.primaryType.name,
+      slug: raw.primaryType.slug,
+      order: raw.primaryType.order,
+      category_id: raw.primaryType.category_id || null,
+    }];
   }
 
   if (isAdmin) {
@@ -262,15 +275,30 @@ exports.getBrandsByType = async (typeId, options = {}) => {
 
   // Query brands linked through junction table OR matching fallback type_id
   const brands = await Brand.findAll({
-    where: brandWhere,
+    where: {
+      ...brandWhere,
+      [Op.or]: [
+        { type_id: resolvedTypeId },
+        sequelize.literal(`EXISTS (
+          SELECT 1 FROM brand_types bt 
+          WHERE bt.brand_id = \`Brand\`.\`id\` 
+            AND bt.type_id = ${sequelize.escape(resolvedTypeId)}
+        )`),
+      ],
+    },
     include: [
       {
         model: VehicleType,
         as: 'brandTypes',
-        attributes: ['id', 'name', 'slug'],
+        attributes: ['id', 'name', 'slug', 'category_id'],
         through: { attributes: [] },
-        where: { id: resolvedTypeId },
-        required: true,
+        required: false,
+      },
+      {
+        model: VehicleType,
+        as: 'primaryType',
+        attributes: ['id', 'name', 'slug', 'category_id'],
+        required: false,
       },
     ],
     order: [['name', 'ASC']],

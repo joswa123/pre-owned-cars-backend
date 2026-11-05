@@ -18,6 +18,7 @@ router.post(
 );
 
 // ── Admin Endpoints ───────────────────────────────────────────────
+router.get('/unread-count', protect, adminOnly, carReportController.getUnreadCount);
 router.get('/', protect, adminOnly, carReportController.getReports);
 router.get('/:id', protect, adminOnly, carReportController.getReportById);
 router.patch(

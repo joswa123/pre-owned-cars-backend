@@ -145,6 +145,16 @@ exports.getReports = async (query = {}) => {
 };
 
 /**
+ * Get count of unread (pending) reports
+ */
+exports.getUnreadCount = async () => {
+  const count = await CarReport.count({
+    where: { status: 'pending' },
+  });
+  return count;
+};
+
+/**
  * Get single car report by ID (Admin only)
  */
 exports.getReportById = async (reportId) => {
