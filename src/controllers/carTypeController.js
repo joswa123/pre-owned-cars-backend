@@ -10,10 +10,16 @@ exports.getAllCarTypes = async (req, res, next) => {
   try {
     const isAdmin = req.user && req.user.role === 'admin';
     const includeInactive = req.query.include_inactive === 'true' && isAdmin;
+    const categoryId = req.query.category_id || null;
+    const categorySlug = req.query.category || null;
+    const includeAll = req.query.include_all === 'true' || req.query.all === 'true';
 
     const carTypes = await carTypeService.getAllCarTypes({
       includeInactive,
       isAdmin,
+      categoryId,
+      categorySlug,
+      includeAll,
     });
 
     res.status(200).json({

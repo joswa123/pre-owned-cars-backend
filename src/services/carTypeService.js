@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { CarType, Car } = require('../models');
+const { CarType, Car, Category } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
@@ -7,7 +7,7 @@ const { generateUniqueSlug } = require('../utils/slugify');
 const cloudinaryHelper = require('../utils/cloudinaryHelper');
 const logger = require('../utils/logger');
 
-const CACHE_KEY_PUBLIC_LIST = 'car-types:v2:list';
+const CACHE_KEY_PUBLIC_LIST = 'car-types:v3:list';
 const CACHE_TTL_SECONDS = 300; // 5 minutes
 
 /**
@@ -20,7 +20,11 @@ async function invalidateCarTypeCache() {
     const patterns = [
       '__express__/api/v1/car-types*',
       '__express__/api/car-types*',
+      '__express__/api/v1/types*',
+      '__express__/api/types*',
       'car-types:v2:*',
+      'car-types:v3:*',
+      'types:v1:*',
       'public:car_types*',
       'catalog:brands*',
     ];
@@ -65,17 +69,28 @@ function formatCarType(item, isAdmin = false) {
 
 /**
  * Get all categories / car types
+ * Defaults to the 'car' category so commercial vehicle types are excluded unless requested.
  * Deterministic sort order: order ASC, name ASC, id ASC
- * @param {Object} options - { includeInactive: boolean, isAdmin: boolean }
+ * @param {Object} options - { includeInactive: boolean, isAdmin: boolean, categoryId: string|null, categorySlug: string|null, includeAll: boolean }
  * @returns {Promise<Array>}
  */
 exports.getAllCarTypes = async (options = {}) => {
-  const { includeInactive = false, isAdmin = false } = options;
+  const {
+    includeInactive = false,
+    isAdmin = false,
+    categoryId = null,
+    categorySlug = null,
+    includeAll = false,
+  } = options;
+
+  const defaultToCarCategory = !includeAll && !categoryId && !categorySlug;
+  const effectiveSlug = defaultToCarCategory ? 'car' : categorySlug;
+  const cacheKey = `${CACHE_KEY_PUBLIC_LIST}:cat=${effectiveSlug || 'none'}:id=${categoryId || 'none'}:all=${Boolean(includeAll)}`;
 
   // Try Redis cache for public listings
   if (!includeInactive && !isAdmin && redisClient && redisClient.isOpen) {
     try {
-      const cached = await redisClient.get(CACHE_KEY_PUBLIC_LIST);
+      const cached = await redisClient.get(cacheKey);
       if (cached) {
         return JSON.parse(cached);
       }
@@ -87,6 +102,27 @@ exports.getAllCarTypes = async (options = {}) => {
   const where = {};
   if (!includeInactive) {
     where.is_active = true;
+  }
+
+  if (!includeAll) {
+    if (categoryId) {
+      where.category_id = categoryId;
+    } else if (effectiveSlug) {
+      const targetCategory = await Category.findOne({
+        where: { slug: effectiveSlug },
+        attributes: ['id'],
+      });
+      if (targetCategory) {
+        if (defaultToCarCategory) {
+          // Include legacy rows without category_id alongside explicit 'car' types
+          where.$or = [{ category_id: targetCategory.id }, { category_id: null }];
+        } else {
+          where.category_id = targetCategory.id;
+        }
+      } else if (categorySlug) {
+        return [];
+      }
+    }
   }
 
   let carTypes = await CarType.findAll({
@@ -103,7 +139,7 @@ exports.getAllCarTypes = async (options = {}) => {
   // Set cache for public active list
   if (!includeInactive && !isAdmin && redisClient && redisClient.isOpen) {
     try {
-      await redisClient.setEx(CACHE_KEY_PUBLIC_LIST, CACHE_TTL_SECONDS, JSON.stringify(formatted));
+      await redisClient.setEx(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(formatted));
     } catch (err) {
       logger.warn(`[Redis Cache Write Warning] ${err.message}`);
     }
@@ -214,6 +250,23 @@ exports.createCarType = async (data = {}, uploadedFile = null, adminUser = null)
 
   // 4. Atomic insert with compensation on DB failure
   try {
+    let resolvedCategoryId = data.category_id || null;
+    if (resolvedCategoryId) {
+      const categoryExists = await Category.findOne({
+        where: { id: resolvedCategoryId },
+        attributes: ['id'],
+      });
+      if (!categoryExists) {
+        throw new AppError('Selected category not found.', 404, 'CATEGORY_NOT_FOUND');
+      }
+    } else {
+      const defaultCarCategory = await Category.findOne({
+        where: { slug: 'car' },
+        attributes: ['id'],
+      });
+      resolvedCategoryId = defaultCarCategory ? defaultCarCategory.id : null;
+    }
+
     createdCarType = await CarType.create({
       name,
       slug,
@@ -221,6 +274,7 @@ exports.createCarType = async (data = {}, uploadedFile = null, adminUser = null)
       image_public_id,
       order: isNaN(order) ? 999 : order,
       is_active,
+      category_id: resolvedCategoryId,
     });
   } catch (err) {
     // Compensation: If file was uploaded to Cloudinary but DB write failed, destroy orphan asset
