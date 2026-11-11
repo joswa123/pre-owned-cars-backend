@@ -640,6 +640,31 @@ const buildCommercialFiltersWhere = async (rawFilters = {}) => {
     where.posted_by_type = String(rawFilters.posted_by_type).toLowerCase();
   }
 
+  // 12. Posted within days & Expired cutoff (aligned with carService.js)
+  let minCreatedAt = null;
+  const rawPostedDays = rawFilters.posted_within_days ?? rawFilters.postedWithinDays;
+  if (rawPostedDays !== undefined && rawPostedDays !== null && rawPostedDays !== '') {
+    const days = parseInt(rawPostedDays, 10);
+    if (!isNaN(days) && days >= 1) {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      minCreatedAt = cutoffDate;
+    }
+  }
+
+  const includeExpired = rawFilters.include_expired === true || rawFilters.include_expired === 'true';
+  if (!includeExpired) {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    if (!minCreatedAt || ninetyDaysAgo > minCreatedAt) {
+      minCreatedAt = ninetyDaysAgo;
+    }
+  }
+
+  if (minCreatedAt) {
+    where.created_at = { ...(where.created_at || {}), [Op.gte]: minCreatedAt };
+  }
+
   return { where, queryModel };
 };
 

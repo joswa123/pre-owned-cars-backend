@@ -208,6 +208,9 @@ const queryCommercialVehicleSchema = Joi.object({
 
   status: Joi.string().valid(...STATUS_TYPES_IN, 'all').allow('', null).optional(),
   posted_by_type: Joi.string().valid('dealer', 'customer', 'all').allow('', null).optional(),
+  posted_within_days: Joi.number().integer().min(1).max(1000).allow('', null).optional(),
+  postedWithinDays: Joi.number().integer().min(1).max(1000).allow('', null).optional(),
+  include_expired: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
 
   user_id: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),
   seller_id: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),

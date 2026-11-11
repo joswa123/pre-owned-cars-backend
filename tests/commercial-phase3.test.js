@@ -3,6 +3,7 @@ process.env.NODE_ENV = 'test';
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const app = require('../src/app');
+const sequelize = require('../src/config/database');
 const {
   User,
   Car,
@@ -272,6 +273,136 @@ describe('Phase 3 — Commercial Vehicle API Integration Tests', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('success');
+    });
+
+    it('accepts posted_within_days and include_expired combined with km, fuel_types, and price filters', async () => {
+      const recentPetrol = await CommercialVehicle.create({
+        user_id: sellerUser.id,
+        vehicle_type_id: testVehicleType.id,
+        brand_id: testBrand.id,
+        year: 2024,
+        fuel_type: 'Petrol',
+        ownership: '1st Owner',
+        km_driven: 23000,
+        price: 590000,
+        description: 'Recent petrol commercial test vehicle',
+        state_id: testState.id,
+        district_id: testDistrict.id,
+        city_id: testCity.id,
+        posted_by_type: 'dealer',
+        status: 'active',
+        slug: `petrol-filter-test-${Date.now()}`,
+      });
+      createdCommercialIds.push(recentPetrol.id);
+
+      const res = await request(app)
+        .get('/api/v1/commercial')
+        .query({
+          min_km: 0,
+          max_km: 200000,
+          fuel_types: 'Petrol',
+          posted_within_days: 90,
+          min_price: 100000,
+          max_price: 5000000,
+          include_expired: false,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('success');
+      const ids = res.body.data.vehicles.map((v) => v.id);
+      expect(ids).toContain(recentPetrol.id);
+    });
+
+    it('enforces posted_within_days cutoff and include_expired flag properly', async () => {
+      const fifteenDaysAgo = new Date();
+      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+      const oldVehicle = await CommercialVehicle.create({
+        user_id: sellerUser.id,
+        vehicle_type_id: testVehicleType.id,
+        brand_id: testBrand.id,
+        year: 2023,
+        fuel_type: 'Diesel',
+        ownership: '1st Owner',
+        km_driven: 40000,
+        price: 900000,
+        description: '15-day old commercial listing',
+        state_id: testState.id,
+        district_id: testDistrict.id,
+        city_id: testCity.id,
+        posted_by_type: 'dealer',
+        status: 'active',
+        slug: `old15-filter-test-${Date.now()}`,
+      });
+      createdCommercialIds.push(oldVehicle.id);
+      await sequelize.query('UPDATE commercial_vehicles SET created_at = ? WHERE id = ?', {
+        replacements: [fifteenDaysAgo, oldVehicle.id],
+      });
+
+      const oneHundredTwentyDaysAgo = new Date();
+      oneHundredTwentyDaysAgo.setDate(oneHundredTwentyDaysAgo.getDate() - 120);
+      const expiredVehicle = await CommercialVehicle.create({
+        user_id: sellerUser.id,
+        vehicle_type_id: testVehicleType.id,
+        brand_id: testBrand.id,
+        year: 2021,
+        fuel_type: 'Diesel',
+        ownership: '1st Owner',
+        km_driven: 60000,
+        price: 850000,
+        description: '120-day old commercial listing',
+        state_id: testState.id,
+        district_id: testDistrict.id,
+        city_id: testCity.id,
+        posted_by_type: 'dealer',
+        status: 'active',
+        slug: `old120-filter-test-${Date.now()}`,
+      });
+      createdCommercialIds.push(expiredVehicle.id);
+      await sequelize.query('UPDATE commercial_vehicles SET created_at = ? WHERE id = ?', {
+        replacements: [oneHundredTwentyDaysAgo, expiredVehicle.id],
+      });
+
+      // posted_within_days=7 excludes 15-day and 120-day old listings, keeps today's testCommercialVehicle
+      const res7 = await request(app)
+        .get('/api/v1/commercial')
+        .query({ brand_id: testBrand.id, posted_within_days: 7, limit: 100 });
+      expect(res7.status).toBe(200);
+      const ids7 = res7.body.data.vehicles.map((v) => v.id);
+      expect(ids7).toContain(testCommercialVehicle.id);
+      expect(ids7).not.toContain(oldVehicle.id);
+      expect(ids7).not.toContain(expiredVehicle.id);
+
+      // posted_within_days=30 includes 15-day old listing, still excludes 120-day old listing
+      const res30 = await request(app)
+        .get('/api/v1/commercial')
+        .query({ brand_id: testBrand.id, posted_within_days: 30, limit: 100 });
+      expect(res30.status).toBe(200);
+      const ids30 = res30.body.data.vehicles.map((v) => v.id);
+      expect(ids30).toContain(oldVehicle.id);
+      expect(ids30).not.toContain(expiredVehicle.id);
+
+      // posted_within_days=180 & include_expired=false enforces 90-day cutoff
+      const res180NoExp = await request(app)
+        .get('/api/v1/commercial')
+        .query({ brand_id: testBrand.id, posted_within_days: 180, include_expired: false, limit: 100 });
+      expect(res180NoExp.status).toBe(200);
+      expect(res180NoExp.body.data.vehicles.map((v) => v.id)).not.toContain(expiredVehicle.id);
+
+      // posted_within_days=180 & include_expired=true includes 120-day old listing
+      const res180WithExp = await request(app)
+        .get('/api/v1/commercial')
+        .query({ brand_id: testBrand.id, posted_within_days: 180, include_expired: true, limit: 100 });
+      expect(res180WithExp.status).toBe(200);
+      expect(res180WithExp.body.data.vehicles.map((v) => v.id)).toContain(expiredVehicle.id);
+    });
+
+    it('rejects invalid posted_within_days with 400', async () => {
+      const res = await request(app)
+        .get('/api/v1/commercial')
+        .query({ posted_within_days: 0 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
     });
   });
 
