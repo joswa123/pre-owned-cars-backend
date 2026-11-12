@@ -1,15 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../../middlewares/auth');
+const validate = require('../../middlewares/validate');
 const wishlistController = require('../../controllers/wishlistController');
+const { wishlistWriteSchema } = require('../../validations/wishlistValidation');
 
 // All routes require authentication
 router.use(protect);
 
 router.get('/', wishlistController.getWishlist);
 router.get('/car/:carId', wishlistController.getCarWishlists);
-router.post('/', wishlistController.addToWishlist);
-router.post('/toggle', wishlistController.toggleWishlist);
+router.get('/commercial/:commercialId', wishlistController.getCommercialWishlists);
+router.post('/', validate(wishlistWriteSchema), wishlistController.addToWishlist);
+router.post('/toggle', validate(wishlistWriteSchema), wishlistController.toggleWishlist);
 router.delete('/:carId', wishlistController.removeFromWishlist);
 
 module.exports = router;

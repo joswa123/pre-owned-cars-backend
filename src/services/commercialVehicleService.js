@@ -712,13 +712,21 @@ exports.getCommercialVehicles = async (
     order: [[validSort, validOrder]],
   });
 
-  // Get wishlists for viewer
+  const vehicleIds = rows.map((v) => v.id);
+
+  // Get wishlists for viewer and grouped wishlist counts
   let wishlistSet = new Set();
+  const [userWishlists, wishlistCountMap] = await Promise.all([
+    viewerUserId && vehicleIds.length > 0
+      ? Wishlist.findAll({
+          where: { user_id: viewerUserId, target_type: 'commercial', target_id: vehicleIds },
+          attributes: ['target_id'],
+        })
+      : Promise.resolve([]),
+    getCommercialWishlistCountMap(vehicleIds),
+  ]);
+
   if (viewerUserId) {
-    const userWishlists = await Wishlist.findAll({
-      where: { user_id: viewerUserId, target_type: 'commercial' },
-      attributes: ['target_id'],
-    });
     wishlistSet = new Set(userWishlists.map(w => w.target_id));
   }
 
@@ -727,6 +735,7 @@ exports.getCommercialVehicles = async (
     return {
       ...transformed,
       isWishlist: wishlistSet.has(v.id),
+      wishlist_count: wishlistCountMap[v.id] || 0,
     };
   });
 
@@ -738,6 +747,34 @@ exports.getCommercialVehicles = async (
     limit: parsedLimit,
     totalPages: Math.ceil(count / parsedLimit) || 1,
   };
+};
+
+/**
+ * Batch-fetch wishlist counts for a list of commercial vehicle IDs.
+ */
+const getCommercialWishlistCountMap = async (vehicleIds) => {
+  if (!Array.isArray(vehicleIds) || vehicleIds.length === 0) {
+    return {};
+  }
+
+  const rows = await Wishlist.findAll({
+    where: {
+      target_type: 'commercial',
+      target_id: vehicleIds,
+    },
+    attributes: [
+      'target_id',
+      [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+    ],
+    group: ['target_id'],
+    raw: true,
+  });
+
+  const countMap = {};
+  rows.forEach((row) => {
+    countMap[row.target_id] = parseInt(row.count, 10) || 0;
+  });
+  return countMap;
 };
 
 /**
@@ -771,19 +808,24 @@ exports.getCommercialVehicleById = async (identifier, viewerUser = null) => {
   // Increment views count
   await vehicle.increment('views_count');
 
-  // Check wishlist status
-  let isWishlist = false;
-  if (viewerUser && viewerUser.id) {
-    const count = await Wishlist.count({
-      where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicle.id },
-    });
-    isWishlist = count > 0;
-  }
+  // Check wishlist status and total wishlist count
+  const [viewerWishlistCount, wishlistCount] = await Promise.all([
+    viewerUser && viewerUser.id
+      ? Wishlist.count({
+          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicle.id },
+        })
+      : Promise.resolve(0),
+    Wishlist.count({
+      where: { target_type: 'commercial', target_id: vehicle.id },
+    }),
+  ]);
+  const isWishlist = viewerWishlistCount > 0;
 
   const transformed = transformCommercialVehicleImages(vehicle, null, viewerUser);
   return {
     ...transformed,
     isWishlist,
+    wishlist_count: parseInt(wishlistCount, 10) || 0,
   };
 };
 
@@ -821,11 +863,15 @@ exports.getSellerCommercialVehicles = async (sellerId, filters = {}) => {
     order: [['created_at', 'DESC']],
   });
 
+  const vehicleIds = rows.map((v) => v.id);
+  const wishlistCountMap = await getCommercialWishlistCountMap(vehicleIds);
+
   const vehicles = rows.map((v) => {
     const transformed = transformCommercialVehicleImages(v, null, { id: sellerId, role: 'seller' });
     return {
       ...transformed,
       enquiry_count: v.leads?.length || 0,
+      wishlist_count: wishlistCountMap[v.id] || 0,
     };
   });
 
