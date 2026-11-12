@@ -363,7 +363,9 @@ describe('Commercial Vehicle Wishlist Integration Tests', () => {
       expect(item.seller).toBeDefined();
       expect(item.seller.phone).not.toBe(sellerUser.phone);
       expect(item.seller.phone).toMatch(/^\*+/);
-      expect(item.seller.email).toBeNull();
+      expect(item.seller.email).toBeTruthy();
+      expect(item.seller.email).not.toBe(sellerUser.email);
+      expect(item.seller.email).toContain('*');
     });
 
     it('GET /api/v1/wishlist?target_type=all returns BOTH car and commercial items tagged with target_type', async () => {
@@ -400,8 +402,8 @@ describe('Commercial Vehicle Wishlist Integration Tests', () => {
         .set('Authorization', `Bearer ${buyerToken}`);
 
       expect(detailRes.status).toBe(200);
-      expect(detailRes.body.data.isWishlist).toBe(true);
-      expect(detailRes.body.data.wishlist_count).toBe(2);
+      expect(detailRes.body.data.vehicle.isWishlist).toBe(true);
+      expect(detailRes.body.data.vehicle.wishlist_count).toBe(2);
 
       const listRes = await request(app)
         .get(`/api/v1/commercial?brand_id=${testBrand.id}`)
@@ -468,7 +470,7 @@ describe('Commercial Vehicle Wishlist Integration Tests', () => {
       const commercialDetailKey = `commercial:${activeCommercial.id}`;
       const commercialWishlistsKey = `commercial:wishlists:${activeCommercial.id}:first:20`;
       const expressCommercialKey = `__express__/api/v1/commercial/${activeCommercial.id}?test=${suffix}`;
-      const buyerWishlistKey = `wishlist:user:${buyerUser.id}:commercial`;
+      const buyerWishlistKey = `user:wishlist:${buyerUser.id}:commercial`;
 
       // Seed keys directly when Redis is open, or spy on del/scanIterator when Redis is offline in test env
       const deletedKeys = [];
@@ -492,7 +494,7 @@ describe('Commercial Vehicle Wishlist Integration Tests', () => {
         const scanSpy = jest.spyOn(redisClient, 'scanIterator').mockImplementation(async function* ({ MATCH }) {
           if (MATCH === '__express__/api/v1/commercial*') yield expressCommercialKey;
           if (MATCH === `commercial:wishlists:${activeCommercial.id}:*`) yield commercialWishlistsKey;
-          if (MATCH === `wishlist:user:${buyerUser.id}:*`) yield buyerWishlistKey;
+          if (MATCH === `user:wishlist:${buyerUser.id}:*`) yield buyerWishlistKey;
         });
         restoreRedisMocks = () => {
           delSpy.mockRestore();
@@ -584,8 +586,8 @@ describe('Commercial Vehicle Wishlist Integration Tests', () => {
         .set('Authorization', `Bearer ${buyerToken}`);
 
       expect(finalDetail.status).toBe(200);
-      expect(finalDetail.body.data.wishlist_count).toBe(0);
-      expect(finalDetail.body.data.isWishlist).toBe(false);
+      expect(finalDetail.body.data.vehicle.wishlist_count).toBe(0);
+      expect(finalDetail.body.data.vehicle.isWishlist).toBe(false);
     });
   });
 });

@@ -500,7 +500,7 @@ exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { li
     console.error('Redis get cache error in getTargetWishlists:', err);
   }
 
-  const whereClause =
+  const buildBaseWhere = () =>
     type === 'commercial'
       ? { target_type: 'commercial', target_id: targetId }
       : {
@@ -509,6 +509,9 @@ exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { li
             { target_type: 'car', target_id: targetId },
           ],
         };
+
+  const baseWhere = buildBaseWhere();
+  const whereClause = buildBaseWhere();
 
   const decodedCursor = decodeCursor(cursor);
   if (decodedCursor) {
@@ -527,21 +530,24 @@ exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { li
     whereClause[Op.and] = whereClause[Op.and] ? [...whereClause[Op.and], cursorFilter] : [cursorFilter];
   }
 
-  const wishlists = await Wishlist.findAll({
-    where: whereClause,
-    include: [
-      {
-        model: User,
-        as: 'user',
-        attributes: ['id', 'full_name', 'phone'],
-      },
-    ],
-    order: [
-      ['created_at', 'DESC'],
-      ['id', 'DESC'],
-    ],
-    limit: limitNum,
-  });
+  const [totalWishlists, wishlists] = await Promise.all([
+    Wishlist.count({ where: baseWhere }),
+    Wishlist.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'full_name', 'phone'],
+        },
+      ],
+      order: [
+        ['created_at', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      limit: limitNum,
+    }),
+  ]);
 
   const formattedWishlists = wishlists.map((w) => {
     const json = typeof w.toJSON === 'function' ? w.toJSON() : w;
@@ -560,6 +566,7 @@ exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { li
   const result = {
     target_type: type,
     [infoPayload.key]: infoPayload.value,
+    total_wishlists: parseInt(totalWishlists, 10) || 0,
     wishlists: formattedWishlists,
     pagination: {
       limit: limitNum,
