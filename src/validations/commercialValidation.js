@@ -69,12 +69,12 @@ const createCommercialVehicleSchema = Joi.object({
   price_negotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
   priceNegotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
 
-  b2b: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
-  b2b_listing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  b2b: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  b2b_listing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   b2bListing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
 
-  prior_appointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
-  prior_appointemnts: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  prior_appointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  prior_appointemnts: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   priorAppointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
 
   km_driven: Joi.number().integer().min(0).max(2000000).required(),
@@ -295,36 +295,15 @@ const mapToCommercialDbValues = (data) => {
   }
 
   // B2B aliases and boolean normalization
-  if (data.b2b !== undefined && mapped.b2b_listing === undefined) {
-    mapped.b2b_listing = data.b2b;
-  }
-  if (data.b2bListing !== undefined && mapped.b2b_listing === undefined) {
-    mapped.b2b_listing = data.b2bListing;
-  }
-  if (mapped.b2b_listing !== undefined) {
-    mapped.b2b_listing =
-      mapped.b2b_listing === true ||
-      mapped.b2b_listing === 'true' ||
-      mapped.b2b_listing === 1 ||
-      mapped.b2b_listing === '1';
+  const isB2bTruthy = (val) => val === true || val === 'true' || val === 1 || val === '1';
+  if (data.b2b !== undefined || data.b2b_listing !== undefined || data.b2bListing !== undefined) {
+    mapped.b2b_listing = isB2bTruthy(data.b2b) || isB2bTruthy(data.b2b_listing) || isB2bTruthy(data.b2bListing);
   }
 
   // Prior appointments aliases and boolean normalization
-  if (data.prior_appointments !== undefined && mapped.prior_appointments === undefined) {
-    mapped.prior_appointments = data.prior_appointments;
-  }
-  if (data.prior_appointemnts !== undefined && mapped.prior_appointments === undefined) {
-    mapped.prior_appointments = data.prior_appointemnts;
-  }
-  if (data.priorAppointments !== undefined && mapped.prior_appointments === undefined) {
-    mapped.prior_appointments = data.priorAppointments;
-  }
-  if (mapped.prior_appointments !== undefined) {
-    mapped.prior_appointments =
-      mapped.prior_appointments === true ||
-      mapped.prior_appointments === 'true' ||
-      mapped.prior_appointments === 1 ||
-      mapped.prior_appointments === '1';
+  const isPriorTruthy = (val) => val === true || val === 'true' || val === 1 || val === '1';
+  if (data.prior_appointments !== undefined || data.prior_appointemnts !== undefined || data.priorAppointments !== undefined) {
+    mapped.prior_appointments = isPriorTruthy(data.prior_appointments) || isPriorTruthy(data.prior_appointemnts) || isPriorTruthy(data.priorAppointments);
   }
 
   // Fuel type map

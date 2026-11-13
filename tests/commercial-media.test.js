@@ -81,6 +81,8 @@ describe('Commercial Vehicle Media, B2B & Prior Appointments Integration Tests',
     expect(res.body.success).toBe(true);
 
     const vehicle = res.body.data.vehicle;
+    createdCommercialIds.push(vehicle.id);
+
     expect(vehicle.price_negotiable).toBe(true);
     expect(vehicle.b2b_listing).toBe(true);
     expect(vehicle.b2b).toBe(true);
@@ -88,7 +90,6 @@ describe('Commercial Vehicle Media, B2B & Prior Appointments Integration Tests',
     expect(vehicle.prior_appointemnts).toBe(true);
     expect(vehicle.video_url).toMatch(/^https:\/\/res\.cloudinary\.com\//);
     expect(vehicle.audio_url).toMatch(/^https:\/\/res\.cloudinary\.com\//);
-    createdCommercialIds.push(vehicle.id);
 
     // Verify GET /:id returns the fields
     const getRes = await request(app)
