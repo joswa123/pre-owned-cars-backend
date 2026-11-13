@@ -15,6 +15,8 @@ const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
+const fs = require('fs');
+const { cloudinary } = require('../config/cloudinary');
 const { generateUniqueSlug } = require('../utils/slugify');
 const {
   extractPublicIdFromUrl,
@@ -203,12 +205,29 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
   const vehicleTypeName = vJson.vehicleType?.name || null;
   const brandName = vJson.brand?.name || null;
 
+  const formatMediaUrl = (url) => {
+    if (!url || typeof url !== 'string') return null;
+    if (url.match(/^[a-zA-Z]:[/\\]/) || url.includes('/uploads/') || url.includes('uploads\\')) {
+      return null;
+    }
+    if (url.startsWith('https://res.cloudinary.com/')) {
+      return url;
+    }
+    if (url.startsWith('http://res.cloudinary.com/')) {
+      return url.replace('http://', 'https://');
+    }
+    return null;
+  };
+
   const price = (vJson.price !== null && vJson.price !== undefined) ? Number(vJson.price) : null;
   const is_expired = vJson.created_at && (Date.now() - new Date(vJson.created_at).getTime()) > 90 * 24 * 60 * 60 * 1000;
 
   return {
     ...vJson,
     price,
+    price_negotiable: Boolean(vJson.price_negotiable),
+    video_url: formatMediaUrl(vJson.video_url),
+    audio_url: formatMediaUrl(vJson.audio_url),
     vehicle_type: vehicleTypeName,
     brand_name: brandName,
     primary_image: primaryItem ? primaryItem.image_url : null,
@@ -332,6 +351,26 @@ exports.createCommercialVehicle = async (userId, userRole, rawData, files) => {
     const baseSlugName = `${brand.name}-${vehicleType.name}-${mapped.year}`;
     const slug = await generateUniqueSlug(CommercialVehicle, baseSlugName, null, { transaction });
 
+    // 5.1 Video and Audio resolution
+    let videoUrl = null;
+    let audioUrl = null;
+
+    if (files && files.video && files.video[0]) {
+      videoUrl = getFileUrl(files.video[0]);
+      const vidPid = getFilePublicId(files.video[0], videoUrl);
+      if (vidPid) createdUploads.push(vidPid);
+    } else if (rawData.video_url) {
+      videoUrl = getFileUrl(rawData.video_url);
+    }
+
+    if (files && files.audio && files.audio[0]) {
+      audioUrl = getFileUrl(files.audio[0]);
+      const audPid = getFilePublicId(files.audio[0], audioUrl);
+      if (audPid) createdUploads.push(audPid);
+    } else if (rawData.audio_url) {
+      audioUrl = getFileUrl(rawData.audio_url);
+    }
+
     // 6. Create Vehicle Row
     const vehicle = await CommercialVehicle.create({
       user_id: userId,
@@ -343,6 +382,8 @@ exports.createCommercialVehicle = async (userId, userRole, rawData, files) => {
       km_driven: mapped.km_driven,
       price: mapped.price,
       price_negotiable: mapped.price_negotiable || false,
+      video_url: videoUrl,
+      audio_url: audioUrl,
       description: mapped.description || null,
       state_id: stateId,
       district_id: districtId,
@@ -933,6 +974,48 @@ exports.updateCommercialVehicle = async (id, userId, userRole, rawData, files) =
   if (mapped.district_id !== undefined) filteredData.district_id = mapped.district_id || null;
   if (mapped.city_id !== undefined) filteredData.city_id = mapped.city_id || null;
 
+  // Handle video update / removal
+  if (files && files.video && files.video[0]) {
+    filteredData.video_url = getFileUrl(files.video[0]);
+    if (vehicle.video_url && vehicle.video_url !== filteredData.video_url) {
+      const oldVidPid = extractPublicIdFromUrl(vehicle.video_url);
+      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => {});
+    }
+  } else if (rawData.video_url !== undefined) {
+    filteredData.video_url = getFileUrl(rawData.video_url) || null;
+    if (vehicle.video_url && filteredData.video_url === null) {
+      const oldVidPid = extractPublicIdFromUrl(vehicle.video_url);
+      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => {});
+    }
+  } else if (rawData.remove_video === true || rawData.remove_video === 'true') {
+    filteredData.video_url = null;
+    if (vehicle.video_url) {
+      const oldVidPid = extractPublicIdFromUrl(vehicle.video_url);
+      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => {});
+    }
+  }
+
+  // Handle audio update / removal
+  if (files && files.audio && files.audio[0]) {
+    filteredData.audio_url = getFileUrl(files.audio[0]);
+    if (vehicle.audio_url && vehicle.audio_url !== filteredData.audio_url) {
+      const oldAudPid = extractPublicIdFromUrl(vehicle.audio_url);
+      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => {});
+    }
+  } else if (rawData.audio_url !== undefined) {
+    filteredData.audio_url = getFileUrl(rawData.audio_url) || null;
+    if (vehicle.audio_url && filteredData.audio_url === null) {
+      const oldAudPid = extractPublicIdFromUrl(vehicle.audio_url);
+      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => {});
+    }
+  } else if (rawData.remove_audio === true || rawData.remove_audio === 'true') {
+    filteredData.audio_url = null;
+    if (vehicle.audio_url) {
+      const oldAudPid = extractPublicIdFromUrl(vehicle.audio_url);
+      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => {});
+    }
+  }
+
   const transaction = await sequelize.transaction();
   try {
     await vehicle.update(filteredData, { transaction });
@@ -1170,4 +1253,98 @@ exports.setPrimaryImage = async (id, imageId, userId, userRole) => {
   await invalidateCommercialCaches(vehicle.id, userId);
 
   return { success: true, message: 'Primary image updated successfully' };
+};
+
+/**
+ * Standalone Video Upload for Commercial Vehicle
+ */
+exports.uploadCommercialVideo = async (vehicleId, userId, userRole, file) => {
+  if (!file) throw new AppError('No video file provided', 400);
+
+  const vehicle = await CommercialVehicle.findByPk(vehicleId);
+  if (!vehicle) throw new AppError('Commercial vehicle not found', 404);
+
+  if (vehicle.user_id !== userId && userRole !== 'admin') {
+    throw new AppError('You are not authorized to update this listing', 403);
+  }
+
+  let videoUrl = file.path || file.secure_url;
+  if (videoUrl && (videoUrl.startsWith('https://res.cloudinary.com/') || videoUrl.startsWith('http://res.cloudinary.com/'))) {
+    videoUrl = videoUrl.replace('http://', 'https://');
+  } else if (file.path && fs.existsSync(file.path)) {
+    try {
+      const result = await cloudinary.uploader.upload(file.path, {
+        resource_type: 'video',
+        folder: `autodeal4u/commercial/${vehicleId}/videos`,
+        public_id: `video-${Date.now()}`,
+      });
+      videoUrl = result.secure_url;
+      try { fs.unlinkSync(file.path); } catch (e) {}
+    } catch (uploadErr) {
+      try { fs.unlinkSync(file.path); } catch (e) {}
+      throw new AppError(uploadErr.message || 'Failed to upload video to Cloudinary', 500);
+    }
+  }
+
+  if (!videoUrl || !videoUrl.startsWith('https://res.cloudinary.com/')) {
+    throw new AppError('Video upload failed: No valid Cloudinary URL returned.', 500);
+  }
+
+  if (vehicle.video_url && vehicle.video_url !== videoUrl) {
+    const oldPid = extractPublicIdFromUrl(vehicle.video_url);
+    if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => {});
+  }
+
+  vehicle.video_url = videoUrl;
+  await vehicle.save();
+  await invalidateCommercialCaches(vehicle.id, userId);
+
+  return videoUrl;
+};
+
+/**
+ * Standalone Audio Upload for Commercial Vehicle
+ */
+exports.uploadCommercialAudio = async (vehicleId, userId, userRole, file) => {
+  if (!file) throw new AppError('No audio file provided', 400);
+
+  const vehicle = await CommercialVehicle.findByPk(vehicleId);
+  if (!vehicle) throw new AppError('Commercial vehicle not found', 404);
+
+  if (vehicle.user_id !== userId && userRole !== 'admin') {
+    throw new AppError('You are not authorized to update this listing', 403);
+  }
+
+  let audioUrl = file.path || file.secure_url;
+  if (audioUrl && (audioUrl.startsWith('https://res.cloudinary.com/') || audioUrl.startsWith('http://res.cloudinary.com/'))) {
+    audioUrl = audioUrl.replace('http://', 'https://');
+  } else if (file.path && fs.existsSync(file.path)) {
+    try {
+      const result = await cloudinary.uploader.upload(file.path, {
+        resource_type: 'video',
+        folder: `autodeal4u/commercial/${vehicleId}/audio`,
+        public_id: `audio-${Date.now()}`,
+      });
+      audioUrl = result.secure_url;
+      try { fs.unlinkSync(file.path); } catch (e) {}
+    } catch (uploadErr) {
+      try { fs.unlinkSync(file.path); } catch (e) {}
+      throw new AppError(uploadErr.message || 'Failed to upload audio to Cloudinary', 500);
+    }
+  }
+
+  if (!audioUrl || !audioUrl.startsWith('https://res.cloudinary.com/')) {
+    throw new AppError('Audio upload failed: No valid Cloudinary URL returned.', 500);
+  }
+
+  if (vehicle.audio_url && vehicle.audio_url !== audioUrl) {
+    const oldPid = extractPublicIdFromUrl(vehicle.audio_url);
+    if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => {});
+  }
+
+  vehicle.audio_url = audioUrl;
+  await vehicle.save();
+  await invalidateCommercialCaches(vehicle.id, userId);
+
+  return audioUrl;
 };

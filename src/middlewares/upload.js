@@ -150,11 +150,13 @@ function createTestMediaStorage(resourceType) {
   return {
     _handleFile(req, file, cb) {
       file.stream.resume(); // Drain stream in memory
-      const carId = req.carId || req.params?.id || crypto.randomUUID();
+      const isCommercial = req.baseUrl?.includes('commercial') || req.originalUrl?.includes('commercial') || req.commercialVehicleId;
+      const entityFolder = isCommercial ? 'commercial' : 'cars';
+      const entityId = req.commercialVehicleId || req.carId || req.params?.id || crypto.randomUUID();
       const uuid = crypto.randomUUID();
-      const prefix = file.fieldname === 'video' ? 'video' : (file.fieldname === 'audio' ? 'audio' : 'media');
+      const prefix = file.fieldname === 'video' ? 'video' : (file.fieldname === 'audio' ? 'audio' : (isCommercial ? 'commercial' : 'media'));
       const ext = file.fieldname === 'video' ? 'mp4' : (file.fieldname === 'audio' ? 'mp3' : 'png');
-      const publicId = `autodeal4u/cars/${carId}/${prefix}-${uuid}`;
+      const publicId = `autodeal4u/${entityFolder}/${entityId}/${prefix}-${uuid}`;
       const secureUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME || 'fub1whjx'}/${resourceType}/upload/v${Date.now()}/${publicId}.${ext}`;
 
       cb(null, {
@@ -177,11 +179,13 @@ const videoStorage = isTestEnv
   : new CloudinaryStorage({
       cloudinary,
       params: async (req, file) => {
-        const carId = req.carId || req.params?.id || req.body?.car_id || crypto.randomUUID();
-        req.carId = carId;
+        const isCommercial = req.baseUrl?.includes('commercial') || req.originalUrl?.includes('commercial') || req.commercialVehicleId;
+        const baseFolder = isCommercial ? 'commercial' : 'cars';
+        const entityId = req.commercialVehicleId || req.carId || req.params?.id || req.body?.commercial_vehicle_id || req.body?.car_id || crypto.randomUUID();
+        if (isCommercial) req.commercialVehicleId = entityId; else req.carId = entityId;
         const uuid = crypto.randomUUID();
         return {
-          folder: `autodeal4u/cars/${carId}/videos`,
+          folder: `autodeal4u/${baseFolder}/${entityId}/videos`,
           resource_type: 'video',
           public_id: `video-${uuid}`,
         };
@@ -194,11 +198,13 @@ const audioStorage = isTestEnv
   : new CloudinaryStorage({
       cloudinary,
       params: async (req, file) => {
-        const carId = req.carId || req.params?.id || req.body?.car_id || crypto.randomUUID();
-        req.carId = carId;
+        const isCommercial = req.baseUrl?.includes('commercial') || req.originalUrl?.includes('commercial') || req.commercialVehicleId;
+        const baseFolder = isCommercial ? 'commercial' : 'cars';
+        const entityId = req.commercialVehicleId || req.carId || req.params?.id || req.body?.commercial_vehicle_id || req.body?.car_id || crypto.randomUUID();
+        if (isCommercial) req.commercialVehicleId = entityId; else req.carId = entityId;
         const uuid = crypto.randomUUID();
         return {
-          folder: `autodeal4u/cars/${carId}/audio`,
+          folder: `autodeal4u/${baseFolder}/${entityId}/audio`,
           resource_type: 'video', // Cloudinary handles audio as video resource type
           public_id: `audio-${uuid}`,
         };
@@ -423,6 +429,22 @@ const commercialMediaCloudinaryStorage = new CloudinaryStorage({
     const vehicleId = req.commercialVehicleId || req.params?.id || req.body?.commercial_vehicle_id || crypto.randomUUID();
     req.commercialVehicleId = vehicleId;
     const uuid = crypto.randomUUID();
+
+    if (file.fieldname === 'video') {
+      return {
+        folder: `autodeal4u/commercial/${vehicleId}/videos`,
+        resource_type: 'video',
+        public_id: `video-${uuid}`,
+      };
+    }
+    if (file.fieldname === 'audio') {
+      return {
+        folder: `autodeal4u/commercial/${vehicleId}/audio`,
+        resource_type: 'video',
+        public_id: `audio-${uuid}`,
+      };
+    }
+
     const prefix = file.fieldname === 'primary_image' ? 'primary' : 'commercial';
     return {
       folder: `autodeal4u/commercial/${vehicleId}`,
@@ -437,6 +459,9 @@ const commercialMediaCloudinaryStorage = new CloudinaryStorage({
 const commercialMediaStorage = isTestEnv
   ? {
       _handleFile(req, file, cb) {
+        if (file.fieldname === 'video' || file.fieldname === 'audio') {
+          return createTestMediaStorage('video')._handleFile(req, file, cb);
+        }
         return createTestMediaStorage('image')._handleFile(req, file, cb);
       },
       _removeFile(req, file, cb) {
@@ -448,13 +473,15 @@ const commercialMediaStorage = isTestEnv
 const commercialMediaUploadRaw = multer({
   storage: commercialMediaStorage,
   limits: {
-    fileSize: 50 * 1024 * 1024,
+    fileSize: 100 * 1024 * 1024,
   },
   fileFilter: carMediaFileFilter,
 }).fields([
   { name: 'primary_image', maxCount: 1 },
   { name: 'secondary_images', maxCount: MAX_COMMERCIAL_IMAGES },
   { name: 'images', maxCount: MAX_COMMERCIAL_IMAGES },
+  { name: 'video', maxCount: 1 },
+  { name: 'audio', maxCount: 1 },
 ]);
 
 // ─── Named Exports ─────────────────────────────────────

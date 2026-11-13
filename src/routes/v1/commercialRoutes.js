@@ -3,7 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const commercialVehicleController = require('../../controllers/commercialVehicleController');
 const { protect, optionalAuth } = require('../../middlewares/auth');
-const { commercialMediaUpload } = require('../../middlewares/upload');
+const { commercialMediaUpload, uploadVideo, uploadAudio } = require('../../middlewares/upload');
 const validate = require('../../middlewares/validate');
 const {
   createCommercialVehicleSchema,
@@ -111,6 +111,29 @@ router.post(
 router.delete('/:id/images/:imageId', protect, commercialVehicleController.deleteImage);
 
 router.patch('/:id/images/:imageId/primary', protect, commercialVehicleController.setPrimaryImage);
+
+// ─── Video & Audio Sub-resources ────────────────────────────────
+router.post(
+  '/:id/video',
+  protect,
+  (req, res, next) => {
+    req.commercialVehicleId = req.params.id;
+    next();
+  },
+  uploadVideo,
+  commercialVehicleController.uploadVideo
+);
+
+router.post(
+  '/:id/audio',
+  protect,
+  (req, res, next) => {
+    req.commercialVehicleId = req.params.id;
+    next();
+  },
+  uploadAudio,
+  commercialVehicleController.uploadAudio
+);
 
 module.exports = router;
 

@@ -210,3 +210,41 @@ exports.setPrimaryImage = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Upload Commercial Vehicle Video
+ */
+exports.uploadVideo = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const userRole = req.user.role;
+  const file = req.file;
+
+  const video_url = await commercialVehicleService.uploadCommercialVideo(id, userId, userRole, file);
+
+  res.status(200).json({
+    status: 'success',
+    success: true,
+    message: 'Video uploaded successfully.',
+    video_url,
+  });
+});
+
+/**
+ * Upload Commercial Vehicle Audio
+ */
+exports.uploadAudio = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const userRole = req.user.role;
+  const file = req.file;
+
+  const audio_url = await commercialVehicleService.uploadCommercialAudio(id, userId, userRole, file);
+
+  res.status(200).json({
+    status: 'success',
+    success: true,
+    message: 'Audio uploaded successfully.',
+    audio_url,
+  });
+});
+

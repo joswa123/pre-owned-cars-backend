@@ -58,9 +58,36 @@ const CommercialVehicle = sequelize.define('CommercialVehicle', {
       return val !== null && val !== undefined ? Number(val) : val;
     },
   },
+  price_negotiable: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
   description: {
     type: DataTypes.TEXT,
     allowNull: true,
+  },
+  video_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    validate: {
+      isCloudinary(value) {
+        if (value && typeof value === 'string' && !value.startsWith('https://res.cloudinary.com/')) {
+          throw new Error('Video URL must start with https://res.cloudinary.com/');
+        }
+      },
+    },
+  },
+  audio_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    validate: {
+      isCloudinary(value) {
+        if (value && typeof value === 'string' && !value.startsWith('https://res.cloudinary.com/')) {
+          throw new Error('Audio URL must start with https://res.cloudinary.com/');
+        }
+      },
+    },
   },
   state_id: {
     type: DataTypes.UUID,

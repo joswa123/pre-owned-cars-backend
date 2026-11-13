@@ -94,6 +94,17 @@ const createCommercialVehicleSchema = Joi.object({
 
   secondary_images: Joi.any().optional(),
   images: Joi.any().optional(),
+
+  video: Joi.any().optional(),
+  audio: Joi.any().optional(),
+  video_url: Joi.alternatives().try(
+    Joi.string().trim().pattern(/^https:\/\/res\.cloudinary\.com\//).message('Video URL must start with https://res.cloudinary.com/'),
+    Joi.string().allow('', null)
+  ).optional(),
+  audio_url: Joi.alternatives().try(
+    Joi.string().trim().pattern(/^https:\/\/res\.cloudinary\.com\//).message('Audio URL must start with https://res.cloudinary.com/'),
+    Joi.string().allow('', null)
+  ).optional(),
 }).unknown(true);
 
 /**
@@ -141,6 +152,19 @@ const updateCommercialVehicleSchema = Joi.object({
   images: Joi.any().optional(),
   replace_images: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   images_to_keep: Joi.any().optional(),
+
+  video: Joi.any().optional(),
+  audio: Joi.any().optional(),
+  video_url: Joi.alternatives().try(
+    Joi.string().trim().pattern(/^https:\/\/res\.cloudinary\.com\//).message('Video URL must start with https://res.cloudinary.com/'),
+    Joi.string().allow('', null)
+  ).optional(),
+  audio_url: Joi.alternatives().try(
+    Joi.string().trim().pattern(/^https:\/\/res\.cloudinary\.com\//).message('Audio URL must start with https://res.cloudinary.com/'),
+    Joi.string().allow('', null)
+  ).optional(),
+  remove_video: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  remove_audio: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
 }).unknown(true);
 
 /**
