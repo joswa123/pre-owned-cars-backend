@@ -111,6 +111,18 @@ const CommercialVehicle = sequelize.define('CommercialVehicle', {
     type: DataTypes.ENUM('customer', 'dealer'),
     allowNull: false,
   },
+  b2b_listing: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'True if listing is dealer-to-dealer (B2B)',
+  },
+  prior_appointments: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Flag indicating whether prior appointment is required',
+  },
   status: {
     type: DataTypes.ENUM('sold', 'active', 'deleted', 'expired'),
     allowNull: false,
@@ -184,6 +196,24 @@ const CommercialVehicle = sequelize.define('CommercialVehicle', {
       return this.vehicleType?.name || null;
     },
   },
+  b2b: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('b2b_listing');
+    },
+    set(value) {
+      this.setDataValue('b2b_listing', value);
+    },
+  },
+  prior_appointemnts: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('prior_appointments');
+    },
+    set(value) {
+      this.setDataValue('prior_appointments', value);
+    },
+  },
 }, {
   tableName: 'commercial_vehicles',
   timestamps: true,
@@ -197,6 +227,8 @@ const CommercialVehicle = sequelize.define('CommercialVehicle', {
     { fields: ['city_id', 'status'] },
     { fields: ['user_id', 'status'] },
     { fields: ['status', 'created_at'] },
+    { fields: ['b2b_listing'] },
+    { fields: ['status', 'b2b_listing'] },
     { unique: true, fields: ['slug'] },
   ],
 });

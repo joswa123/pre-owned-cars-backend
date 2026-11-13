@@ -226,6 +226,10 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
     ...vJson,
     price,
     price_negotiable: Boolean(vJson.price_negotiable),
+    b2b_listing: Boolean(vJson.b2b_listing),
+    b2b: Boolean(vJson.b2b_listing),
+    prior_appointments: Boolean(vJson.prior_appointments ?? vJson.prior_appointemnts),
+    prior_appointemnts: Boolean(vJson.prior_appointments ?? vJson.prior_appointemnts),
     video_url: formatMediaUrl(vJson.video_url),
     audio_url: formatMediaUrl(vJson.audio_url),
     vehicle_type: vehicleTypeName,
@@ -344,8 +348,11 @@ exports.createCommercialVehicle = async (userId, userRole, rawData, files) => {
       if (!stateExists) stateId = null;
     }
 
-    // 4. Derive posted_by_type
+    // 4. Derive posted_by_type and b2b_listing
     const posted_by_type = userRole === 'dealer' ? 'dealer' : 'customer';
+    const isDealerOrAdmin = userRole === 'dealer' || userRole === 'admin' || user.role === 'dealer' || user.role === 'admin';
+    const b2b_listing = isDealerOrAdmin && Boolean(mapped.b2b_listing);
+    const prior_appointments = Boolean(mapped.prior_appointments);
 
     // 5. Slug Generation
     const baseSlugName = `${brand.name}-${vehicleType.name}-${mapped.year}`;
@@ -382,6 +389,8 @@ exports.createCommercialVehicle = async (userId, userRole, rawData, files) => {
       km_driven: mapped.km_driven,
       price: mapped.price,
       price_negotiable: mapped.price_negotiable || false,
+      b2b_listing,
+      prior_appointments,
       video_url: videoUrl,
       audio_url: audioUrl,
       description: mapped.description || null,
@@ -681,6 +690,24 @@ const buildCommercialFiltersWhere = async (rawFilters = {}) => {
     where.posted_by_type = String(rawFilters.posted_by_type).toLowerCase();
   }
 
+  // 11.1 B2B filter
+  if (rawFilters.b2b_listing !== undefined && rawFilters.b2b_listing !== '') {
+    where.b2b_listing = rawFilters.b2b_listing === true || rawFilters.b2b_listing === 'true';
+  } else if (rawFilters.b2b !== undefined && rawFilters.b2b !== '') {
+    where.b2b_listing = rawFilters.b2b === true || rawFilters.b2b === 'true';
+  } else if (rawFilters.b2bListing !== undefined && rawFilters.b2bListing !== '') {
+    where.b2b_listing = rawFilters.b2bListing === true || rawFilters.b2bListing === 'true';
+  }
+
+  // 11.2 Prior appointments filter
+  if (rawFilters.prior_appointments !== undefined && rawFilters.prior_appointments !== '') {
+    where.prior_appointments = rawFilters.prior_appointments === true || rawFilters.prior_appointments === 'true';
+  } else if (rawFilters.prior_appointemnts !== undefined && rawFilters.prior_appointemnts !== '') {
+    where.prior_appointments = rawFilters.prior_appointemnts === true || rawFilters.prior_appointemnts === 'true';
+  } else if (rawFilters.priorAppointments !== undefined && rawFilters.priorAppointments !== '') {
+    where.prior_appointments = rawFilters.priorAppointments === true || rawFilters.priorAppointments === 'true';
+  }
+
   // 12. Posted within days & Expired cutoff (aligned with carService.js)
   let minCreatedAt = null;
   const rawPostedDays = rawFilters.posted_within_days ?? rawFilters.postedWithinDays;
@@ -946,6 +973,13 @@ exports.updateCommercialVehicle = async (id, userId, userRole, rawData, files) =
   }
   if (mapped.price_negotiable !== undefined) {
     filteredData.price_negotiable = Boolean(mapped.price_negotiable);
+  }
+  if (mapped.b2b_listing !== undefined) {
+    const isDealerOrAdmin = userRole === 'dealer' || userRole === 'admin';
+    filteredData.b2b_listing = isDealerOrAdmin ? Boolean(mapped.b2b_listing) : false;
+  }
+  if (mapped.prior_appointments !== undefined) {
+    filteredData.prior_appointments = Boolean(mapped.prior_appointments);
   }
   if (mapped.km_driven !== undefined) filteredData.km_driven = mapped.km_driven;
   if (mapped.fuel_type !== undefined) filteredData.fuel_type = mapped.fuel_type;

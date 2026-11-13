@@ -69,6 +69,14 @@ const createCommercialVehicleSchema = Joi.object({
   price_negotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
   priceNegotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
 
+  b2b: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  b2b_listing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  b2bListing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+
+  prior_appointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  prior_appointemnts: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  priorAppointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+
   km_driven: Joi.number().integer().min(0).max(2000000).required(),
   kmdriven: Joi.number().integer().min(0).max(2000000).optional(),
 
@@ -122,6 +130,14 @@ const updateCommercialVehicleSchema = Joi.object({
   price: Joi.number().positive().max(100000000).optional(),
   price_negotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   priceNegotiable: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+
+  b2b: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  b2b_listing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  b2bListing: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+
+  prior_appointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  prior_appointemnts: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  priorAppointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
 
   km_driven: Joi.number().integer().min(0).max(2000000).optional(),
   kmdriven: Joi.number().integer().min(0).max(2000000).optional(),
@@ -236,6 +252,14 @@ const queryCommercialVehicleSchema = Joi.object({
   postedWithinDays: Joi.number().integer().min(1).max(1000).allow('', null).optional(),
   include_expired: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
 
+  b2b: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
+  b2b_listing: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
+  b2bListing: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
+
+  prior_appointments: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
+  prior_appointemnts: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
+  priorAppointments: Joi.boolean().truthy('true').falsy('false').allow('', null).optional(),
+
   user_id: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),
   seller_id: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),
 }).unknown(false);
@@ -268,6 +292,39 @@ const mapToCommercialDbValues = (data) => {
       mapped.price_negotiable === 'true' ||
       mapped.price_negotiable === 1 ||
       mapped.price_negotiable === '1';
+  }
+
+  // B2B aliases and boolean normalization
+  if (data.b2b !== undefined && mapped.b2b_listing === undefined) {
+    mapped.b2b_listing = data.b2b;
+  }
+  if (data.b2bListing !== undefined && mapped.b2b_listing === undefined) {
+    mapped.b2b_listing = data.b2bListing;
+  }
+  if (mapped.b2b_listing !== undefined) {
+    mapped.b2b_listing =
+      mapped.b2b_listing === true ||
+      mapped.b2b_listing === 'true' ||
+      mapped.b2b_listing === 1 ||
+      mapped.b2b_listing === '1';
+  }
+
+  // Prior appointments aliases and boolean normalization
+  if (data.prior_appointments !== undefined && mapped.prior_appointments === undefined) {
+    mapped.prior_appointments = data.prior_appointments;
+  }
+  if (data.prior_appointemnts !== undefined && mapped.prior_appointments === undefined) {
+    mapped.prior_appointments = data.prior_appointemnts;
+  }
+  if (data.priorAppointments !== undefined && mapped.prior_appointments === undefined) {
+    mapped.prior_appointments = data.priorAppointments;
+  }
+  if (mapped.prior_appointments !== undefined) {
+    mapped.prior_appointments =
+      mapped.prior_appointments === true ||
+      mapped.prior_appointments === 'true' ||
+      mapped.prior_appointments === 1 ||
+      mapped.prior_appointments === '1';
   }
 
   // Fuel type map
