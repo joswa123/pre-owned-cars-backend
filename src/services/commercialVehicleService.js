@@ -26,6 +26,8 @@ const {
 const {
   mapToCommercialDbValues,
   SORT_BY_WHITELIST,
+  BOARD_TYPE_MAP,
+  INSURANCE_TYPE_MAP,
 } = require('../validations/commercialValidation');
 
 const clearCache = async (key) => {
@@ -221,6 +223,13 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
     return null;
   };
 
+  const formatExpiryDate = (d) => {
+    if (!d) return null;
+    if (typeof d === 'string') return d.slice(0, 10);
+    if (d instanceof Date) return d.toISOString().slice(0, 10);
+    return d;
+  };
+
   const price = (vJson.price !== null && vJson.price !== undefined) ? Number(vJson.price) : null;
   const is_expired = vJson.created_at && (Date.now() - new Date(vJson.created_at).getTime()) > 90 * 24 * 60 * 60 * 1000;
 
@@ -236,6 +245,12 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
     audio_url: formatMediaUrl(vJson.audio_url),
     vehicle_type: vehicleTypeName,
     brand_name: brandName,
+    board_type: vJson.board_type || 'Commercial',
+    boardType: vJson.board_type || 'Commercial',
+    insurance_type: vJson.insurance_type || 'Not Insured',
+    insuranceType: vJson.insurance_type || 'Not Insured',
+    insurance_expiry_date: formatExpiryDate(vJson.insurance_expiry_date),
+    insuranceExpiryDate: formatExpiryDate(vJson.insurance_expiry_date),
     primary_image: primaryItem ? primaryItem.image_url : null,
     secondary_images: secondaryImages,
     images: validImages,
@@ -393,6 +408,9 @@ exports.createCommercialVehicle = async (userId, userRole, rawData, files) => {
       price_negotiable: mapped.price_negotiable || false,
       b2b_listing,
       prior_appointments,
+      board_type: mapped.board_type || 'Commercial',
+      insurance_type: mapped.insurance_type || 'Not Insured',
+      insurance_expiry_date: mapped.insurance_expiry_date || null,
       video_url: videoUrl,
       audio_url: audioUrl,
       description: mapped.description || null,
@@ -710,6 +728,34 @@ const buildCommercialFiltersWhere = async (rawFilters = {}) => {
     where.prior_appointments = rawFilters.priorAppointments === true || rawFilters.priorAppointments === 'true';
   }
 
+  // 11.3 Board type filter
+  const rawBoard = rawFilters.board_types || rawFilters.board_type || rawFilters.boardType;
+  if (rawBoard) {
+    const boardItems = (Array.isArray(rawBoard) ? rawBoard : String(rawBoard).split(','))
+      .map((b) => String(b).trim().toLowerCase())
+      .filter(Boolean)
+      .map((b) => BOARD_TYPE_MAP[b] || b);
+    if (boardItems.length === 1) {
+      where.board_type = boardItems[0];
+    } else if (boardItems.length > 1) {
+      where.board_type = { [Op.in]: boardItems };
+    }
+  }
+
+  // 11.4 Insurance type filter
+  const rawInsurance = rawFilters.insurance_types || rawFilters.insurance_type || rawFilters.insuranceType;
+  if (rawInsurance) {
+    const insItems = (Array.isArray(rawInsurance) ? rawInsurance : String(rawInsurance).split(','))
+      .map((i) => String(i).trim().toLowerCase())
+      .filter(Boolean)
+      .map((i) => INSURANCE_TYPE_MAP[i] || i);
+    if (insItems.length === 1) {
+      where.insurance_type = insItems[0];
+    } else if (insItems.length > 1) {
+      where.insurance_type = { [Op.in]: insItems };
+    }
+  }
+
   // 12. Posted within days & Expired cutoff (aligned with carService.js)
   let minCreatedAt = null;
   const rawPostedDays = rawFilters.posted_within_days ?? rawFilters.postedWithinDays;
@@ -999,6 +1045,9 @@ exports.updateCommercialVehicle = async (id, userId, userRole, rawData, files) =
   if (mapped.prior_appointments !== undefined) {
     filteredData.prior_appointments = Boolean(mapped.prior_appointments);
   }
+  if (mapped.board_type !== undefined) filteredData.board_type = mapped.board_type || 'Commercial';
+  if (mapped.insurance_type !== undefined) filteredData.insurance_type = mapped.insurance_type || 'Not Insured';
+  if (mapped.insurance_expiry_date !== undefined) filteredData.insurance_expiry_date = mapped.insurance_expiry_date || null;
   if (mapped.km_driven !== undefined) filteredData.km_driven = mapped.km_driven;
   if (mapped.fuel_type !== undefined) filteredData.fuel_type = mapped.fuel_type;
   if (mapped.ownership !== undefined) filteredData.ownership = mapped.ownership;

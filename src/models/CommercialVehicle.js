@@ -123,6 +123,20 @@ const CommercialVehicle = sequelize.define('CommercialVehicle', {
     defaultValue: false,
     comment: 'Flag indicating whether prior appointment is required',
   },
+  board_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    defaultValue: 'Commercial',
+  },
+  insurance_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    defaultValue: 'Not Insured',
+  },
+  insurance_expiry_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
   status: {
     type: DataTypes.ENUM('sold', 'active', 'deleted', 'expired'),
     allowNull: false,
@@ -214,6 +228,33 @@ const CommercialVehicle = sequelize.define('CommercialVehicle', {
       this.setDataValue('prior_appointments', value);
     },
   },
+  boardType: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('board_type');
+    },
+    set(value) {
+      this.setDataValue('board_type', value);
+    },
+  },
+  insuranceType: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('insurance_type');
+    },
+    set(value) {
+      this.setDataValue('insurance_type', value);
+    },
+  },
+  insuranceExpiryDate: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('insurance_expiry_date');
+    },
+    set(value) {
+      this.setDataValue('insurance_expiry_date', value);
+    },
+  },
 }, {
   tableName: 'commercial_vehicles',
   timestamps: true,
@@ -229,6 +270,8 @@ const CommercialVehicle = sequelize.define('CommercialVehicle', {
     { fields: ['status', 'created_at'] },
     { fields: ['b2b_listing'] },
     { fields: ['status', 'b2b_listing'] },
+    { fields: ['board_type'] },
+    { fields: ['status', 'board_type'] },
     { unique: true, fields: ['slug'] },
   ],
 });

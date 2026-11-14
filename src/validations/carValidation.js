@@ -33,8 +33,8 @@ const TRANSMISSION_TYPES_IN = [
   'e-cvt',
 ];
 const OWNERSHIP_TYPES_IN    = ['1st owner', '2nd owner', '3rd owner', '4th+ owner'];
-const INSURANCE_TYPE_IN     = ['comprehensive', 'third party', 'not insured'];
-const BOARD_TYPES_IN        = ['own board', 't-board', 'commercial'];
+const INSURANCE_TYPE_IN     = ['comprehensive', 'third party', 'not insured', 'zero dep', 'zero depreciation'];
+const BOARD_TYPES_IN        = ['own board', 't-board', 'commercial', 'white', 'yellow'];
 
 const enumString = (values) =>
   Joi.string().trim().lowercase().valid(...values);
@@ -76,9 +76,17 @@ const createCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN).required(),
   body_type:        Joi.string().trim().max(50).optional(),
   car_type:         Joi.string().trim().max(50).optional(),
-  board_type:       enumString(BOARD_TYPES_IN).optional(),
-  numplate:         Joi.string().trim().max(50).optional(),
+  board_type:       enumString(BOARD_TYPES_IN).allow('', null).optional(),
+  boardType:        enumString(BOARD_TYPES_IN).allow('', null).optional(),
+  numplate:         Joi.string().trim().max(50).allow('', null).optional(),
+  board:            Joi.string().trim().max(50).allow('', null).optional(),
   insurance_expiry_date: Joi.date().iso().allow('', null).optional(),
+  insuranceExpiryDate: Joi.date().iso().allow('', null).optional(),
+  insurance_expiry: Joi.date().iso().allow('', null).optional(),
+  insuranceExpiry:  Joi.date().iso().allow('', null).optional(),
+  insurance_validity: Joi.date().iso().allow('', null).optional(),
+  insurance_valid_till: Joi.date().iso().allow('', null).optional(),
+  insuranceValidTill: Joi.date().iso().allow('', null).optional(),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   b2b_listing:      Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
@@ -107,7 +115,6 @@ const createCarSchema = Joi.object({
   .or('model_id', 'model')
   .or('km_driven', 'kmdriven')
   .or('body_type', 'car_type')
-  .or('board_type', 'numplate')
   .unknown(true);
 
 /**
@@ -131,11 +138,19 @@ const updateCarSchema = Joi.object({
   ownership:        enumString(OWNERSHIP_TYPES_IN),
   body_type:        Joi.string().trim().max(50),
   car_type:         Joi.string().trim().max(50),
-  board_type:       enumString(BOARD_TYPES_IN),
-  numplate:         Joi.string().trim().max(50),
-  insurance_expiry_date: Joi.date().iso().allow('', null),
-  insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null),
-  insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null),
+  board_type:       enumString(BOARD_TYPES_IN).allow('', null).optional(),
+  boardType:        enumString(BOARD_TYPES_IN).allow('', null).optional(),
+  numplate:         Joi.string().trim().max(50).allow('', null).optional(),
+  board:            Joi.string().trim().max(50).allow('', null).optional(),
+  insurance_expiry_date: Joi.date().iso().allow('', null).optional(),
+  insuranceExpiryDate: Joi.date().iso().allow('', null).optional(),
+  insurance_expiry: Joi.date().iso().allow('', null).optional(),
+  insuranceExpiry:  Joi.date().iso().allow('', null).optional(),
+  insurance_validity: Joi.date().iso().allow('', null).optional(),
+  insurance_valid_till: Joi.date().iso().allow('', null).optional(),
+  insuranceValidTill: Joi.date().iso().allow('', null).optional(),
+  insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
+  insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   b2b_listing:      Joi.boolean(),
   status:           enumString(STATUS_TYPES_IN),
   description:      Joi.string().trim().allow('', null),
@@ -206,6 +221,8 @@ const INSURANCE_TYPE_MAP = {
   comprehensive: 'Comprehensive',
   'third party': 'Third Party',
   'not insured': 'Not Insured',
+  'zero dep': 'Comprehensive',
+  'zero depreciation': 'Comprehensive',
 };
 
 const BODY_TYPE_MAP = {
@@ -230,6 +247,8 @@ const BOARD_TYPE_MAP = {
   'own board':  'Own Board',
   't-board':    'T-Board',
   'commercial': 'Commercial',
+  'white':      'Own Board',
+  'yellow':     'Commercial',
 };
 
 /**
@@ -254,6 +273,35 @@ const mapToDbValues = (data) => {
   }
   if (data.numplate !== undefined && mapped.board_type === undefined) {
     mapped.board_type = data.numplate;
+  }
+  if (data.boardType !== undefined && mapped.board_type === undefined) {
+    mapped.board_type = data.boardType;
+  }
+  if (data.board !== undefined && mapped.board_type === undefined) {
+    mapped.board_type = data.board;
+  }
+
+  // Insurance expiry date aliases
+  if (data.insuranceExpiryDate !== undefined && mapped.insurance_expiry_date === undefined) {
+    mapped.insurance_expiry_date = data.insuranceExpiryDate;
+  }
+  if (data.insurance_expiry !== undefined && mapped.insurance_expiry_date === undefined) {
+    mapped.insurance_expiry_date = data.insurance_expiry;
+  }
+  if (data.insuranceExpiry !== undefined && mapped.insurance_expiry_date === undefined) {
+    mapped.insurance_expiry_date = data.insuranceExpiry;
+  }
+  if (data.insurance_validity !== undefined && mapped.insurance_expiry_date === undefined) {
+    mapped.insurance_expiry_date = data.insurance_validity;
+  }
+  if (data.insurance_valid_till !== undefined && mapped.insurance_expiry_date === undefined) {
+    mapped.insurance_expiry_date = data.insurance_valid_till;
+  }
+  if (data.insuranceValidTill !== undefined && mapped.insurance_expiry_date === undefined) {
+    mapped.insurance_expiry_date = data.insuranceValidTill;
+  }
+  if (mapped.insurance_expiry_date === '') {
+    mapped.insurance_expiry_date = null;
   }
   if (data.numberplate !== undefined && mapped.number_plate === undefined) {
     mapped.number_plate = data.numberplate;
@@ -297,8 +345,12 @@ const mapToDbValues = (data) => {
   const rawOwn = (mapped.ownership || '').toString().toLowerCase();
   if (rawOwn && OWNERSHIP_MAP[rawOwn]) mapped.ownership = OWNERSHIP_MAP[rawOwn];
 
-  const rawIns = (mapped.insurance_type || mapped.insuranceType || '').toString().toLowerCase();
-  if (rawIns && INSURANCE_TYPE_MAP[rawIns]) mapped.insurance_type = INSURANCE_TYPE_MAP[rawIns];
+  const rawIns = (mapped.insurance_type || mapped.insuranceType || '').toString().toLowerCase().trim();
+  if (rawIns && INSURANCE_TYPE_MAP[rawIns]) {
+    mapped.insurance_type = INSURANCE_TYPE_MAP[rawIns];
+  } else if (mapped.insurance_type !== undefined && !rawIns) {
+    mapped.insurance_type = 'Not Insured';
+  }
 
   const rawBody = (mapped.body_type || '').toString().toLowerCase();
   if (rawBody && BODY_TYPE_MAP[rawBody]) mapped.body_type = BODY_TYPE_MAP[rawBody];
@@ -319,6 +371,8 @@ const mapToDbValues = (data) => {
     mapped.board_type = 'Own Board';
   } else if (rawBoard && BOARD_TYPE_MAP[rawBoard]) {
     mapped.board_type = BOARD_TYPE_MAP[rawBoard];
+  } else if (mapped.board_type !== undefined && !rawBoard) {
+    mapped.board_type = 'Own Board';
   }
 
   if (data.highlight_ids !== undefined) {
@@ -404,6 +458,10 @@ const carQuerySchema = Joi.object({
   body_type: Joi.string().allow('', null).optional(),
   board_type: Joi.string().allow('', null).optional(),
   board_types: Joi.alternatives().try(Joi.array(), Joi.string()).allow('', null).optional(),
+  boardType: Joi.string().allow('', null).optional(),
+  insurance_type: Joi.string().allow('', null).optional(),
+  insurance_types: Joi.alternatives().try(Joi.array(), Joi.string()).allow('', null).optional(),
+  insuranceType: Joi.string().allow('', null).optional(),
   status: Joi.string().valid(...STATUS_TYPES_IN, 'all').allow('', null).optional(),
   color: Joi.string().allow('', null).optional(),
   colors: Joi.alternatives().try(Joi.array(), Joi.string()).allow('', null).optional(),

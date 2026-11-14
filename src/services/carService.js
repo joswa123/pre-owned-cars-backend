@@ -92,6 +92,7 @@ const {
   BODY_TYPE_MAP,
   OWNERSHIP_MAP,
   BOARD_TYPE_MAP,
+  INSURANCE_TYPE_MAP,
 } = require('../validations/carValidation');
 
 const sellerInclude = {
@@ -268,11 +269,24 @@ const transformCarImages = (car, baseUrl = null) => {
     : carJson.price;
   const hasPriceDrop = Boolean(carJson.has_price_drop);
 
+  const formatExpiryDate = (d) => {
+    if (!d) return null;
+    if (typeof d === 'string') return d.slice(0, 10);
+    if (d instanceof Date) return d.toISOString().slice(0, 10);
+    return d;
+  };
+
   return {
     ...carJson,
     price,
     previous_price: previousPrice,
     has_price_drop: hasPriceDrop,
+    board_type: carJson.board_type || 'Own Board',
+    boardType: carJson.board_type || 'Own Board',
+    insurance_type: carJson.insurance_type || 'Not Insured',
+    insuranceType: carJson.insurance_type || 'Not Insured',
+    insurance_expiry_date: formatExpiryDate(carJson.insurance_expiry_date),
+    insuranceExpiryDate: formatExpiryDate(carJson.insurance_expiry_date),
     video_url: formatMediaUrl(carJson.video_url),
     audio_url: formatMediaUrl(carJson.audio_url),
     highlights: carJson.highlights || [],
@@ -758,6 +772,20 @@ const buildCarFiltersWhere = async (rawFilters = {}, { isUserScope = false, user
       where.b2b_listing = true;
     } else {
       where.board_type = bt;
+    }
+  }
+
+  // 5.1 Insurance type filter
+  const rawIns = filters.insurance_types || filters.insurance_type || filters.insuranceType;
+  if (rawIns) {
+    const insList = (Array.isArray(rawIns) ? rawIns : String(rawIns).split(','))
+      .map(i => String(i).trim())
+      .filter(Boolean)
+      .map(i => INSURANCE_TYPE_MAP[i.toLowerCase()] || i);
+    if (insList.length === 1) {
+      where.insurance_type = insList[0];
+    } else if (insList.length > 1) {
+      where.insurance_type = { [Op.in]: insList };
     }
   }
 
