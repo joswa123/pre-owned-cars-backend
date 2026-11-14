@@ -802,9 +802,11 @@ exports.getCommercialVehicles = async (
 
   const vehicles = rows.map((v) => {
     const transformed = transformCommercialVehicleImages(v, null, { id: viewerUserId, role: viewerUserRole });
+    const isW = wishlistSet.has(v.id);
     return {
       ...transformed,
-      isWishlist: wishlistSet.has(v.id),
+      isWishlist: isW,
+      is_wishlist: isW,
       wishlist_count: wishlistCountMap[v.id] || 0,
     };
   });
@@ -895,6 +897,7 @@ exports.getCommercialVehicleById = async (identifier, viewerUser = null) => {
   return {
     ...transformed,
     isWishlist,
+    is_wishlist: isWishlist,
     wishlist_count: parseInt(wishlistCount, 10) || 0,
   };
 };
@@ -934,13 +937,26 @@ exports.getSellerCommercialVehicles = async (sellerId, filters = {}) => {
   });
 
   const vehicleIds = rows.map((v) => v.id);
-  const wishlistCountMap = await getCommercialWishlistCountMap(vehicleIds);
+  const [userWishlists, wishlistCountMap] = await Promise.all([
+    sellerId && vehicleIds.length > 0
+      ? Wishlist.findAll({
+          where: { user_id: sellerId, target_type: 'commercial', target_id: vehicleIds },
+          attributes: ['target_id'],
+          raw: true,
+        })
+      : Promise.resolve([]),
+    getCommercialWishlistCountMap(vehicleIds),
+  ]);
+  const wishlistSet = new Set(userWishlists.map(w => w.target_id));
 
   const vehicles = rows.map((v) => {
     const transformed = transformCommercialVehicleImages(v, null, { id: sellerId, role: 'seller' });
+    const isW = wishlistSet.has(v.id);
     return {
       ...transformed,
       enquiry_count: v.leads?.length || 0,
+      isWishlist: isW,
+      is_wishlist: isW,
       wishlist_count: wishlistCountMap[v.id] || 0,
     };
   });
@@ -1399,10 +1415,11 @@ exports.getSellerCommercialListings = async (sellerId, excludeVehicleId = null, 
   }
 
   const cacheKey = `seller:commercial:${sellerId}:${page}:${limit}:${excludeVehicleId || 'none'}`;
+  let responseData = null;
   try {
     if (redisClient.isOpen) {
       const cached = await redisClient.get(cacheKey);
-      if (cached) return JSON.parse(cached);
+      if (cached) responseData = JSON.parse(cached);
     }
   } catch (err) {
     console.error('Redis cache error in getSellerCommercialListings:', err);
@@ -1412,72 +1429,92 @@ exports.getSellerCommercialListings = async (sellerId, excludeVehicleId = null, 
   const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
   const offset = (parsedPage - 1) * parsedLimit;
 
-  const whereClause = {
-    user_id: sellerId,
-    status: 'active',
-  };
-  if (excludeVehicleId && isUuid(excludeVehicleId)) {
-    whereClause.id = { [Op.ne]: excludeVehicleId };
+  if (!responseData) {
+    const whereClause = {
+      user_id: sellerId,
+      status: 'active',
+    };
+    if (excludeVehicleId && isUuid(excludeVehicleId)) {
+      whereClause.id = { [Op.ne]: excludeVehicleId };
+    }
+
+    const { count, rows } = await CommercialVehicle.findAndCountAll({
+      distinct: true,
+      col: 'id',
+      where: whereClause,
+      include: [
+        { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
+        sellerInclude,
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parsedLimit,
+      offset,
+    });
+
+    const vehicleIds = rows.map((v) => v.id);
+    const wishlistCountMap = await getCommercialWishlistCountMap(vehicleIds);
+
+    const transformedVehicles = rows.map((v) => {
+      const transformed = transformCommercialVehicleImages(v, null, viewerUser);
+      return {
+        ...transformed,
+        wishlist_count: wishlistCountMap[v.id] || 0,
+      };
+    });
+
+    responseData = {
+      listings: transformedVehicles,
+      vehicles: transformedVehicles,
+      cars: transformedVehicles,
+      pagination: {
+        page: parsedPage,
+        limit: parsedLimit,
+        total: count,
+        totalPages: Math.ceil(count / parsedLimit) || 1,
+      },
+    };
+
+    try {
+      if (redisClient.isOpen) {
+        await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+      }
+    } catch (err) {}
   }
 
-  const { count, rows } = await CommercialVehicle.findAndCountAll({
-    distinct: true,
-    col: 'id',
-    where: whereClause,
-    include: [
-      { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
-      sellerInclude,
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-      { model: District, as: 'district', attributes: ['id', 'name'] },
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-    ],
-    order: [['created_at', 'DESC']],
-    limit: parsedLimit,
-    offset,
-  });
+  // Attach dynamic user-specific isWishlist without polluting cache
+  let wishlistSet = new Set();
+  const vList = responseData.listings || [];
+  if (viewerUser?.id && vList.length > 0) {
+    const vIds = vList.map((v) => v.id);
+    const userWishlists = await Wishlist.findAll({
+      where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vIds },
+      attributes: ['target_id'],
+      raw: true,
+    });
+    wishlistSet = new Set(userWishlists.map((w) => w.target_id));
+  }
 
-  const vehicleIds = rows.map((v) => v.id);
-  const [userWishlists, wishlistCountMap] = await Promise.all([
-    viewerUser?.id && vehicleIds.length > 0
-      ? Wishlist.findAll({
-          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicleIds },
-          attributes: ['target_id'],
-        })
-      : Promise.resolve([]),
-    getCommercialWishlistCountMap(vehicleIds),
-  ]);
-
-  const wishlistSet = new Set(userWishlists.map((w) => w.target_id));
-  const transformedVehicles = rows.map((v) => {
-    const transformed = transformCommercialVehicleImages(v, null, viewerUser);
+  const finalVehicles = vList.map((v) => {
+    const isW = wishlistSet.has(v.id);
     return {
-      ...transformed,
-      isWishlist: wishlistSet.has(v.id),
-      wishlist_count: wishlistCountMap[v.id] || 0,
+      ...v,
+      wishlist_count: parseInt(v.wishlist_count || 0, 10) || 0,
+      isWishlist: isW,
+      is_wishlist: isW,
     };
   });
 
-  const responseData = {
-    listings: transformedVehicles,
-    vehicles: transformedVehicles,
-    cars: transformedVehicles,
-    pagination: {
-      page: parsedPage,
-      limit: parsedLimit,
-      total: count,
-      totalPages: Math.ceil(count / parsedLimit) || 1,
-    },
+  return {
+    ...responseData,
+    listings: finalVehicles,
+    vehicles: finalVehicles,
+    cars: finalVehicles,
   };
-
-  try {
-    if (redisClient.isOpen) {
-      await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
-    }
-  } catch (err) {}
-
-  return responseData;
 };
 
 /**
@@ -1497,10 +1534,11 @@ exports.getSimilarCommercialVehicles = async (vehicleId, limit = 4, page = 1, vi
   const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 4, 1), 50);
   const cacheKeySimilar = `similar:commercial:${vehicleId}:${parsedPage}:${parsedLimit}`;
 
+  let similarData = null;
   try {
     if (redisClient.isOpen) {
       const cached = await redisClient.get(cacheKeySimilar);
-      if (cached) return JSON.parse(cached);
+      if (cached) similarData = JSON.parse(cached);
     }
   } catch (err) {
     console.error('Redis cache error in getSimilarCommercialVehicles:', err);
@@ -1508,60 +1546,19 @@ exports.getSimilarCommercialVehicles = async (vehicleId, limit = 4, page = 1, vi
 
   const offset = (parsedPage - 1) * parsedLimit;
 
-  // Step 1: Gather candidates (same brand or same vehicle_type)
-  const candidateWhere = {
-    status: 'active',
-    id: { [Op.ne]: vehicleId },
-    [Op.or]: [
-      { brand_id: targetVehicle.brand_id },
-      targetVehicle.vehicle_type_id ? { vehicle_type_id: targetVehicle.vehicle_type_id } : null,
-    ].filter(Boolean),
-  };
+  if (!similarData) {
+    // Step 1: Gather candidates (same brand or same vehicle_type)
+    const candidateWhere = {
+      status: 'active',
+      id: { [Op.ne]: vehicleId },
+      [Op.or]: [
+        { brand_id: targetVehicle.brand_id },
+        targetVehicle.vehicle_type_id ? { vehicle_type_id: targetVehicle.vehicle_type_id } : null,
+      ].filter(Boolean),
+    };
 
-  let candidates = await CommercialVehicle.findAll({
-    where: candidateWhere,
-    include: [
-      { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
-      sellerInclude,
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-      { model: District, as: 'district', attributes: ['id', 'name'] },
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-    ],
-  });
-
-  // Step 2: Relevance scoring
-  let scoredCandidates = candidates.map((v) => {
-    let score = 0;
-    if (v.brand_id === targetVehicle.brand_id) score += 50;
-    if (v.vehicle_type_id && targetVehicle.vehicle_type_id && v.vehicle_type_id === targetVehicle.vehicle_type_id) score += 40;
-    if (v.fuel_type && targetVehicle.fuel_type && v.fuel_type.toLowerCase() === targetVehicle.fuel_type.toLowerCase()) score += 10;
-    if (v.ownership && targetVehicle.ownership && v.ownership === targetVehicle.ownership) score += 5;
-
-    if (targetVehicle.price && v.price) {
-      const diff = Math.abs(parseFloat(v.price) - parseFloat(targetVehicle.price)) / parseFloat(targetVehicle.price);
-      if (diff <= 0.20) score += 20;
-    }
-
-    if (targetVehicle.year && v.year) {
-      if (Math.abs(v.year - targetVehicle.year) <= 3) score += 10;
-    }
-    return { vehicle: v, score };
-  });
-
-  scoredCandidates.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return new Date(b.vehicle.created_at) - new Date(a.vehicle.created_at);
-  });
-
-  // Step 3: Fallback if no candidate matched
-  if (scoredCandidates.length === 0) {
-    const fallback = await CommercialVehicle.findAll({
-      where: {
-        status: 'active',
-        id: { [Op.ne]: vehicleId },
-      },
+    let candidates = await CommercialVehicle.findAll({
+      where: candidateWhere,
       include: [
         { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
         sellerInclude,
@@ -1571,55 +1568,115 @@ exports.getSimilarCommercialVehicles = async (vehicleId, limit = 4, page = 1, vi
         { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
       ],
-      order: [['created_at', 'DESC']],
-      limit: parsedLimit,
     });
-    scoredCandidates = fallback.map((vehicle) => ({ vehicle, score: 0 }));
+
+    // Step 2: Relevance scoring
+    let scoredCandidates = candidates.map((v) => {
+      let score = 0;
+      if (v.brand_id === targetVehicle.brand_id) score += 50;
+      if (v.vehicle_type_id && targetVehicle.vehicle_type_id && v.vehicle_type_id === targetVehicle.vehicle_type_id) score += 40;
+      if (v.fuel_type && targetVehicle.fuel_type && v.fuel_type.toLowerCase() === targetVehicle.fuel_type.toLowerCase()) score += 10;
+      if (v.ownership && targetVehicle.ownership && v.ownership === targetVehicle.ownership) score += 5;
+
+      if (targetVehicle.price && v.price) {
+        const diff = Math.abs(parseFloat(v.price) - parseFloat(targetVehicle.price)) / parseFloat(targetVehicle.price);
+        if (diff <= 0.20) score += 20;
+      }
+
+      if (targetVehicle.year && v.year) {
+        if (Math.abs(v.year - targetVehicle.year) <= 3) score += 10;
+      }
+      return { vehicle: v, score };
+    });
+
+    scoredCandidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.vehicle.created_at) - new Date(a.vehicle.created_at);
+    });
+
+    // Step 3: Fallback if no candidate matched
+    if (scoredCandidates.length === 0) {
+      const fallback = await CommercialVehicle.findAll({
+        where: {
+          status: 'active',
+          id: { [Op.ne]: vehicleId },
+        },
+        include: [
+          { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
+          sellerInclude,
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+          { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+          { model: District, as: 'district', attributes: ['id', 'name'] },
+          { model: City, as: 'city', attributes: ['id', 'name'] },
+        ],
+        order: [['created_at', 'DESC']],
+        limit: parsedLimit,
+      });
+      scoredCandidates = fallback.map((vehicle) => ({ vehicle, score: 0 }));
+    }
+
+    const total = scoredCandidates.length;
+    const paginatedSlice = scoredCandidates.slice(offset, offset + parsedLimit).map((sc) => sc.vehicle);
+    const vehicleIds = paginatedSlice.map((v) => v.id);
+    const wishlistCountMap = await getCommercialWishlistCountMap(vehicleIds);
+
+    const transformedVehicles = paginatedSlice.map((v) => {
+      const transformed = transformCommercialVehicleImages(v, null, viewerUser);
+      return {
+        ...transformed,
+        wishlist_count: wishlistCountMap[v.id] || 0,
+      };
+    });
+
+    similarData = {
+      data: transformedVehicles,
+      vehicles: transformedVehicles,
+      cars: transformedVehicles,
+      pagination: {
+        page: parsedPage,
+        limit: parsedLimit,
+        total,
+        totalPages: Math.ceil(total / parsedLimit) || 1,
+      },
+    };
+
+    try {
+      if (redisClient.isOpen) {
+        await redisClient.setEx(cacheKeySimilar, 300, JSON.stringify(similarData));
+      }
+    } catch (err) {}
   }
 
-  const total = scoredCandidates.length;
-  const paginatedSlice = scoredCandidates.slice(offset, offset + parsedLimit).map((sc) => sc.vehicle);
-  const vehicleIds = paginatedSlice.map((v) => v.id);
+  // Attach dynamic user-specific isWishlist without polluting cache
+  let wishlistSet = new Set();
+  const vList = similarData.data || [];
+  if (viewerUser?.id && vList.length > 0) {
+    const vIds = vList.map((v) => v.id);
+    const userWishlists = await Wishlist.findAll({
+      where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vIds },
+      attributes: ['target_id'],
+      raw: true,
+    });
+    wishlistSet = new Set(userWishlists.map(w => w.target_id));
+  }
 
-  const [userWishlists, wishlistCountMap] = await Promise.all([
-    viewerUser?.id && vehicleIds.length > 0
-      ? Wishlist.findAll({
-          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicleIds },
-          attributes: ['target_id'],
-        })
-      : Promise.resolve([]),
-    getCommercialWishlistCountMap(vehicleIds),
-  ]);
-
-  const wishlistSet = new Set(userWishlists.map((w) => w.target_id));
-  const transformedVehicles = paginatedSlice.map((v) => {
-    const transformed = transformCommercialVehicleImages(v, null, viewerUser);
+  const finalVehicles = vList.map((v) => {
+    const isW = wishlistSet.has(v.id);
     return {
-      ...transformed,
-      isWishlist: wishlistSet.has(v.id),
-      wishlist_count: wishlistCountMap[v.id] || 0,
+      ...v,
+      wishlist_count: parseInt(v.wishlist_count || 0, 10) || 0,
+      isWishlist: isW,
+      is_wishlist: isW,
     };
   });
 
-  const similarData = {
-    data: transformedVehicles,
-    vehicles: transformedVehicles,
-    cars: transformedVehicles,
-    pagination: {
-      page: parsedPage,
-      limit: parsedLimit,
-      total,
-      totalPages: Math.ceil(total / parsedLimit) || 1,
-    },
+  return {
+    ...similarData,
+    data: finalVehicles,
+    vehicles: finalVehicles,
+    cars: finalVehicles,
   };
-
-  try {
-    if (redisClient.isOpen) {
-      await redisClient.setEx(cacheKeySimilar, 300, JSON.stringify(similarData));
-    }
-  } catch (err) {}
-
-  return similarData;
 };
 
 /**
@@ -1629,69 +1686,85 @@ exports.getRecommendedCommercialVehicles = async (targetVehicleId = null, curren
   const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 4, 1), 50);
   const cacheKey = `recommended:commercial:${targetVehicleId || 'general'}:${currentUserId || 'trending'}:${parsedLimit}`;
 
+  let transformed = null;
   try {
     if (redisClient.isOpen) {
       const cached = await redisClient.get(cacheKey);
-      if (cached) return JSON.parse(cached);
+      if (cached) transformed = JSON.parse(cached);
     }
   } catch (err) {
     console.error('Redis cache error in getRecommendedCommercialVehicles:', err);
   }
 
-  const allExcludeIds = [...(targetVehicleId ? [targetVehicleId] : []), ...(Array.isArray(excludeIds) ? excludeIds : [])];
+  if (!transformed) {
+    const allExcludeIds = [...(targetVehicleId ? [targetVehicleId] : []), ...(Array.isArray(excludeIds) ? excludeIds : [])];
 
-  const whereClause = {
-    status: 'active',
-    ...(allExcludeIds.length > 0 ? { id: { [Op.notIn]: allExcludeIds } } : {}),
-  };
+    const whereClause = {
+      status: 'active',
+      ...(allExcludeIds.length > 0 ? { id: { [Op.notIn]: allExcludeIds } } : {}),
+    };
 
-  const recommendedRows = await CommercialVehicle.findAll({
-    where: whereClause,
-    include: [
-      { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
-      sellerInclude,
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-      { model: District, as: 'district', attributes: ['id', 'name'] },
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-    ],
-    order: [
-      ['is_featured', 'DESC'],
-      ['views_count', 'DESC'],
-      ['created_at', 'DESC'],
-    ],
-    limit: parsedLimit,
-  });
+    const recommendedRows = await CommercialVehicle.findAll({
+      where: whereClause,
+      include: [
+        { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
+        sellerInclude,
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+      ],
+      order: [
+        ['is_featured', 'DESC'],
+        ['views_count', 'DESC'],
+        ['created_at', 'DESC'],
+      ],
+      limit: parsedLimit,
+    });
 
-  const vehicleIds = recommendedRows.map((v) => v.id);
-  const [userWishlists, wishlistCountMap] = await Promise.all([
-    viewerUser?.id && vehicleIds.length > 0
-      ? Wishlist.findAll({
-          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicleIds },
-          attributes: ['target_id'],
-        })
-      : Promise.resolve([]),
-    getCommercialWishlistCountMap(vehicleIds),
-  ]);
+    const vehicleIds = recommendedRows.map((v) => v.id);
+    const wishlistCountMap = await getCommercialWishlistCountMap(vehicleIds);
 
-  const wishlistSet = new Set(userWishlists.map((w) => w.target_id));
-  const transformed = recommendedRows.map((v) => {
-    const item = transformCommercialVehicleImages(v, null, viewerUser);
+    transformed = recommendedRows.map((v) => {
+      const item = transformCommercialVehicleImages(v, null, viewerUser);
+      return {
+        ...item,
+        wishlist_count: wishlistCountMap[v.id] || 0,
+      };
+    });
+
+    try {
+      if (redisClient.isOpen) {
+        await redisClient.setEx(cacheKey, 300, JSON.stringify(transformed));
+      }
+    } catch (err) {}
+  }
+
+  // Attach dynamic user-specific isWishlist without polluting cache
+  let wishlistSet = new Set();
+  const vList = transformed || [];
+  if (viewerUser?.id && vList.length > 0) {
+    const vIds = vList.map((v) => v.id);
+    const userWishlists = await Wishlist.findAll({
+      where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vIds },
+      attributes: ['target_id'],
+      raw: true,
+    });
+    wishlistSet = new Set(userWishlists.map(w => w.target_id));
+  }
+
+  const finalVehicles = vList.map((v) => {
+    const isW = wishlistSet.has(v.id);
     return {
-      ...item,
-      isWishlist: wishlistSet.has(v.id),
-      wishlist_count: wishlistCountMap[v.id] || 0,
+      ...v,
+      wishlist_count: parseInt(v.wishlist_count || 0, 10) || 0,
+      isWishlist: isW,
+      is_wishlist: isW,
     };
   });
 
-  try {
-    if (redisClient.isOpen) {
-      await redisClient.setEx(cacheKey, 300, JSON.stringify(transformed));
-    }
-  } catch (err) {}
-
-  return transformed;
+  return finalVehicles;
 };
 
 /**

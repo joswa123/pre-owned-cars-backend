@@ -287,10 +287,45 @@ exports.transformCarImages = transformCarImages;
 const getWishlistSet = async (userId) => {
   if (!userId) return new Set();
   const wishlist = await Wishlist.findAll({
-    where: { user_id: userId },
-    attributes: ['car_id'],
+    where: {
+      user_id: userId,
+      [Op.or]: [
+        { car_id: { [Op.ne]: null } },
+        { target_type: 'car' },
+      ],
+    },
+    attributes: ['car_id', 'target_id'],
+    raw: true,
   });
-  return new Set(wishlist.map((w) => w.car_id));
+  const set = new Set();
+  wishlist.forEach((w) => {
+    if (w.car_id) set.add(w.car_id);
+    if (w.target_id) set.add(w.target_id);
+  });
+  return set;
+};
+
+const getCarWishlistCountMap = async (carIds) => {
+  if (!Array.isArray(carIds) || carIds.length === 0) return {};
+  const rows = await Wishlist.findAll({
+    where: {
+      [Op.or]: [
+        { car_id: carIds },
+        { target_id: carIds, target_type: 'car' },
+      ],
+    },
+    attributes: [
+      [sequelize.literal("COALESCE(car_id, target_id)"), 'car_id'],
+      [sequelize.fn('COUNT', sequelize.col('id')), 'wishlist_count'],
+    ],
+    group: [sequelize.literal("COALESCE(car_id, target_id)")],
+    raw: true,
+  });
+  const map = {};
+  rows.forEach((r) => {
+    map[r.car_id] = parseInt(r.wishlist_count, 10) || 0;
+  });
+  return map;
 };
 
 const {
@@ -1307,7 +1342,7 @@ exports.getCars = async (
         'created_at', 'updated_at', 'deleted_at',
         [
           sequelize.literal(`(
-            SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
+            SELECT COUNT(*) FROM wishlists WHERE (wishlists.car_id = Car.id OR (wishlists.target_type = 'car' AND wishlists.target_id = Car.id))
           )`),
           'wishlist_count'
         ]
@@ -1369,7 +1404,9 @@ exports.getCars = async (
   const wishlistSet = await getWishlistSet(userId);
   const carsWithWishlist = transformedCars.map((car) => ({
     ...car,
+    wishlist_count: parseInt(car.wishlist_count || 0, 10) || 0,
     isWishlist: wishlistSet.has(car.id),
+    is_wishlist: wishlistSet.has(car.id),
   }));
 
   return {
@@ -1407,7 +1444,7 @@ exports.getCarById = async (carId, userId = null) => {
           'deleted_at',
           [
             sequelize.literal(`(
-              SELECT COUNT(*) FROM wishlists WHERE wishlists.car_id = Car.id
+              SELECT COUNT(*) FROM wishlists WHERE (wishlists.car_id = Car.id OR (wishlists.target_type = 'car' AND wishlists.target_id = Car.id))
             )`),
             'wishlist_count'
           ]
@@ -1443,7 +1480,14 @@ exports.getCarById = async (carId, userId = null) => {
     const [dbViewsCount, dbRegisteredViewsCount, dbWishlistCount] = await Promise.all([
       View.count({ where: { car_id: car.id } }),
       View.count({ where: { car_id: car.id, user_id: { [Op.ne]: null } } }),
-      Wishlist.count({ where: { car_id: car.id } }),
+      Wishlist.count({
+        where: {
+          [Op.or]: [
+            { car_id: car.id },
+            { target_type: 'car', target_id: car.id },
+          ],
+        },
+      }),
     ]);
 
     const viewsCount = stats?.views_count !== undefined ? Math.max(stats.views_count, dbViewsCount) : dbViewsCount;
@@ -1497,7 +1541,9 @@ exports.getCarById = async (carId, userId = null) => {
   const wishlistSet = await getWishlistSet(userId);
   return {
     ...transformedCar,
+    wishlist_count: parseInt(transformedCar.wishlist_count || 0, 10) || 0,
     isWishlist: wishlistSet.has(carId),
+    is_wishlist: wishlistSet.has(carId),
   };
 };
 
@@ -1524,12 +1570,19 @@ exports.getFeaturedCars = async (limit = 10, userId = null) => {
   });
 
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+  const carIds = cars.map((car) => car.id);
+  const [wishlistSet, countMap] = await Promise.all([
+    getWishlistSet(userId),
+    getCarWishlistCountMap(carIds),
+  ]);
+
   const transformedCars = cars.map((car) => transformCarImages(car, baseUrl));
 
-  const wishlistSet = await getWishlistSet(userId);
   return transformedCars.map((car) => ({
     ...car,
+    wishlist_count: countMap[car.id] || 0,
     isWishlist: wishlistSet.has(car.id),
+    is_wishlist: wishlistSet.has(car.id),
   }));
 };
 
@@ -1600,6 +1653,12 @@ exports.getUserCars = async (userId, options = {}) => {
     }
   }
 
+  const carIds = cars.map((car) => car.id);
+  const [countMap, wishlistSet] = await Promise.all([
+    getCarWishlistCountMap(carIds),
+    getWishlistSet(userId),
+  ]);
+
   const transformedCars = cars.map((car) => {
     const transformed = transformCarImages(car, baseUrl);
     const is_expired = transformed.created_at && (Date.now() - new Date(transformed.created_at).getTime()) > 90 * 24 * 60 * 60 * 1000;
@@ -1610,9 +1669,14 @@ exports.getUserCars = async (userId, options = {}) => {
     const messages = stats.messages_count || 0;
     const otherEnquiries = stats.enquiries_count || 0;
     const totalLeads = calls + whatsapp + messages + otherEnquiries || (car.leads?.length || 0);
+    const wishlistCount = countMap[car.id] !== undefined ? countMap[car.id] : (parseInt(stats.wishlist_count || 0, 10) || 0);
+    const isW = wishlistSet.has(car.id);
 
     return {
       ...transformed,
+      wishlist_count: wishlistCount,
+      isWishlist: isW,
+      is_wishlist: isW,
       enquiry_count: totalLeads,
       is_expired,
       metrics: {
@@ -1621,7 +1685,7 @@ exports.getUserCars = async (userId, options = {}) => {
         calls,
         whatsapp,
         messages,
-        wishlist_count: stats.wishlist_count || 0,
+        wishlist_count: wishlistCount,
       },
     };
   });
@@ -2295,106 +2359,126 @@ exports.recordView = async (carId, userId = null, ipAddress = null) => {
 /**
  * Get Seller Listings (Other cars from same seller)
  */
-exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limit = 10) => {
+exports.getSellerListings = async (sellerId, excludeCarId = null, page = 1, limit = 10, viewerUser = null) => {
   const cacheKey = `seller:${sellerId}:${page}:${limit}:${excludeCarId || 'none'}`;
-  let cachedData;
+  let responseData = null;
   try {
     if (redisClient.isOpen) {
       const cached = await redisClient.get(cacheKey);
-      if (cached) cachedData = JSON.parse(cached);
+      if (cached) responseData = JSON.parse(cached);
     }
   } catch (err) {
     console.error('Redis cache error in getSellerListings:', err);
   }
 
-  if (cachedData) {
-    return cachedData;
-  }
-
-  const offset = (page - 1) * limit;
-  const whereClause = {
-    user_id: sellerId,
-    status: 'active',
-  };
-  if (excludeCarId) {
-    whereClause.id = { [Op.ne]: excludeCarId };
-  }
-
-  const result = await Car.findAndCountAll({
-    distinct: true,
-    col: 'id',
-    where: whereClause,
-    attributes: [
-      'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'previous_price', 'has_price_drop', 'price_negotiable', 'km_driven',
-      'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id', 'body_type',
-      'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
-    ],
-    include: [
-      {
-        model: Brand,
-        as: 'brand',
-        attributes: ['id', 'name'],
-      },
-      {
-        model: Model,
-        as: 'carModel',
-        attributes: ['id', 'name'],
-      },
-      {
-        model: Variant,
-        as: 'carVariant',
-        attributes: ['id', 'name'],
-      },
-      {
-        model: CarImage,
-        as: 'images',
-        attributes: ['id', 'image_url', 'is_primary'],
-        where: { is_primary: true },
-        required: false,
-      },
-      {
-        model: State,
-        as: 'state',
-        attributes: ['id', 'name'],
-      },
-      {
-        model: District,
-        as: 'district',
-        attributes: ['id', 'name'],
-      },
-      {
-        model: City,
-        as: 'city',
-        attributes: ['id', 'name'],
-      }
-    ],
-    order: [['created_at', 'DESC']],
-    limit,
-    offset,
-  });
-
-  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-  const transformedCars = result.rows.map((car) => transformCarImages(car, baseUrl));
-
-  const responseData = {
-    listings: transformedCars,
-    pagination: {
-      page,
-      limit,
-      total: result.count,
-      totalPages: Math.ceil(result.count / limit),
-    },
-  };
-
-  try {
-    if (redisClient.isOpen) {
-      await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+  if (!responseData) {
+    const offset = (page - 1) * limit;
+    const whereClause = {
+      user_id: sellerId,
+      status: 'active',
+    };
+    if (excludeCarId) {
+      whereClause.id = { [Op.ne]: excludeCarId };
     }
-  } catch (err) {
-    console.error('Redis cache set error:', err);
+
+    const result = await Car.findAndCountAll({
+      distinct: true,
+      col: 'id',
+      where: whereClause,
+      attributes: [
+        'id', 'user_id', 'model_id', 'variant_id', 'year', 'price', 'previous_price', 'has_price_drop', 'price_negotiable', 'km_driven',
+        'fuel_type', 'transmission', 'ownership', 'status', 'created_at', 'brand_id', 'body_type',
+        'b2b_listing', 'board_type', 'state_id', 'district_id', 'city_id'
+      ],
+      include: [
+        {
+          model: Brand,
+          as: 'brand',
+          attributes: ['id', 'name'],
+        },
+        {
+          model: Model,
+          as: 'carModel',
+          attributes: ['id', 'name'],
+        },
+        {
+          model: Variant,
+          as: 'carVariant',
+          attributes: ['id', 'name'],
+        },
+        {
+          model: CarImage,
+          as: 'images',
+          attributes: ['id', 'image_url', 'is_primary'],
+          where: { is_primary: true },
+          required: false,
+        },
+        {
+          model: State,
+          as: 'state',
+          attributes: ['id', 'name'],
+        },
+        {
+          model: District,
+          as: 'district',
+          attributes: ['id', 'name'],
+        },
+        {
+          model: City,
+          as: 'city',
+          attributes: ['id', 'name'],
+        }
+      ],
+      order: [['created_at', 'DESC']],
+      limit,
+      offset,
+    });
+
+    const carIds = result.rows.map((car) => car.id);
+    const countMap = await getCarWishlistCountMap(carIds);
+    const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+    const transformedCars = result.rows.map((car) => {
+      const transformed = transformCarImages(car, baseUrl);
+      return {
+        ...transformed,
+        wishlist_count: countMap[car.id] || 0,
+      };
+    });
+
+    responseData = {
+      listings: transformedCars,
+      cars: transformedCars,
+      pagination: {
+        page,
+        limit,
+        total: result.count,
+        totalPages: Math.ceil(result.count / limit) || 1,
+      },
+    };
+
+    try {
+      if (redisClient.isOpen) {
+        await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+      }
+    } catch (err) {
+      console.error('Redis cache set error:', err);
+    }
   }
 
-  return responseData;
+  const viewerId = viewerUser?.id || (typeof viewerUser === 'string' ? viewerUser : null);
+  const wishlistSet = await getWishlistSet(viewerId);
+  const finalCars = (responseData.listings || []).map((car) => ({
+    ...car,
+    wishlist_count: parseInt(car.wishlist_count || 0, 10) || 0,
+    isWishlist: wishlistSet.has(car.id),
+    is_wishlist: wishlistSet.has(car.id),
+  }));
+
+  return {
+    ...responseData,
+    listings: finalCars,
+    cars: finalCars,
+  };
 };
 
 /**
@@ -2625,12 +2709,33 @@ exports.getSimilarRecommended = async (carId, userId, limit = 4, page = 1) => {
   }
 
   // Deduplication: Keep in similar, remove from recommended
-  const similarIds = new Set(similarCarsData.data.map(c => c.id));
-  recommendedCarsData = recommendedCarsData.filter(c => !similarIds.has(c.id));
+  const similarIds = new Set((similarCarsData?.data || []).map(c => c.id));
+  const filteredRecommended = (recommendedCarsData || []).filter(c => !similarIds.has(c.id));
+
+  // Dynamic user wishlist and wishlist count resolution
+  const allCars = [...(similarCarsData?.data || []), ...filteredRecommended];
+  const allCarIds = allCars.map(c => c.id);
+  const [wishlistSet, countMap] = await Promise.all([
+    getWishlistSet(userId),
+    getCarWishlistCountMap(allCarIds),
+  ]);
+
+  const mapCarWithWishlist = (car) => ({
+    ...car,
+    wishlist_count: countMap[car.id] !== undefined ? countMap[car.id] : (parseInt(car.wishlist_count || 0, 10) || 0),
+    isWishlist: wishlistSet.has(car.id),
+    is_wishlist: wishlistSet.has(car.id),
+  });
+
+  const finalSimilarCars = {
+    ...similarCarsData,
+    data: (similarCarsData?.data || []).map(mapCarWithWishlist),
+  };
+  const finalRecommendedCars = filteredRecommended.map(mapCarWithWishlist);
 
   return {
-    similarCars: similarCarsData,
-    recommendedCars: recommendedCarsData
+    similarCars: finalSimilarCars,
+    recommendedCars: finalRecommendedCars,
   };
 };
 

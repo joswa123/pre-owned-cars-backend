@@ -9,11 +9,33 @@ const { catchAsync } = require('../utils/errorHandler');
 /**
  * Resolve normalized targetId and targetType for wishlist write operations.
  */
-const resolveWriteTarget = (body = {}) => {
-  const { carId, car_id, target_id, target_type } = body;
+const resolveWriteTarget = (req) => {
+  const merged = { ...(req.query || {}), ...(req.body || {}), ...(req.params || {}) };
+  const targetId =
+    merged.target_id ||
+    merged.targetId ||
+    merged.car_id ||
+    merged.carId ||
+    merged.vehicle_id ||
+    merged.vehicleId ||
+    merged.commercial_id ||
+    merged.commercialId ||
+    merged.id;
+
+  let targetType = merged.target_type || merged.targetType;
+  if (!targetType) {
+    if (merged.commercialId || merged.commercial_id) {
+      targetType = 'commercial';
+    } else if (merged.car_id || merged.carId) {
+      targetType = 'car';
+    } else if (merged.target_id && !merged.car_id && !merged.carId) {
+      targetType = 'commercial';
+    }
+  }
+
   return {
-    targetId: target_id || car_id || carId,
-    targetType: target_type || (target_id && !car_id && !carId ? 'commercial' : 'car'),
+    targetId,
+    targetType,
   };
 };
 
@@ -62,13 +84,22 @@ const handleGetTargetWishlists = (targetType, paramKey) =>
   });
 
 exports.addToWishlist = catchAsync(async (req, res) => {
-  const { targetId, targetType } = resolveWriteTarget(req.body);
-  const wishlist = await wishlistService.addToWishlist(req.user.id, targetId, targetType);
-  res.status(200).json({ success: true, message: 'Added to wishlist', data: wishlist });
+  const { targetId, targetType } = resolveWriteTarget(req);
+  const result = await wishlistService.addToWishlist(req.user.id, targetId, targetType);
+  const wishlistData = result?.data || (result?.id ? result : null);
+  const wishlistCount = result?.wishlist_count !== undefined ? result.wishlist_count : 1;
+  res.status(200).json({
+    success: true,
+    message: 'Added to wishlist',
+    data: wishlistData,
+    is_wishlisted: true,
+    isWishlist: true,
+    wishlist_count: wishlistCount,
+  });
 });
 
 exports.toggleWishlist = catchAsync(async (req, res) => {
-  const { targetId, targetType } = resolveWriteTarget(req.body);
+  const { targetId, targetType } = resolveWriteTarget(req);
   const result = await wishlistService.toggleWishlist(req.user.id, targetId, targetType);
   res.status(200).json({
     success: true,
@@ -76,6 +107,7 @@ exports.toggleWishlist = catchAsync(async (req, res) => {
     data: result.data || null,
     is_wishlisted: result.is_wishlisted,
     isWishlist: result.isWishlist,
+    wishlist_count: result.wishlist_count !== undefined ? result.wishlist_count : 0,
   });
 });
 
@@ -84,11 +116,26 @@ exports.removeFromWishlist = catchAsync(async (req, res) => {
   const value = validateRequestPart(wishlistDeleteSchema, payload, res);
   if (!value) return;
 
-  const finalTargetId = value.target_id || value.car_id || value.carId;
-  const finalTargetType = value.target_type || 'car';
+  const finalTargetId =
+    value.target_id ||
+    value.targetId ||
+    value.car_id ||
+    value.carId ||
+    value.vehicle_id ||
+    value.vehicleId ||
+    value.commercial_id ||
+    value.commercialId ||
+    value.id;
+  const finalTargetType = value.target_type || value.targetType;
 
-  await wishlistService.removeFromWishlist(req.user.id, finalTargetId, finalTargetType);
-  res.status(200).json({ success: true, message: 'Removed from wishlist' });
+  const result = await wishlistService.removeFromWishlist(req.user.id, finalTargetId, finalTargetType);
+  res.status(200).json({
+    success: true,
+    message: 'Removed from wishlist',
+    is_wishlisted: false,
+    isWishlist: false,
+    wishlist_count: result?.wishlist_count !== undefined ? result.wishlist_count : 0,
+  });
 });
 
 exports.getWishlist = catchAsync(async (req, res) => {

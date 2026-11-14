@@ -85,7 +85,11 @@ exports.getCommercialVehicleById = catchAsync(async (req, res) => {
 
   res.status(200).json({
     status: 'success',
-    data: { vehicle },
+    data: {
+      ...vehicle,
+      vehicle,
+      car: vehicle,
+    },
   });
 });
 

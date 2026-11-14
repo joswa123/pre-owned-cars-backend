@@ -9,6 +9,7 @@ const {
   State,
   District,
   City,
+  Wishlist,
 } = require('../models');
 const { Op, Sequelize, fn, col } = require('sequelize');
 const crypto = require('crypto');
@@ -490,7 +491,8 @@ exports.getDealerCars = async (
   limit = 20,
   sortBy = 'created_at',
   sortOrder = 'DESC',
-  view = 'public'
+  view = 'public',
+  viewingUserId = null
 ) => {
   await verifyDealerExists(dealerId, view);
 
@@ -611,59 +613,109 @@ exports.getDealerCars = async (
   // Pages 6+ and result sets over 200 bypass cache and query DB directly.
   const isCacheEligible = page >= 1 && page <= 5 && totalCount <= 200;
 
+  let transformedCars = null;
+
   if (isCacheEligible && redisClient.isOpen) {
     try {
       const cachedCars = await redisClient.get(carsCacheKey);
       if (cachedCars) {
-        return {
-          cars: JSON.parse(cachedCars),
-          pagination: {
-            page: parseInt(page, 10),
-            limit: parseInt(limit, 10),
-            total: totalCount,
-            totalPages: Math.ceil(totalCount / limit) || 1,
-            hasNextPage: page < Math.ceil(totalCount / limit),
-            hasPrevPage: page > 1,
-          },
-        };
+        transformedCars = JSON.parse(cachedCars);
       }
     } catch (err) {
       console.error('[DealerService] Redis get cars error:', err);
     }
   }
 
-  // 6. DB Query
-  const offset = (page - 1) * limit;
-  const cars = await Car.findAll({
-    where,
-    include: [
-      { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-      { model: Brand, as: 'brand', attributes: ['id', 'name', 'logo'] },
-      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-      { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-      { model: District, as: 'district', attributes: ['id', 'name'] },
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-    ],
-    order: [[sortBy, sortOrder]],
-    limit: parseInt(limit, 10),
-    offset,
-  });
+  if (!transformedCars) {
+    // 6. DB Query
+    const offset = (page - 1) * limit;
+    const cars = await Car.findAll({
+      where,
+      include: [
+        { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+        { model: Brand, as: 'brand', attributes: ['id', 'name', 'logo'] },
+        { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+        { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+      ],
+      order: [[sortBy, sortOrder]],
+      limit: parseInt(limit, 10),
+      offset,
+    });
 
-  const { transformCarImages } = require('./carService');
-  const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
-  const transformedCars = cars.map(c => transformCarImages(c, baseUrl));
+    const carIds = cars.map(c => c.id);
+    const countMap = {};
+    if (carIds.length > 0) {
+      const counts = await Wishlist.findAll({
+        attributes: [
+          [sequelize.literal("COALESCE(car_id, target_id)"), 'car_id'],
+          [sequelize.fn('COUNT', sequelize.col('id')), 'wishlist_count'],
+        ],
+        where: {
+          [Op.or]: [
+            { car_id: carIds },
+            { target_id: carIds, target_type: 'car' },
+          ],
+        },
+        group: [sequelize.literal("COALESCE(car_id, target_id)")],
+        raw: true,
+      });
+      counts.forEach((row) => {
+        countMap[row.car_id] = parseInt(row.wishlist_count, 10) || 0;
+      });
+    }
 
-  if (isCacheEligible && redisClient.isOpen) {
-    try {
-      await redisClient.setEx(carsCacheKey, 120, JSON.stringify(transformedCars)).catch(() => {}); // 2 min TTL
-    } catch (err) {
-      console.error('[DealerService] Redis set cars error:', err);
+    const { transformCarImages } = require('./carService');
+    const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+    transformedCars = cars.map(c => {
+      const transformed = transformCarImages(c, baseUrl);
+      return {
+        ...transformed,
+        wishlist_count: countMap[c.id] || 0,
+      };
+    });
+
+    if (isCacheEligible && redisClient.isOpen) {
+      try {
+        await redisClient.setEx(carsCacheKey, 120, JSON.stringify(transformedCars)).catch(() => {}); // 2 min TTL
+      } catch (err) {
+        console.error('[DealerService] Redis set cars error:', err);
+      }
     }
   }
 
+  // Attach dynamic user-specific isWishlist without polluting cache
+  let wishlistSet = new Set();
+  if (viewingUserId && transformedCars.length > 0) {
+    const cIds = transformedCars.map(c => c.id);
+    const userWishlists = await Wishlist.findAll({
+      where: {
+        user_id: viewingUserId,
+        [Op.or]: [
+          { car_id: cIds },
+          { target_id: cIds, target_type: 'car' },
+        ],
+      },
+      attributes: ['car_id', 'target_id'],
+      raw: true,
+    });
+    userWishlists.forEach(w => {
+      if (w.car_id) wishlistSet.add(w.car_id);
+      if (w.target_id) wishlistSet.add(w.target_id);
+    });
+  }
+
+  const finalCars = transformedCars.map(c => ({
+    ...c,
+    wishlist_count: parseInt(c.wishlist_count || 0, 10) || 0,
+    isWishlist: wishlistSet.has(c.id),
+    is_wishlist: wishlistSet.has(c.id),
+  }));
+
   return {
-    cars: transformedCars,
+    cars: finalCars,
     pagination: {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),

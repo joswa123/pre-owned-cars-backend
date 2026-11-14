@@ -62,7 +62,11 @@ const invalidateWishlistCaches = async (userId, targetId, sellerId = null, targe
         await clearCache(`commercial:${targetId}`);
         await clearCacheByPattern('commercial:*');
         await clearCacheByPattern(`commercial:wishlists:${targetId}:*`);
+        await clearCacheByPattern('similar:commercial:*');
+        await clearCacheByPattern('recommended:commercial:*');
+        await clearCacheByPattern('seller:commercial:*');
         await clearCacheByPattern('seller:*');
+        await clearCacheByPattern('dealer:*');
         await clearCacheByPattern('global_search:*');
         await clearHttpCache(`/api/v1/commercial/${targetId}`);
         await clearHttpCache('/api/v1/commercial');
@@ -70,10 +74,17 @@ const invalidateWishlistCaches = async (userId, targetId, sellerId = null, targe
         await clearHttpCache('/api/v1/search');
       } else {
         await clearCache(`car:${targetId}`);
-        await clearCacheByPattern('cars:list:*');
+        await clearCacheByPattern('cars:*');
         await clearCacheByPattern(`car:wishlists:${targetId}:*`);
+        await clearCacheByPattern('similar:*');
+        await clearCacheByPattern('recommended:*');
+        await clearCacheByPattern('seller:*');
+        await clearCacheByPattern('catalog:*');
+        await clearCacheByPattern('dealer:*');
         await clearHttpCache(`/api/v1/cars/${targetId}`);
         await clearHttpCache('/api/v1/cars');
+        await clearHttpCache('/api/v1/catalog');
+        await clearHttpCache('/api/v1/dealers');
       }
     }
   } catch (e) {
@@ -119,13 +130,24 @@ const normalizeTargetType = (targetType = 'car') => {
   return type;
 };
 
+const resolveVehicleType = async (targetId, explicitType = null) => {
+  if (explicitType) {
+    return normalizeTargetType(explicitType);
+  }
+  if (targetId) {
+    const commercial = await CommercialVehicle.findByPk(targetId, { attributes: ['id'] });
+    if (commercial) return 'commercial';
+  }
+  return 'car';
+};
+
 /**
  * Add an item to wishlist (idempotent, prevents duplicates)
  */
 exports.addToWishlist = async (userId, targetId, targetType = 'car') => {
   if (!targetId) throw new AppError('Target ID is required', 400);
 
-  const type = normalizeTargetType(targetType);
+  const type = await resolveVehicleType(targetId, targetType);
 
   if (type === 'commercial') {
     const commercial = await CommercialVehicle.findByPk(targetId);
@@ -141,7 +163,16 @@ exports.addToWishlist = async (userId, targetId, targetType = 'car') => {
     if (created) {
       await invalidateWishlistCaches(userId, targetId, commercial.user_id, 'commercial');
     }
-    return wishlist;
+    const newCount = await Wishlist.count({
+      where: { target_type: 'commercial', target_id: targetId },
+    });
+    return {
+      wishlist,
+      data: wishlist,
+      is_wishlisted: true,
+      isWishlist: true,
+      wishlist_count: newCount,
+    };
   }
 
   const car = await Car.findByPk(targetId);
@@ -158,7 +189,22 @@ exports.addToWishlist = async (userId, targetId, targetType = 'car') => {
     await invalidateWishlistCaches(userId, targetId, car.user_id, 'car');
   }
 
-  return wishlist;
+  const newCount = await Wishlist.count({
+    where: {
+      [Op.or]: [
+        { car_id: targetId },
+        { target_type: 'car', target_id: targetId },
+      ],
+    },
+  });
+
+  return {
+    wishlist,
+    data: wishlist,
+    is_wishlisted: true,
+    isWishlist: true,
+    wishlist_count: newCount,
+  };
 };
 
 /**
@@ -167,7 +213,7 @@ exports.addToWishlist = async (userId, targetId, targetType = 'car') => {
 exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
   if (!targetId) throw new AppError('Target ID is required', 400);
 
-  const type = normalizeTargetType(targetType);
+  const type = await resolveVehicleType(targetId, targetType);
 
   if (type === 'commercial') {
     const commercial = await CommercialVehicle.findByPk(targetId);
@@ -180,9 +226,13 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
     if (existing) {
       await existing.destroy();
       await invalidateWishlistCaches(userId, targetId, commercial.user_id, 'commercial');
+      const newCount = await Wishlist.count({
+        where: { target_type: 'commercial', target_id: targetId },
+      });
       return {
         is_wishlisted: false,
         isWishlist: false,
+        wishlist_count: newCount,
         message: 'Removed from wishlist',
       };
     }
@@ -198,9 +248,13 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
       target_id: targetId,
     });
     await invalidateWishlistCaches(userId, targetId, commercial.user_id, 'commercial');
+    const newCount = await Wishlist.count({
+      where: { target_type: 'commercial', target_id: targetId },
+    });
     return {
       is_wishlisted: true,
       isWishlist: true,
+      wishlist_count: newCount,
       message: 'Added to wishlist',
       data: wishlist,
     };
@@ -210,7 +264,13 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
   if (!car) throw new AppError('Car not found', 404);
 
   const existing = await Wishlist.findOne({
-    where: { user_id: userId, car_id: targetId },
+    where: {
+      user_id: userId,
+      [Op.or]: [
+        { car_id: targetId },
+        { target_type: 'car', target_id: targetId },
+      ],
+    },
   });
 
   if (existing) {
@@ -218,9 +278,18 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
     const analyticsService = require('./analyticsService');
     await analyticsService.decrementInteraction({ carId: targetId, type: 'wishlist' });
     await invalidateWishlistCaches(userId, targetId, car.user_id, 'car');
+    const newCount = await Wishlist.count({
+      where: {
+        [Op.or]: [
+          { car_id: targetId },
+          { target_type: 'car', target_id: targetId },
+        ],
+      },
+    });
     return {
       is_wishlisted: false,
       isWishlist: false,
+      wishlist_count: newCount,
       message: 'Removed from wishlist',
     };
   }
@@ -234,9 +303,18 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
   const analyticsService = require('./analyticsService');
   await analyticsService.recordInteraction({ carId: targetId, userId, type: 'wishlist' });
   await invalidateWishlistCaches(userId, targetId, car.user_id, 'car');
+  const newCount = await Wishlist.count({
+    where: {
+      [Op.or]: [
+        { car_id: targetId },
+        { target_type: 'car', target_id: targetId },
+      ],
+    },
+  });
   return {
     is_wishlisted: true,
     isWishlist: true,
+    wishlist_count: newCount,
     message: 'Added to wishlist',
     data: wishlist,
   };
@@ -248,7 +326,7 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
 exports.removeFromWishlist = async (userId, targetId, targetType = 'car') => {
   if (!targetId) throw new AppError('Target ID is required', 400);
 
-  const type = normalizeTargetType(targetType);
+  const type = await resolveVehicleType(targetId, targetType);
 
   if (type === 'commercial') {
     const commercial = await CommercialVehicle.findByPk(targetId, {
@@ -265,8 +343,16 @@ exports.removeFromWishlist = async (userId, targetId, targetType = 'car') => {
     if (deletedCount > 0) {
       await invalidateWishlistCaches(userId, targetId, commercial?.user_id || null, 'commercial');
     }
-    return { success: true, message: 'Removed from wishlist' };
+    const newCount = await Wishlist.count({
+      where: { target_type: 'commercial', target_id: targetId },
+    });
+    return { success: true, message: 'Removed from wishlist', isWishlist: false, is_wishlisted: false, wishlist_count: newCount };
   }
+
+  const car = await Car.findByPk(targetId, {
+    attributes: ['id', 'user_id'],
+    paranoid: false,
+  });
 
   const deletedCount = await Wishlist.destroy({
     where: {
@@ -280,9 +366,17 @@ exports.removeFromWishlist = async (userId, targetId, targetType = 'car') => {
   if (deletedCount > 0) {
     const analyticsService = require('./analyticsService');
     await analyticsService.decrementInteraction({ carId: targetId, type: 'wishlist' });
-    await invalidateWishlistCaches(userId, targetId, null, 'car');
+    await invalidateWishlistCaches(userId, targetId, car?.user_id || null, 'car');
   }
-  return { success: true, message: 'Removed from wishlist' };
+  const newCount = await Wishlist.count({
+    where: {
+      [Op.or]: [
+        { car_id: targetId },
+        { target_type: 'car', target_id: targetId },
+      ],
+    },
+  });
+  return { success: true, message: 'Removed from wishlist', isWishlist: false, is_wishlisted: false, wishlist_count: newCount };
 };
 
 const buildCarInclude = () => [
@@ -369,7 +463,7 @@ exports.getWishlist = async (userId, options = {}) => {
   const uniqueCarIds = [...new Set(carIds)];
   const uniqueCommercialIds = [...new Set(commercialIds)];
 
-  const [cars, commercials, commercialWishlistCounts] = await Promise.all([
+  const [cars, commercials, commercialWishlistCounts, carWishlistCounts] = await Promise.all([
     uniqueCarIds.length > 0
       ? Car.findAll({ where: { id: { [Op.in]: uniqueCarIds } }, include: buildCarInclude() })
       : Promise.resolve([]),
@@ -390,6 +484,22 @@ exports.getWishlist = async (userId, options = {}) => {
           raw: true,
         })
       : Promise.resolve([]),
+    uniqueCarIds.length > 0
+      ? Wishlist.findAll({
+          where: {
+            [Op.or]: [
+              { car_id: { [Op.in]: uniqueCarIds } },
+              { target_type: 'car', target_id: { [Op.in]: uniqueCarIds } },
+            ],
+          },
+          attributes: [
+            [sequelize.literal("COALESCE(car_id, target_id)"), 'car_id'],
+            [sequelize.fn('COUNT', sequelize.col('id')), 'wishlist_count'],
+          ],
+          group: [sequelize.literal("COALESCE(car_id, target_id)")],
+          raw: true,
+        })
+      : Promise.resolve([]),
   ]);
 
   const carMap = new Map(cars.map((c) => [c.id, c]));
@@ -397,6 +507,10 @@ exports.getWishlist = async (userId, options = {}) => {
   const countMap = {};
   for (const row of commercialWishlistCounts) {
     countMap[row.target_id] = parseInt(row.wishlist_count, 10) || 0;
+  }
+  const carCountMap = {};
+  for (const row of carWishlistCounts) {
+    carCountMap[row.car_id] = parseInt(row.wishlist_count, 10) || 0;
   }
 
   const { transformCarImages } = require('./carService');
@@ -414,6 +528,7 @@ exports.getWishlist = async (userId, options = {}) => {
         wishlist_count: countMap[vehicle.id] || 0,
         wishlisted_at: entry.created_at,
         isWishlist: true,
+        is_wishlist: true,
       });
     } else {
       const cid = entry.car_id || entry.target_id;
@@ -423,8 +538,10 @@ exports.getWishlist = async (userId, options = {}) => {
         ...transformCarImages(car, baseUrl),
         target_type: 'car',
         target_id: car.id,
+        wishlist_count: carCountMap[car.id] || 0,
         wishlisted_at: entry.created_at,
         isWishlist: true,
+        is_wishlist: true,
       });
     }
   }

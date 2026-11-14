@@ -99,7 +99,10 @@ exports.getCarById = catchAsync(async (req, res) => {
 
   res.status(200).json({
     status: "success",
-    data: { car },
+    data: {
+      ...car,
+      car,
+    },
   });
 });
 

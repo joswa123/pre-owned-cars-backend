@@ -126,7 +126,8 @@ exports.getDealerCars = catchAsync(async (req, res) => {
     parseInt(limit, 10) || 20,
     normalizedSortBy,
     normalizedSortOrder,
-    view
+    view,
+    req.user?.id
   );
 
   res.json({ status: 'success', data: result });

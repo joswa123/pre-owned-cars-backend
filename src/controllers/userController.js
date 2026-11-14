@@ -64,7 +64,8 @@ exports.getSellerListings = catchAsync(async (req, res) => {
     userId,
     excludeCarId || excludeId,
     Number(page),
-    Number(limit)
+    Number(limit),
+    req.user
   );
 
   res.status(200).json({

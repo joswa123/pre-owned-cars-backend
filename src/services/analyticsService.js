@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { CarInteraction, CarStat } = require('../models');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
@@ -130,7 +131,14 @@ exports.ensureCarStats = async (carId) => {
     const { View, Wishlist, Lead } = require('../models');
     const [viewsCount, wishlistCount, leadStats] = await Promise.all([
       View.count({ where: { car_id: carId } }),
-      Wishlist.count({ where: { car_id: carId } }),
+      Wishlist.count({
+        where: {
+          [Op.or]: [
+            { car_id: carId },
+            { target_type: 'car', target_id: carId },
+          ],
+        },
+      }),
       Lead.findAll({
         attributes: [
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'call' THEN 1 ELSE 0 END")), 'calls'],
@@ -185,7 +193,14 @@ exports.reconcileCarStats = async (carIds = null) => {
     const { View, Wishlist, Lead } = require('../models');
     const [liveViews, liveWishlist, leadStats, currentStat] = await Promise.all([
       View.count({ where: { car_id: cId } }),
-      Wishlist.count({ where: { car_id: cId } }),
+      Wishlist.count({
+        where: {
+          [Op.or]: [
+            { car_id: cId },
+            { target_type: 'car', target_id: cId },
+          ],
+        },
+      }),
       Lead.findAll({
         attributes: [
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'call' THEN 1 ELSE 0 END")), 'calls'],
