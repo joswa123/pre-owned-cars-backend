@@ -63,6 +63,8 @@ const invalidateCommercialCaches = async (vehicleId = null, userId = null) => {
     }
     await clearCachePattern('commercial:*');
     await clearCachePattern('seller:*');
+    await clearCachePattern('similar:commercial:*');
+    await clearCachePattern('recommended:commercial:*');
     await clearCachePattern('global_search:*');
 
     const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
@@ -1381,4 +1383,331 @@ exports.uploadCommercialAudio = async (vehicleId, userId, userRole, file) => {
   await invalidateCommercialCaches(vehicle.id, userId);
 
   return audioUrl;
+};
+
+/**
+ * Public Seller Commercial Listings
+ */
+exports.getSellerCommercialListings = async (sellerId, excludeVehicleId = null, page = 1, limit = 10, viewerUser = null) => {
+  if (!isUuid(sellerId)) {
+    throw new AppError('Invalid seller ID format', 400);
+  }
+
+  const seller = await User.findByPk(sellerId);
+  if (!seller) {
+    throw new AppError('Seller not found', 404);
+  }
+
+  const cacheKey = `seller:commercial:${sellerId}:${page}:${limit}:${excludeVehicleId || 'none'}`;
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis cache error in getSellerCommercialListings:', err);
+  }
+
+  const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
+  const offset = (parsedPage - 1) * parsedLimit;
+
+  const whereClause = {
+    user_id: sellerId,
+    status: 'active',
+  };
+  if (excludeVehicleId && isUuid(excludeVehicleId)) {
+    whereClause.id = { [Op.ne]: excludeVehicleId };
+  }
+
+  const { count, rows } = await CommercialVehicle.findAndCountAll({
+    distinct: true,
+    col: 'id',
+    where: whereClause,
+    include: [
+      { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
+      sellerInclude,
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
+    ],
+    order: [['created_at', 'DESC']],
+    limit: parsedLimit,
+    offset,
+  });
+
+  const vehicleIds = rows.map((v) => v.id);
+  const [userWishlists, wishlistCountMap] = await Promise.all([
+    viewerUser?.id && vehicleIds.length > 0
+      ? Wishlist.findAll({
+          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicleIds },
+          attributes: ['target_id'],
+        })
+      : Promise.resolve([]),
+    getCommercialWishlistCountMap(vehicleIds),
+  ]);
+
+  const wishlistSet = new Set(userWishlists.map((w) => w.target_id));
+  const transformedVehicles = rows.map((v) => {
+    const transformed = transformCommercialVehicleImages(v, null, viewerUser);
+    return {
+      ...transformed,
+      isWishlist: wishlistSet.has(v.id),
+      wishlist_count: wishlistCountMap[v.id] || 0,
+    };
+  });
+
+  const responseData = {
+    listings: transformedVehicles,
+    vehicles: transformedVehicles,
+    cars: transformedVehicles,
+    pagination: {
+      page: parsedPage,
+      limit: parsedLimit,
+      total: count,
+      totalPages: Math.ceil(count / parsedLimit) || 1,
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+    }
+  } catch (err) {}
+
+  return responseData;
+};
+
+/**
+ * Get Similar Commercial Vehicles
+ */
+exports.getSimilarCommercialVehicles = async (vehicleId, limit = 4, page = 1, viewerUser = null) => {
+  if (!isUuid(vehicleId)) {
+    throw new AppError('Invalid commercial vehicle ID format', 400);
+  }
+
+  const targetVehicle = await CommercialVehicle.findByPk(vehicleId);
+  if (!targetVehicle) {
+    throw new AppError('Commercial vehicle not found.', 404);
+  }
+
+  const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 4, 1), 50);
+  const cacheKeySimilar = `similar:commercial:${vehicleId}:${parsedPage}:${parsedLimit}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKeySimilar);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis cache error in getSimilarCommercialVehicles:', err);
+  }
+
+  const offset = (parsedPage - 1) * parsedLimit;
+
+  // Step 1: Gather candidates (same brand or same vehicle_type)
+  const candidateWhere = {
+    status: 'active',
+    id: { [Op.ne]: vehicleId },
+    [Op.or]: [
+      { brand_id: targetVehicle.brand_id },
+      targetVehicle.vehicle_type_id ? { vehicle_type_id: targetVehicle.vehicle_type_id } : null,
+    ].filter(Boolean),
+  };
+
+  let candidates = await CommercialVehicle.findAll({
+    where: candidateWhere,
+    include: [
+      { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
+      sellerInclude,
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
+    ],
+  });
+
+  // Step 2: Relevance scoring
+  let scoredCandidates = candidates.map((v) => {
+    let score = 0;
+    if (v.brand_id === targetVehicle.brand_id) score += 50;
+    if (v.vehicle_type_id && targetVehicle.vehicle_type_id && v.vehicle_type_id === targetVehicle.vehicle_type_id) score += 40;
+    if (v.fuel_type && targetVehicle.fuel_type && v.fuel_type.toLowerCase() === targetVehicle.fuel_type.toLowerCase()) score += 10;
+    if (v.ownership && targetVehicle.ownership && v.ownership === targetVehicle.ownership) score += 5;
+
+    if (targetVehicle.price && v.price) {
+      const diff = Math.abs(parseFloat(v.price) - parseFloat(targetVehicle.price)) / parseFloat(targetVehicle.price);
+      if (diff <= 0.20) score += 20;
+    }
+
+    if (targetVehicle.year && v.year) {
+      if (Math.abs(v.year - targetVehicle.year) <= 3) score += 10;
+    }
+    return { vehicle: v, score };
+  });
+
+  scoredCandidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return new Date(b.vehicle.created_at) - new Date(a.vehicle.created_at);
+  });
+
+  // Step 3: Fallback if no candidate matched
+  if (scoredCandidates.length === 0) {
+    const fallback = await CommercialVehicle.findAll({
+      where: {
+        status: 'active',
+        id: { [Op.ne]: vehicleId },
+      },
+      include: [
+        { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
+        sellerInclude,
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parsedLimit,
+    });
+    scoredCandidates = fallback.map((vehicle) => ({ vehicle, score: 0 }));
+  }
+
+  const total = scoredCandidates.length;
+  const paginatedSlice = scoredCandidates.slice(offset, offset + parsedLimit).map((sc) => sc.vehicle);
+  const vehicleIds = paginatedSlice.map((v) => v.id);
+
+  const [userWishlists, wishlistCountMap] = await Promise.all([
+    viewerUser?.id && vehicleIds.length > 0
+      ? Wishlist.findAll({
+          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicleIds },
+          attributes: ['target_id'],
+        })
+      : Promise.resolve([]),
+    getCommercialWishlistCountMap(vehicleIds),
+  ]);
+
+  const wishlistSet = new Set(userWishlists.map((w) => w.target_id));
+  const transformedVehicles = paginatedSlice.map((v) => {
+    const transformed = transformCommercialVehicleImages(v, null, viewerUser);
+    return {
+      ...transformed,
+      isWishlist: wishlistSet.has(v.id),
+      wishlist_count: wishlistCountMap[v.id] || 0,
+    };
+  });
+
+  const similarData = {
+    data: transformedVehicles,
+    vehicles: transformedVehicles,
+    cars: transformedVehicles,
+    pagination: {
+      page: parsedPage,
+      limit: parsedLimit,
+      total,
+      totalPages: Math.ceil(total / parsedLimit) || 1,
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKeySimilar, 300, JSON.stringify(similarData));
+    }
+  } catch (err) {}
+
+  return similarData;
+};
+
+/**
+ * Get Recommended Commercial Vehicles
+ */
+exports.getRecommendedCommercialVehicles = async (targetVehicleId = null, currentUserId = null, limit = 4, viewerUser = null, excludeIds = []) => {
+  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 4, 1), 50);
+  const cacheKey = `recommended:commercial:${targetVehicleId || 'general'}:${currentUserId || 'trending'}:${parsedLimit}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis cache error in getRecommendedCommercialVehicles:', err);
+  }
+
+  const allExcludeIds = [...(targetVehicleId ? [targetVehicleId] : []), ...(Array.isArray(excludeIds) ? excludeIds : [])];
+
+  const whereClause = {
+    status: 'active',
+    ...(allExcludeIds.length > 0 ? { id: { [Op.notIn]: allExcludeIds } } : {}),
+  };
+
+  const recommendedRows = await CommercialVehicle.findAll({
+    where: whereClause,
+    include: [
+      { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
+      sellerInclude,
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+      { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+      { model: District, as: 'district', attributes: ['id', 'name'] },
+      { model: City, as: 'city', attributes: ['id', 'name'] },
+    ],
+    order: [
+      ['is_featured', 'DESC'],
+      ['views_count', 'DESC'],
+      ['created_at', 'DESC'],
+    ],
+    limit: parsedLimit,
+  });
+
+  const vehicleIds = recommendedRows.map((v) => v.id);
+  const [userWishlists, wishlistCountMap] = await Promise.all([
+    viewerUser?.id && vehicleIds.length > 0
+      ? Wishlist.findAll({
+          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicleIds },
+          attributes: ['target_id'],
+        })
+      : Promise.resolve([]),
+    getCommercialWishlistCountMap(vehicleIds),
+  ]);
+
+  const wishlistSet = new Set(userWishlists.map((w) => w.target_id));
+  const transformed = recommendedRows.map((v) => {
+    const item = transformCommercialVehicleImages(v, null, viewerUser);
+    return {
+      ...item,
+      isWishlist: wishlistSet.has(v.id),
+      wishlist_count: wishlistCountMap[v.id] || 0,
+    };
+  });
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(transformed));
+    }
+  } catch (err) {}
+
+  return transformed;
+};
+
+/**
+ * Combined Similar and Recommended Commercial Vehicles
+ */
+exports.getSimilarRecommended = async (vehicleId, currentUserId = null, limit = 4, page = 1, viewerUser = null) => {
+  const similarData = await exports.getSimilarCommercialVehicles(vehicleId, limit, page, viewerUser);
+  const similarIds = (similarData.data || []).map((v) => v.id);
+  const recommendedData = await exports.getRecommendedCommercialVehicles(vehicleId, currentUserId, limit, viewerUser, similarIds);
+
+  return {
+    similarVehicles: similarData,
+    recommendedVehicles: recommendedData,
+    similarCars: similarData, // alias for car frontend compatibility
+    recommendedCars: recommendedData, // alias for car frontend compatibility
+    similar: similarData,
+    recommended: recommendedData,
+  };
 };

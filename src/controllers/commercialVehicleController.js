@@ -248,3 +248,105 @@ exports.uploadAudio = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Get Similar and Recommended Commercial Vehicles
+ */
+exports.getSimilarRecommended = catchAsync(async (req, res) => {
+  const vehicleId = req.query.vehicleId || req.query.commercialId || req.query.carId || req.query.id || req.params.id;
+  const { limit = 4, page = 1 } = req.query;
+  const currentUserId = req.query.userId || (req.user ? req.user.id : null);
+
+  if (!vehicleId) {
+    return res.status(400).json({ status: 'fail', message: 'commercial vehicle ID (vehicleId) is required' });
+  }
+
+  const result = await commercialVehicleService.getSimilarRecommended(
+    vehicleId,
+    currentUserId,
+    Number(limit),
+    Number(page),
+    req.user
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
+/**
+ * Get Similar Commercial Vehicles
+ */
+exports.getSimilarVehicles = catchAsync(async (req, res) => {
+  const vehicleId = req.params.id || req.query.vehicleId || req.query.commercialId || req.query.id;
+  const { limit = 4, page = 1 } = req.query;
+
+  if (!vehicleId) {
+    return res.status(400).json({ status: 'fail', message: 'commercial vehicle ID is required' });
+  }
+
+  const result = await commercialVehicleService.getSimilarCommercialVehicles(
+    vehicleId,
+    Number(limit),
+    Number(page),
+    req.user
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
+/**
+ * Get Recommended Commercial Vehicles
+ */
+exports.getRecommended = catchAsync(async (req, res) => {
+  const vehicleId = req.params.id || req.query.vehicleId || req.query.commercialId || req.query.id || null;
+  const { limit = 4 } = req.query;
+  const currentUserId = req.query.userId || (req.user ? req.user.id : null);
+
+  const result = await commercialVehicleService.getRecommendedCommercialVehicles(
+    vehicleId,
+    currentUserId,
+    Number(limit),
+    req.user
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
+/**
+ * Get Specific Seller's Public Commercial Listings
+ */
+exports.getSellerListings = catchAsync(async (req, res) => {
+  let sellerId = req.params.sellerId || req.params.userId || req.query.sellerId || req.query.userId;
+  if (sellerId === 'me') {
+    if (!req.user?.id) throw new AppError('You are not logged in. Please log in.', 401);
+    sellerId = req.user.id;
+  }
+
+  if (!sellerId) {
+    return res.status(400).json({ status: 'fail', message: 'sellerId is required' });
+  }
+
+  const { excludeVehicleId, excludeCarId, excludeId, page = 1, limit = 10 } = req.query;
+  const exclude = excludeVehicleId || excludeId || excludeCarId || null;
+
+  const result = await commercialVehicleService.getSellerCommercialListings(
+    sellerId,
+    exclude,
+    Number(page),
+    Number(limit),
+    req.user
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+

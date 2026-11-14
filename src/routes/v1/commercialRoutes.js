@@ -62,6 +62,19 @@ router.get('/', optionalAuth, commercialVehicleController.getCommercialVehicles)
 // ─── Get Current Seller's Commercial Vehicles (MUST BE BEFORE /:id) ──
 router.get('/me', protect, commercialVehicleController.getUserCommercialVehicles);
 
+// ─── Similar & Recommended Commercial Vehicles (MUST BE BEFORE /:id) ──
+router.get('/similar-recommended', optionalAuth, commercialVehicleController.getSimilarRecommended);
+router.get('/recommended', optionalAuth, commercialVehicleController.getRecommended);
+
+// ─── Public Seller Commercial Listings (MUST BE BEFORE /:id) ──
+router.get('/seller/:sellerId', optionalAuth, commercialVehicleController.getSellerListings);
+router.get('/user/:userId', optionalAuth, commercialVehicleController.getSellerListings);
+
+// ─── Single Commercial Vehicle Sub-resources & Detail ──────────
+router.get('/:id/similar-recommended', optionalAuth, commercialVehicleController.getSimilarRecommended);
+router.get('/:id/similar', optionalAuth, commercialVehicleController.getSimilarVehicles);
+router.get('/:id/recommended', optionalAuth, commercialVehicleController.getRecommended);
+
 // ─── Single Commercial Vehicle by ID or Slug ────────────────────
 router.get('/:id', optionalAuth, commercialVehicleController.getCommercialVehicleById);
 

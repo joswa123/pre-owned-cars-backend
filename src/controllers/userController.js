@@ -40,12 +40,29 @@ exports.getSellerListings = catchAsync(async (req, res) => {
     if (!req.user?.id) throw new AppError('You are not logged in. Please log in.', 401);
     userId = req.user.id;
   }
-  const { excludeCarId, page = 1, limit = 10 } = req.query;
+  const { excludeCarId, excludeVehicleId, excludeId, type = 'car', target_type, page = 1, limit = 10 } = req.query;
+  const listingType = (target_type || type || 'car').toLowerCase();
+
+  if (listingType === 'commercial') {
+    const commercialVehicleService = require('../services/commercialVehicleService');
+    const result = await commercialVehicleService.getSellerCommercialListings(
+      userId,
+      excludeVehicleId || excludeId || excludeCarId,
+      Number(page),
+      Number(limit),
+      req.user
+    );
+    return res.status(200).json({
+      status: 'success',
+      data: result,
+    });
+  }
+
   const carService = require('../services/carService');
 
   const result = await carService.getSellerListings(
     userId,
-    excludeCarId,
+    excludeCarId || excludeId,
     Number(page),
     Number(limit)
   );
