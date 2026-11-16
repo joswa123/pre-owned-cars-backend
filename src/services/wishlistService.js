@@ -144,7 +144,7 @@ const resolveVehicleType = async (targetId, explicitType = null) => {
 /**
  * Add an item to wishlist (idempotent, prevents duplicates)
  */
-exports.addToWishlist = async (userId, targetId, targetType = 'car') => {
+exports.addToWishlist = async (userId, targetId, targetType = null) => {
   if (!targetId) throw new AppError('Target ID is required', 400);
 
   const type = await resolveVehicleType(targetId, targetType);
@@ -210,24 +210,40 @@ exports.addToWishlist = async (userId, targetId, targetType = 'car') => {
 /**
  * Toggle an item in wishlist (creates if absent, destroys if present)
  */
-exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
+exports.toggleWishlist = async (userId, targetId, targetType = null) => {
   if (!targetId) throw new AppError('Target ID is required', 400);
 
-  const type = await resolveVehicleType(targetId, targetType);
+  // Check if targetId is an existing Wishlist entry primary key for this user
+  let wishlistEntry = await Wishlist.findOne({
+    where: {
+      user_id: userId,
+      id: targetId,
+    },
+  });
+
+  let type = targetType ? normalizeTargetType(targetType) : null;
+  let vehicleId = targetId;
+
+  if (wishlistEntry) {
+    type = wishlistEntry.target_type === 'commercial' ? 'commercial' : 'car';
+    vehicleId = type === 'commercial' ? wishlistEntry.target_id : (wishlistEntry.car_id || wishlistEntry.target_id);
+  } else if (!type) {
+    type = await resolveVehicleType(vehicleId, null);
+  }
 
   if (type === 'commercial') {
-    const commercial = await CommercialVehicle.findByPk(targetId);
+    const commercial = await CommercialVehicle.findByPk(vehicleId);
     if (!commercial) throw new AppError('Commercial vehicle not found', 404);
 
-    const existing = await Wishlist.findOne({
-      where: { user_id: userId, target_type: 'commercial', target_id: targetId },
+    const existing = wishlistEntry || await Wishlist.findOne({
+      where: { user_id: userId, target_type: 'commercial', target_id: vehicleId },
     });
 
     if (existing) {
       await existing.destroy();
-      await invalidateWishlistCaches(userId, targetId, commercial.user_id, 'commercial');
+      await invalidateWishlistCaches(userId, vehicleId, commercial.user_id, 'commercial');
       const newCount = await Wishlist.count({
-        where: { target_type: 'commercial', target_id: targetId },
+        where: { target_type: 'commercial', target_id: vehicleId },
       });
       return {
         is_wishlisted: false,
@@ -245,11 +261,11 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
       user_id: userId,
       car_id: null,
       target_type: 'commercial',
-      target_id: targetId,
+      target_id: vehicleId,
     });
-    await invalidateWishlistCaches(userId, targetId, commercial.user_id, 'commercial');
+    await invalidateWishlistCaches(userId, vehicleId, commercial.user_id, 'commercial');
     const newCount = await Wishlist.count({
-      where: { target_type: 'commercial', target_id: targetId },
+      where: { target_type: 'commercial', target_id: vehicleId },
     });
     return {
       is_wishlisted: true,
@@ -260,15 +276,15 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
     };
   }
 
-  const car = await Car.findByPk(targetId);
+  const car = await Car.findByPk(vehicleId);
   if (!car) throw new AppError('Car not found', 404);
 
-  const existing = await Wishlist.findOne({
+  const existing = wishlistEntry || await Wishlist.findOne({
     where: {
       user_id: userId,
       [Op.or]: [
-        { car_id: targetId },
-        { target_type: 'car', target_id: targetId },
+        { car_id: vehicleId },
+        { target_type: 'car', target_id: vehicleId },
       ],
     },
   });
@@ -276,13 +292,13 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
   if (existing) {
     await existing.destroy();
     const analyticsService = require('./analyticsService');
-    await analyticsService.decrementInteraction({ carId: targetId, type: 'wishlist' });
-    await invalidateWishlistCaches(userId, targetId, car.user_id, 'car');
+    await analyticsService.decrementInteraction({ carId: vehicleId, type: 'wishlist' });
+    await invalidateWishlistCaches(userId, vehicleId, car.user_id, 'car');
     const newCount = await Wishlist.count({
       where: {
         [Op.or]: [
-          { car_id: targetId },
-          { target_type: 'car', target_id: targetId },
+          { car_id: vehicleId },
+          { target_type: 'car', target_id: vehicleId },
         ],
       },
     });
@@ -296,18 +312,18 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
 
   const wishlist = await Wishlist.create({
     user_id: userId,
-    car_id: targetId,
+    car_id: vehicleId,
     target_type: 'car',
-    target_id: targetId,
+    target_id: vehicleId,
   });
   const analyticsService = require('./analyticsService');
-  await analyticsService.recordInteraction({ carId: targetId, userId, type: 'wishlist' });
-  await invalidateWishlistCaches(userId, targetId, car.user_id, 'car');
+  await analyticsService.recordInteraction({ carId: vehicleId, userId, type: 'wishlist' });
+  await invalidateWishlistCaches(userId, vehicleId, car.user_id, 'car');
   const newCount = await Wishlist.count({
     where: {
       [Op.or]: [
-        { car_id: targetId },
-        { target_type: 'car', target_id: targetId },
+        { car_id: vehicleId },
+        { target_type: 'car', target_id: vehicleId },
       ],
     },
   });
@@ -323,60 +339,100 @@ exports.toggleWishlist = async (userId, targetId, targetType = 'car') => {
 /**
  * Remove an item from wishlist (idempotent)
  */
-exports.removeFromWishlist = async (userId, targetId, targetType = 'car') => {
+exports.removeFromWishlist = async (userId, targetId, targetType = null) => {
   if (!targetId) throw new AppError('Target ID is required', 400);
 
-  const type = await resolveVehicleType(targetId, targetType);
+  // 1. Check if targetId is an existing Wishlist entry PK for this user
+  let wishlistEntry = await Wishlist.findOne({
+    where: {
+      user_id: userId,
+      id: targetId,
+    },
+  });
 
-  if (type === 'commercial') {
-    const commercial = await CommercialVehicle.findByPk(targetId, {
-      attributes: ['id', 'user_id'],
-      paranoid: false,
-    });
-    const deletedCount = await Wishlist.destroy({
+  let resolvedType = targetType ? normalizeTargetType(targetType) : null;
+  let vehicleId = targetId;
+
+  if (wishlistEntry) {
+    resolvedType = wishlistEntry.target_type === 'commercial' ? 'commercial' : 'car';
+    vehicleId = resolvedType === 'commercial' ? wishlistEntry.target_id : (wishlistEntry.car_id || wishlistEntry.target_id);
+  } else {
+    if (!resolvedType) {
+      resolvedType = await resolveVehicleType(targetId, null);
+    }
+    vehicleId = targetId;
+  }
+
+  let deletedCount = 0;
+  if (wishlistEntry) {
+    await wishlistEntry.destroy();
+    deletedCount = 1;
+  }
+
+  if (resolvedType === 'commercial') {
+    const count = await Wishlist.destroy({
       where: {
         user_id: userId,
         target_type: 'commercial',
-        target_id: targetId,
+        target_id: vehicleId,
       },
     });
+    deletedCount += count;
+
+    const commercial = await CommercialVehicle.findByPk(vehicleId, {
+      attributes: ['id', 'user_id'],
+      paranoid: false,
+    });
     if (deletedCount > 0) {
-      await invalidateWishlistCaches(userId, targetId, commercial?.user_id || null, 'commercial');
+      await invalidateWishlistCaches(userId, vehicleId, commercial?.user_id || null, 'commercial');
     }
     const newCount = await Wishlist.count({
-      where: { target_type: 'commercial', target_id: targetId },
+      where: { target_type: 'commercial', target_id: vehicleId },
     });
-    return { success: true, message: 'Removed from wishlist', isWishlist: false, is_wishlisted: false, wishlist_count: newCount };
+    return {
+      success: true,
+      message: 'Removed from wishlist',
+      isWishlist: false,
+      is_wishlisted: false,
+      wishlist_count: newCount,
+    };
   }
 
-  const car = await Car.findByPk(targetId, {
-    attributes: ['id', 'user_id'],
-    paranoid: false,
-  });
-
-  const deletedCount = await Wishlist.destroy({
+  const count = await Wishlist.destroy({
     where: {
       user_id: userId,
       [Op.or]: [
-        { car_id: targetId },
-        { target_id: targetId, target_type: 'car' },
+        { car_id: vehicleId },
+        { target_id: vehicleId, target_type: 'car' },
       ],
     },
   });
+  deletedCount += count;
+
+  const car = await Car.findByPk(vehicleId, {
+    attributes: ['id', 'user_id'],
+    paranoid: false,
+  });
   if (deletedCount > 0) {
     const analyticsService = require('./analyticsService');
-    await analyticsService.decrementInteraction({ carId: targetId, type: 'wishlist' });
-    await invalidateWishlistCaches(userId, targetId, car?.user_id || null, 'car');
+    await analyticsService.decrementInteraction({ carId: vehicleId, type: 'wishlist' });
+    await invalidateWishlistCaches(userId, vehicleId, car?.user_id || null, 'car');
   }
   const newCount = await Wishlist.count({
     where: {
       [Op.or]: [
-        { car_id: targetId },
-        { target_type: 'car', target_id: targetId },
+        { car_id: vehicleId },
+        { target_type: 'car', target_id: vehicleId },
       ],
     },
   });
-  return { success: true, message: 'Removed from wishlist', isWishlist: false, is_wishlisted: false, wishlist_count: newCount };
+  return {
+    success: true,
+    message: 'Removed from wishlist',
+    isWishlist: false,
+    is_wishlisted: false,
+    wishlist_count: newCount,
+  };
 };
 
 const buildCarInclude = () => [

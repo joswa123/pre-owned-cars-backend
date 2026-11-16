@@ -24,12 +24,10 @@ const resolveWriteTarget = (req) => {
 
   let targetType = merged.target_type || merged.targetType;
   if (!targetType) {
-    if (merged.commercialId || merged.commercial_id) {
+    if (merged.commercialId || merged.commercial_id || req.params?.commercialId) {
       targetType = 'commercial';
-    } else if (merged.car_id || merged.carId) {
+    } else if (merged.car_id || merged.carId || req.params?.carId) {
       targetType = 'car';
-    } else if (merged.target_id && !merged.car_id && !merged.carId) {
-      targetType = 'commercial';
     }
   }
 
@@ -126,7 +124,14 @@ exports.removeFromWishlist = catchAsync(async (req, res) => {
     value.commercial_id ||
     value.commercialId ||
     value.id;
-  const finalTargetType = value.target_type || value.targetType;
+  let finalTargetType = value.target_type || value.targetType;
+  if (!finalTargetType) {
+    if (value.commercialId || value.commercial_id || req.params?.commercialId) {
+      finalTargetType = 'commercial';
+    } else if (value.carId || value.car_id || req.params?.carId) {
+      finalTargetType = 'car';
+    }
+  }
 
   const result = await wishlistService.removeFromWishlist(req.user.id, finalTargetId, finalTargetType);
   res.status(200).json({

@@ -89,13 +89,16 @@ const createCarSchema = Joi.object({
   insuranceValidTill: Joi.date().iso().allow('', null).optional(),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
-  b2b_listing:      Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  b2b:              Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  b2b_listing:      Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  b2bListing:       Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   description:      Joi.string().trim().allow('', null).optional(),
   color:            Joi.string().trim().max(50).allow('', null).optional(),
   number_plate:     Joi.string().trim().max(50).allow('', null).optional(),
   numberplate:      Joi.string().trim().max(50).allow('', null).optional(),
-  prior_appointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
-  prior_appointemnts: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).default(false),
+  prior_appointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  priorAppointments:  Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  prior_appointemnts: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   status:           enumString(STATUS_TYPES_IN).optional(),
   state_id:         Joi.string().uuid().allow('', null).optional(),
   district_id:      Joi.string().uuid().allow('', null).optional(),
@@ -151,14 +154,17 @@ const updateCarSchema = Joi.object({
   insuranceValidTill: Joi.date().iso().allow('', null).optional(),
   insurance_type:   enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
   insuranceType:    enumString(INSURANCE_TYPE_IN).allow('', null).optional(),
-  b2b_listing:      Joi.boolean(),
+  b2b:              Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  b2b_listing:      Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  b2bListing:       Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   status:           enumString(STATUS_TYPES_IN),
   description:      Joi.string().trim().allow('', null),
   color:            Joi.string().trim().max(50).allow('', null),
   number_plate:     Joi.string().trim().max(50).allow('', null),
   numberplate:      Joi.string().trim().max(50).allow('', null),
-  prior_appointments: Joi.boolean(),
-  prior_appointemnts: Joi.boolean(),
+  prior_appointments: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  priorAppointments:  Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  prior_appointemnts: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   primary_image:    Joi.any().optional(),
   images:           Joi.any().optional(),
   video:            Joi.any().optional(),
@@ -314,14 +320,10 @@ const mapToDbValues = (data) => {
   }
 
   // Prior Appointments aliases and boolean normalization
-  if (data.prior_appointments !== undefined && mapped.prior_appointemnts === undefined) {
-    mapped.prior_appointemnts = data.prior_appointments;
-  }
-  if (data.priorAppointments !== undefined && mapped.prior_appointemnts === undefined) {
-    mapped.prior_appointemnts = data.priorAppointments;
-  }
-  if (mapped.prior_appointemnts !== undefined) {
-    mapped.prior_appointemnts = mapped.prior_appointemnts === true || mapped.prior_appointemnts === 'true' || mapped.prior_appointemnts === 1 || mapped.prior_appointemnts === '1';
+  const isPriorAppointmentsTruthy = (val) => val === true || val === 'true' || val === 1 || val === '1';
+  if (data.prior_appointments !== undefined || data.prior_appointemnts !== undefined || data.priorAppointments !== undefined) {
+    const rawVal = data.prior_appointments !== undefined ? data.prior_appointments : (data.prior_appointemnts !== undefined ? data.prior_appointemnts : data.priorAppointments);
+    mapped.prior_appointemnts = isPriorAppointmentsTruthy(rawVal);
   }
 
   // Price Negotiable aliases and boolean normalization
@@ -355,14 +357,10 @@ const mapToDbValues = (data) => {
   const rawBody = (mapped.body_type || '').toString().toLowerCase();
   if (rawBody && BODY_TYPE_MAP[rawBody]) mapped.body_type = BODY_TYPE_MAP[rawBody];
 
-  if (data.b2b !== undefined && mapped.b2b_listing === undefined) {
-    mapped.b2b_listing = data.b2b === true || data.b2b === 'true' || data.b2b === 1 || data.b2b === '1';
-  }
-  if (data.b2bListing !== undefined && mapped.b2b_listing === undefined) {
-    mapped.b2b_listing = data.b2bListing === true || data.b2bListing === 'true' || data.b2bListing === 1 || data.b2bListing === '1';
-  }
-  if (mapped.b2b_listing !== undefined) {
-    mapped.b2b_listing = mapped.b2b_listing === true || mapped.b2b_listing === 'true' || mapped.b2b_listing === 1 || mapped.b2b_listing === '1';
+  // B2B aliases and boolean normalization
+  const isB2bTruthy = (val) => val === true || val === 'true' || val === 1 || val === '1';
+  if (data.b2b !== undefined || data.b2b_listing !== undefined || data.b2bListing !== undefined) {
+    mapped.b2b_listing = isB2bTruthy(data.b2b) || isB2bTruthy(data.b2b_listing) || isB2bTruthy(data.b2bListing);
   }
 
   const rawBoard = (mapped.board_type || '').toString().trim().toLowerCase();

@@ -281,6 +281,12 @@ const transformCarImages = (car, baseUrl = null) => {
     price,
     previous_price: previousPrice,
     has_price_drop: hasPriceDrop,
+    b2b_listing: Boolean(carJson.b2b_listing),
+    b2b: Boolean(carJson.b2b_listing),
+    b2bListing: Boolean(carJson.b2b_listing),
+    prior_appointments: Boolean(carJson.prior_appointments ?? carJson.prior_appointemnts),
+    prior_appointemnts: Boolean(carJson.prior_appointments ?? carJson.prior_appointemnts),
+    priorAppointments: Boolean(carJson.prior_appointments ?? carJson.prior_appointemnts),
     board_type: carJson.board_type || 'Own Board',
     boardType: carJson.board_type || 'Own Board',
     insurance_type: carJson.insurance_type || 'Not Insured',
@@ -399,8 +405,8 @@ exports.createCar = async (userId, carData, files) => {
     );
 
     const posted_by_type = user.role === 'dealer' ? 'dealer' : 'customer';
-    const b2b_listing =
-      user.role === 'dealer' && (mapped.b2b_listing === true || mapped.b2b_listing === 'true');
+    const isDealerOrAdmin = user.role === 'dealer' || user.role === 'admin';
+    const b2b_listing = isDealerOrAdmin && Boolean(mapped.b2b_listing);
 
     let stateId = mapped.state_id || user.state_id || null;
     let districtId = mapped.district_id || user.district_id || null;
@@ -753,6 +759,8 @@ const buildCarFiltersWhere = async (rawFilters = {}, { isUserScope = false, user
     where.b2b_listing = filters.b2b_listing === 'true' || filters.b2b_listing === true;
   } else if (filters.b2b !== undefined) {
     where.b2b_listing = filters.b2b === 'true' || filters.b2b === true;
+  } else if (filters.b2bListing !== undefined) {
+    where.b2b_listing = filters.b2bListing === 'true' || filters.b2bListing === true;
   }
 
   if (filters.has_price_drop !== undefined) {

@@ -79,7 +79,6 @@ const wishlistDeleteSchema = Joi.object({
     .lowercase()
     .valid('car', 'commercial')
     .optional()
-    .default('car')
     .messages({
       'any.only': 'target_type must be one of: car, commercial',
     }),
