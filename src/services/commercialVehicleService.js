@@ -239,6 +239,7 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
     price_negotiable: Boolean(vJson.price_negotiable),
     b2b_listing: Boolean(vJson.b2b_listing),
     b2b: Boolean(vJson.b2b_listing),
+    b2bListing: Boolean(vJson.b2b_listing),
     prior_appointments: Boolean(vJson.prior_appointments ?? vJson.prior_appointemnts),
     prior_appointemnts: Boolean(vJson.prior_appointments ?? vJson.prior_appointemnts),
     video_url: formatMediaUrl(vJson.video_url),
@@ -367,8 +368,7 @@ exports.createCommercialVehicle = async (userId, userRole, rawData, files) => {
 
     // 4. Derive posted_by_type and b2b_listing
     const posted_by_type = userRole === 'dealer' ? 'dealer' : 'customer';
-    const isDealerOrAdmin = userRole === 'dealer' || userRole === 'admin' || user.role === 'dealer' || user.role === 'admin';
-    const b2b_listing = isDealerOrAdmin && Boolean(mapped.b2b_listing);
+    const b2b_listing = Boolean(mapped.b2b_listing);
     const prior_appointments = Boolean(mapped.prior_appointments);
 
     // 5. Slug Generation
@@ -1039,8 +1039,7 @@ exports.updateCommercialVehicle = async (id, userId, userRole, rawData, files) =
     filteredData.price_negotiable = Boolean(mapped.price_negotiable);
   }
   if (mapped.b2b_listing !== undefined) {
-    const isDealerOrAdmin = userRole === 'dealer' || userRole === 'admin';
-    filteredData.b2b_listing = isDealerOrAdmin ? Boolean(mapped.b2b_listing) : false;
+    filteredData.b2b_listing = Boolean(mapped.b2b_listing);
   }
   if (mapped.prior_appointments !== undefined) {
     filteredData.prior_appointments = Boolean(mapped.prior_appointments);

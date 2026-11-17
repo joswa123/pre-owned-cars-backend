@@ -7,6 +7,8 @@ const {
   DealerProfile,
   Car,
   CarImage,
+  CommercialVehicle,
+  CommercialVehicleImage,
   Brand,
   Model,
   Variant,
@@ -22,11 +24,13 @@ const makePhone = (prefix) => {
   return `${prefix}${ts}${rand}`;
 };
 
-describe('Car B2B Posting and GET Endpoints Reflection Tests', () => {
+describe('B2B Posting and GET Endpoints Reflection Tests (Customer & Dealer)', () => {
   const suffix = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 
   let dealerUser;
   let dealerToken;
+  let customerUser;
+  let customerToken;
   let testBrand;
   let testModel;
   let testVariant;
@@ -36,6 +40,7 @@ describe('Car B2B Posting and GET Endpoints Reflection Tests', () => {
   let testCity;
 
   const createdCarIds = [];
+  const createdCommercialIds = [];
 
   beforeAll(async () => {
     testState = await State.findOne({ where: { name: 'Tamil Nadu' } });
@@ -44,6 +49,7 @@ describe('Car B2B Posting and GET Endpoints Reflection Tests', () => {
 
     const passwordHash = await bcrypt.hash('TestPass@123', 10);
 
+    // Dealer user
     dealerUser = await User.create({
       full_name: `B2B Dealer ${suffix}`,
       phone: makePhone('9'),
@@ -69,6 +75,26 @@ describe('Car B2B Posting and GET Endpoints Reflection Tests', () => {
 
     dealerToken = jwt.sign(
       { id: dealerUser.id, role: dealerUser.role, email: dealerUser.email },
+      process.env.JWT_SECRET || 'test-jwt-secret-key-32-chars-min!!',
+      { expiresIn: '1h' }
+    );
+
+    // Customer user
+    customerUser = await User.create({
+      full_name: `B2B Customer ${suffix}`,
+      phone: makePhone('8'),
+      email: `b2bcustomer_${suffix}@example.com`,
+      password_hash: passwordHash,
+      role: 'customer',
+      status: 'approved',
+      is_verified: true,
+      state_id: testState.id,
+      district_id: testDistrict.id,
+      city_id: testCity.id,
+    });
+
+    customerToken = jwt.sign(
+      { id: customerUser.id, role: customerUser.role, email: customerUser.email },
       process.env.JWT_SECRET || 'test-jwt-secret-key-32-chars-min!!',
       { expiresIn: '1h' }
     );
@@ -106,6 +132,10 @@ describe('Car B2B Posting and GET Endpoints Reflection Tests', () => {
         await CarImage.destroy({ where: { car_id: createdCarIds } });
         await Car.destroy({ where: { id: createdCarIds }, force: true });
       }
+      if (createdCommercialIds.length) {
+        await CommercialVehicleImage.destroy({ where: { commercial_vehicle_id: createdCommercialIds } });
+        await CommercialVehicle.destroy({ where: { id: createdCommercialIds }, force: true });
+      }
       if (testVariant) await Variant.destroy({ where: { id: testVariant.id } });
       if (testModel) await Model.destroy({ where: { id: testModel.id } });
       if (testCarType) await CarType.destroy({ where: { id: testCarType.id } });
@@ -113,6 +143,9 @@ describe('Car B2B Posting and GET Endpoints Reflection Tests', () => {
       if (dealerUser) {
         await DealerProfile.destroy({ where: { user_id: dealerUser.id } });
         await User.destroy({ where: { id: dealerUser.id } });
+      }
+      if (customerUser) {
+        await User.destroy({ where: { id: customerUser.id } });
       }
     } catch (e) {
       // ignore cleanup errors
@@ -180,7 +213,6 @@ describe('Car B2B Posting and GET Endpoints Reflection Tests', () => {
     expect(car.b2b).toBe(true);
     expect(car.b2b_listing).toBe(true);
 
-    // Verify GET /api/v1/cars/:id
     const getRes = await request(app).get(`/api/v1/cars/${car.id}`);
     expect(getRes.status).toBe(200);
     const fetchedCar = getRes.body.data.car || getRes.body.data;
@@ -218,11 +250,113 @@ describe('Car B2B Posting and GET Endpoints Reflection Tests', () => {
     expect(updatedCar.b2b).toBe(false);
     expect(updatedCar.b2b_listing).toBe(false);
 
-    // Verify via GET
     const getRes = await request(app).get(`/api/v1/cars/${carId}`);
     expect(getRes.status).toBe(200);
     const fetched = getRes.body.data.car || getRes.body.data;
     expect(fetched.b2b).toBe(false);
     expect(fetched.b2b_listing).toBe(false);
+  });
+
+  it('5. Customer (role: customer) posts car with payload { b2b: true } -> persisted and returned as b2b: true', async () => {
+    const res = await request(app)
+      .post('/api/v1/cars')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .field('brand_id', testBrand.id)
+      .field('model_id', testModel.id)
+      .field('variant_id', testVariant.id)
+      .field('year', 2022)
+      .field('price', 550000)
+      .field('km_driven', 35000)
+      .field('fuel_type', 'petrol')
+      .field('transmission', 'manual')
+      .field('ownership', '1st owner')
+      .field('body_type', 'Sedan')
+      .field('b2b', 'true')
+      .field('posted_by_type', 'customer')
+      .field('primary_image', 'https://res.cloudinary.com/test-cloud/image/upload/v12345/cust-car1.jpg');
+
+    expect([200, 201]).toContain(res.status);
+    const car = res.body.data.car;
+    createdCarIds.push(car.id);
+
+    expect(car.posted_by_type).toBe('customer');
+    expect(car.b2b).toBe(true);
+    expect(car.b2b_listing).toBe(true);
+    expect(car.b2bListing).toBe(true);
+
+    // Verify GET /api/v1/cars/:id
+    const getRes = await request(app).get(`/api/v1/cars/${car.id}`);
+    expect(getRes.status).toBe(200);
+    const fetchedCar = getRes.body.data.car || getRes.body.data;
+    expect(fetchedCar.b2b).toBe(true);
+    expect(fetchedCar.b2b_listing).toBe(true);
+  });
+
+  it('6. Customer (role: customer) creates commercial vehicle with { b2b_listing: true } -> returns b2b: true', async () => {
+    const res = await request(app)
+      .post('/api/v1/commercial')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .field('brand_id', testBrand.id)
+      .field('vehicle_type_id', testCarType.id)
+      .field('year', 2024)
+      .field('price', 750000)
+      .field('km_driven', 20000)
+      .field('fuel_type', 'Diesel')
+      .field('ownership', '1st Owner')
+      .field('b2b_listing', 'true')
+      .field('prior_appointments', 'true')
+      .field('primary_image', 'https://res.cloudinary.com/test-cloud/image/upload/v12345/comm1.jpg');
+
+    expect([200, 201]).toContain(res.status);
+    const vehicle = res.body.data.vehicle;
+    createdCommercialIds.push(vehicle.id);
+
+    expect(vehicle.posted_by_type).toBe('customer');
+    expect(vehicle.b2b).toBe(true);
+    expect(vehicle.b2b_listing).toBe(true);
+    expect(vehicle.b2bListing).toBe(true);
+    expect(vehicle.prior_appointments).toBe(true);
+
+    // Verify GET /api/v1/commercial/:id
+    const getRes = await request(app).get(`/api/v1/commercial/${vehicle.id}`);
+    expect(getRes.status).toBe(200);
+    const fetched = getRes.body.data.vehicle || getRes.body.data;
+    expect(fetched.b2b).toBe(true);
+    expect(fetched.b2b_listing).toBe(true);
+    expect(fetched.b2bListing).toBe(true);
+  });
+
+  it('7. Customer (role: customer) updates commercial vehicle with PUT and { b2b_listing: true } -> returns b2b: true', async () => {
+    const commId = createdCommercialIds[0];
+    const updateRes = await request(app)
+      .put(`/api/v1/commercial/${commId}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        brand_id: testBrand.id,
+        vehicle_type_id: testCarType.id,
+        year: 2024,
+        price: 590000,
+        km_driven: 23000,
+        fuel_type: 'Petrol',
+        ownership: '1st Owner',
+        b2b_listing: true,
+        price_negotiable: true,
+        prior_appointemnts: true,
+        posted_by_type: 'customer',
+      });
+
+    expect(updateRes.status).toBe(200);
+    const updated = updateRes.body.data.vehicle || updateRes.body.data;
+    expect(updated.b2b).toBe(true);
+    expect(updated.b2b_listing).toBe(true);
+    expect(updated.b2bListing).toBe(true);
+    expect(updated.posted_by_type).toBe('customer');
+
+    // Verify GET endpoint reflects b2b: true
+    const getRes = await request(app).get(`/api/v1/commercial/${commId}`);
+    expect(getRes.status).toBe(200);
+    const fetched = getRes.body.data.vehicle || getRes.body.data;
+    expect(fetched.b2b).toBe(true);
+    expect(fetched.b2b_listing).toBe(true);
   });
 });

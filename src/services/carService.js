@@ -405,8 +405,7 @@ exports.createCar = async (userId, carData, files) => {
     );
 
     const posted_by_type = user.role === 'dealer' ? 'dealer' : 'customer';
-    const isDealerOrAdmin = user.role === 'dealer' || user.role === 'admin';
-    const b2b_listing = isDealerOrAdmin && Boolean(mapped.b2b_listing);
+    const b2b_listing = Boolean(mapped.b2b_listing);
 
     let stateId = mapped.state_id || user.state_id || null;
     let districtId = mapped.district_id || user.district_id || null;
