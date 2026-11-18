@@ -413,13 +413,15 @@ Platform-wide buying requirements submitted by prospective car buyers.
 - `page` (default `1`)
 - `limit` (default `20`, max `100`)
 - `status` (`pending`, `in_review`, `resolved`, `dismissed`)
-- `car_id` (UUID)
+- `target_type` (`car` | `commercial`)
+- `target_id` (UUID - searches both `car_id` and `target_id`)
+- `car_id` (UUID - searches both `car_id` and `target_id`)
 - `dealer_id` (UUID)
 - `reason` (string, e.g., `car_sold_out`, `overpriced_car`, `fraudulent_listing`)
 - `sortBy` (`created_at`, `updated_at`, `status`)
 - `sortOrder` (`ASC` or `DESC`, default `DESC`)
 
-**Response `200 OK`:**
+**Response `200 OK` (Polymorphic Support for Cars & Commercial Vehicles):**
 ```json
 {
   "status": "success",
@@ -432,6 +434,9 @@ Platform-wide buying requirements submitted by prospective car buyers.
     "reports": [
       {
         "id": "report-uuid-1",
+        "target_type": "car",
+        "target_id": "car-uuid-1",
+        "car_id": "car-uuid-1",
         "reason": "car_sold_out",
         "description": "Dealer informed on phone that car was already sold last week.",
         "status": "pending",
@@ -448,10 +453,39 @@ Platform-wide buying requirements submitted by prospective car buyers.
           "carModel": { "name": "City" },
           "images": [{ "image_url": "https://res.cloudinary.com/...", "is_primary": true }]
         },
+        "commercialVehicle": null,
         "dealer": {
           "id": "dealer-uuid",
           "full_name": "Star Cars",
           "phone": "+919876512345"
+        }
+      },
+      {
+        "id": "report-uuid-2",
+        "target_type": "commercial",
+        "target_id": "comm-uuid-2",
+        "car_id": null,
+        "reason": "fraudulent_listing",
+        "description": "Seller demanding deposit before vehicle inspection.",
+        "status": "pending",
+        "reporter_name": "Ravi",
+        "reporter_phone": "9876543211",
+        "admin_notes": null,
+        "created_at": "2026-11-17T03:00:00.000Z",
+        "car": null,
+        "commercialVehicle": {
+          "id": "comm-uuid-2",
+          "price": 1450000,
+          "year": 2021,
+          "status": "active",
+          "brand": { "name": "Tata" },
+          "vehicleType": { "name": "Mini Truck" },
+          "images": [{ "image_url": "https://res.cloudinary.com/...", "is_primary": true }]
+        },
+        "dealer": {
+          "id": "dealer-uuid-2",
+          "full_name": "City Auto",
+          "phone": "+919876599999"
         }
       }
     ]

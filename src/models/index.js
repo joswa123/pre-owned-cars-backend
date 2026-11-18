@@ -290,12 +290,22 @@ CommercialVehicle.hasMany(Lead, {
   scope: { target_type: 'commercial' },
   as: 'leads',
 });
+Lead.belongsTo(CommercialVehicle, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'commercialVehicle',
+});
 
 CommercialVehicle.hasMany(CarReport, {
   foreignKey: 'target_id',
   constraints: false,
   scope: { target_type: 'commercial' },
   as: 'reports',
+});
+CarReport.belongsTo(CommercialVehicle, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'commercialVehicle',
 });
 
 const models = {
