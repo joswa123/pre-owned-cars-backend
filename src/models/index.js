@@ -250,6 +250,7 @@ User.hasMany(CarReport, { foreignKey: 'reporter_id', as: 'filedReports' });
 
 // Commercial Vehicle Associations
 User.hasMany(CommercialVehicle, { foreignKey: 'user_id', as: 'commercialVehicles' });
+User.hasMany(CommercialVehicle, { foreignKey: 'user_id', as: 'postedCommercialVehicles' });
 CommercialVehicle.belongsTo(User, { foreignKey: 'user_id', as: 'seller' });
 
 CommercialVehicle.belongsTo(VehicleType, { foreignKey: 'vehicle_type_id', as: 'vehicleType' });
@@ -290,12 +291,34 @@ CommercialVehicle.hasMany(Lead, {
   scope: { target_type: 'commercial' },
   as: 'leads',
 });
+Lead.belongsTo(CommercialVehicle, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'commercialVehicle',
+});
 
 CommercialVehicle.hasMany(CarReport, {
   foreignKey: 'target_id',
   constraints: false,
   scope: { target_type: 'commercial' },
   as: 'reports',
+});
+CarReport.belongsTo(CommercialVehicle, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'commercialVehicle',
+});
+
+CommercialVehicle.hasMany(View, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'commercial' },
+  as: 'views',
+});
+View.belongsTo(CommercialVehicle, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'commercialVehicle',
 });
 
 const models = {

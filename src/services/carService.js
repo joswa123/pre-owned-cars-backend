@@ -1513,14 +1513,20 @@ exports.getCarById = async (carId, userId = null) => {
     }
 
     const [dbViewsCount, dbRegisteredViewsCount, dbWishlistCount] = await Promise.all([
-      View.count({ where: { car_id: car.id } }),
-      View.count({ where: { car_id: car.id, user_id: { [Op.ne]: null } } }),
+      View.count({
+        where: {
+          [Op.or]: [{ car_id: car.id }, { target_type: 'car', target_id: car.id }],
+        },
+      }),
+      View.count({
+        where: {
+          [Op.or]: [{ car_id: car.id }, { target_type: 'car', target_id: car.id }],
+          user_id: { [Op.ne]: null },
+        },
+      }),
       Wishlist.count({
         where: {
-          [Op.or]: [
-            { car_id: car.id },
-            { target_type: 'car', target_id: car.id },
-          ],
+          [Op.or]: [{ car_id: car.id }, { target_type: 'car', target_id: car.id }],
         },
       }),
     ]);
@@ -2369,10 +2375,16 @@ exports.recordView = async (carId, userId = null, ipAddress = null) => {
 
   if (userId) {
     const existing = await View.findOne({
-      where: { car_id: carId, user_id: userId },
+      where: {
+        [Op.or]: [
+          { car_id: carId },
+          { target_type: 'car', target_id: carId },
+        ],
+        user_id: userId,
+      },
     });
     if (!existing) {
-      await View.create({ car_id: carId, user_id: userId, timestamp: new Date() });
+      await View.create({ car_id: carId, target_id: carId, target_type: 'car', user_id: userId, timestamp: new Date() });
       await analyticsService.recordInteraction({ carId, userId, type: 'view', ipAddress });
     } else {
       // Update the timestamp to reflect the latest view time without inflating records
@@ -2380,7 +2392,7 @@ exports.recordView = async (carId, userId = null, ipAddress = null) => {
     }
   } else {
     // Guest view: record in View table with user_id: null and trigger aggregated interaction
-    await View.create({ car_id: carId, user_id: null, timestamp: new Date() });
+    await View.create({ car_id: carId, target_id: carId, target_type: 'car', user_id: null, timestamp: new Date() });
     await analyticsService.recordInteraction({ carId, userId: null, type: 'view', ipAddress });
   }
 

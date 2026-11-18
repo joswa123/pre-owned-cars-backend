@@ -76,5 +76,10 @@
     "setupFilesAfterEnv": [
       "./tests/setup.js"
     ]
+  },
+  "allowScripts": {
+    "@firebase/util@1.15.3": true,
+    "msgpackr-extract@3.0.4": true,
+    "protobufjs@7.6.6": true
   }
 }

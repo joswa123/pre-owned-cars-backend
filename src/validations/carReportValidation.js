@@ -39,6 +39,8 @@ const carReportQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(100).optional(),
   status: Joi.string().valid(...REPORT_STATUSES).optional(),
   car_id: Joi.string().uuid().optional(),
+  target_id: Joi.string().uuid().optional(),
+  target_type: Joi.string().valid('car', 'commercial').optional(),
   dealer_id: Joi.string().uuid().optional(),
   reason: Joi.string().trim().optional(),
   sortBy: Joi.string().optional(),

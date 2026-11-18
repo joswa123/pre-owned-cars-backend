@@ -351,6 +351,18 @@ exports.getSellerListings = catchAsync(async (req, res) => {
   res.status(200).json({
     status: 'success',
     data: result,
+ * Record Commercial Vehicle View (Explicit endpoint)
+ * GET/POST /api/v1/commercial/:id/view
+ */
+exports.recordView = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user ? req.user.id : null;
+
+  await commercialVehicleService.recordView(id, userId);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'View recorded successfully.',
   });
 });
 

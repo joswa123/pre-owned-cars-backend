@@ -130,13 +130,14 @@ exports.ensureCarStats = async (carId) => {
     // Self-heal: Compute from live tables and insert
     const { View, Wishlist, Lead } = require('../models');
     const [viewsCount, wishlistCount, leadStats] = await Promise.all([
-      View.count({ where: { car_id: carId } }),
+      View.count({
+        where: {
+          [Op.or]: [{ car_id: carId }, { target_type: 'car', target_id: carId }],
+        },
+      }),
       Wishlist.count({
         where: {
-          [Op.or]: [
-            { car_id: carId },
-            { target_type: 'car', target_id: carId },
-          ],
+          [Op.or]: [{ car_id: carId }, { target_type: 'car', target_id: carId }],
         },
       }),
       Lead.findAll({
@@ -146,7 +147,9 @@ exports.ensureCarStats = async (carId) => {
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) IN ('message', 'chat') THEN 1 ELSE 0 END")), 'messages'],
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message', 'chat') THEN 1 ELSE 0 END")), 'enquiries'],
         ],
-        where: { car_id: carId },
+        where: {
+          [Op.or]: [{ car_id: carId }, { target_id: carId }],
+        },
         raw: true,
       }),
     ]);
@@ -192,13 +195,14 @@ exports.reconcileCarStats = async (carIds = null) => {
     const cId = car.id;
     const { View, Wishlist, Lead } = require('../models');
     const [liveViews, liveWishlist, leadStats, currentStat] = await Promise.all([
-      View.count({ where: { car_id: cId } }),
+      View.count({
+        where: {
+          [Op.or]: [{ car_id: cId }, { target_type: 'car', target_id: cId }],
+        },
+      }),
       Wishlist.count({
         where: {
-          [Op.or]: [
-            { car_id: cId },
-            { target_type: 'car', target_id: cId },
-          ],
+          [Op.or]: [{ car_id: cId }, { target_type: 'car', target_id: cId }],
         },
       }),
       Lead.findAll({
@@ -208,7 +212,9 @@ exports.reconcileCarStats = async (carIds = null) => {
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) IN ('message', 'chat') THEN 1 ELSE 0 END")), 'messages'],
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message', 'chat') THEN 1 ELSE 0 END")), 'enquiries'],
         ],
-        where: { car_id: cId },
+        where: {
+          [Op.or]: [{ car_id: cId }, { target_id: cId }],
+        },
         raw: true,
       }),
       CarStat.findOne({ where: { car_id: cId } }),

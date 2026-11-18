@@ -10,6 +10,7 @@ const {
   City,
   Wishlist,
   Lead,
+  View,
 } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
@@ -65,8 +66,7 @@ const invalidateCommercialCaches = async (vehicleId = null, userId = null) => {
     }
     await clearCachePattern('commercial:*');
     await clearCachePattern('seller:*');
-    await clearCachePattern('similar:commercial:*');
-    await clearCachePattern('recommended:commercial:*');
+    await clearCachePattern('dealer:*');
     await clearCachePattern('global_search:*');
 
     const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
@@ -710,75 +710,10 @@ const buildCommercialFiltersWhere = async (rawFilters = {}) => {
     where.posted_by_type = String(rawFilters.posted_by_type).toLowerCase();
   }
 
-  // 11.1 B2B filter
-  if (rawFilters.b2b_listing !== undefined && rawFilters.b2b_listing !== '') {
-    where.b2b_listing = rawFilters.b2b_listing === true || rawFilters.b2b_listing === 'true';
-  } else if (rawFilters.b2b !== undefined && rawFilters.b2b !== '') {
-    where.b2b_listing = rawFilters.b2b === true || rawFilters.b2b === 'true';
-  } else if (rawFilters.b2bListing !== undefined && rawFilters.b2bListing !== '') {
-    where.b2b_listing = rawFilters.b2bListing === true || rawFilters.b2bListing === 'true';
-  }
-
-  // 11.2 Prior appointments filter
-  if (rawFilters.prior_appointments !== undefined && rawFilters.prior_appointments !== '') {
-    where.prior_appointments = rawFilters.prior_appointments === true || rawFilters.prior_appointments === 'true';
-  } else if (rawFilters.prior_appointemnts !== undefined && rawFilters.prior_appointemnts !== '') {
-    where.prior_appointments = rawFilters.prior_appointemnts === true || rawFilters.prior_appointemnts === 'true';
-  } else if (rawFilters.priorAppointments !== undefined && rawFilters.priorAppointments !== '') {
-    where.prior_appointments = rawFilters.priorAppointments === true || rawFilters.priorAppointments === 'true';
-  }
-
-  // 11.3 Board type filter
-  const rawBoard = rawFilters.board_types || rawFilters.board_type || rawFilters.boardType;
-  if (rawBoard) {
-    const boardItems = (Array.isArray(rawBoard) ? rawBoard : String(rawBoard).split(','))
-      .map((b) => String(b).trim().toLowerCase())
-      .filter(Boolean)
-      .map((b) => BOARD_TYPE_MAP[b] || b);
-    if (boardItems.length === 1) {
-      where.board_type = boardItems[0];
-    } else if (boardItems.length > 1) {
-      where.board_type = { [Op.in]: boardItems };
-    }
-  }
-
-  // 11.4 Insurance type filter
-  const rawInsurance = rawFilters.insurance_types || rawFilters.insurance_type || rawFilters.insuranceType;
-  if (rawInsurance) {
-    const insItems = (Array.isArray(rawInsurance) ? rawInsurance : String(rawInsurance).split(','))
-      .map((i) => String(i).trim().toLowerCase())
-      .filter(Boolean)
-      .map((i) => INSURANCE_TYPE_MAP[i] || i);
-    if (insItems.length === 1) {
-      where.insurance_type = insItems[0];
-    } else if (insItems.length > 1) {
-      where.insurance_type = { [Op.in]: insItems };
-    }
-  }
-
-  // 12. Posted within days & Expired cutoff (aligned with carService.js)
-  let minCreatedAt = null;
-  const rawPostedDays = rawFilters.posted_within_days ?? rawFilters.postedWithinDays;
-  if (rawPostedDays !== undefined && rawPostedDays !== null && rawPostedDays !== '') {
-    const days = parseInt(rawPostedDays, 10);
-    if (!isNaN(days) && days >= 1) {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - days);
-      minCreatedAt = cutoffDate;
-    }
-  }
-
-  const includeExpired = rawFilters.include_expired === true || rawFilters.include_expired === 'true';
-  if (!includeExpired) {
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    if (!minCreatedAt || ninetyDaysAgo > minCreatedAt) {
-      minCreatedAt = ninetyDaysAgo;
-    }
-  }
-
-  if (minCreatedAt) {
-    where.created_at = { ...(where.created_at || {}), [Op.gte]: minCreatedAt };
+  // 12. Dealer / User ID filter
+  const targetDealerId = rawFilters.dealer_id || rawFilters.dealerId || rawFilters.user_id || rawFilters.userId || rawFilters.seller_id || rawFilters.sellerId;
+  if (targetDealerId && targetDealerId !== 'me' && targetDealerId !== 'all') {
+    where.user_id = targetDealerId;
   }
 
   return { where, queryModel };
@@ -926,18 +861,47 @@ exports.getCommercialVehicleById = async (identifier, viewerUser = null) => {
   // Increment views count
   await vehicle.increment('views_count');
 
-  // Check wishlist status and total wishlist count
-  const [viewerWishlistCount, wishlistCount] = await Promise.all([
-    viewerUser && viewerUser.id
-      ? Wishlist.count({
-          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicle.id },
-        })
-      : Promise.resolve(0),
-    Wishlist.count({
-      where: { target_type: 'commercial', target_id: vehicle.id },
-    }),
-  ]);
-  const isWishlist = viewerWishlistCount > 0;
+  // Record view in polymorphic views table
+  try {
+    const isOwner = viewerUser && viewerUser.id && viewerUser.id === vehicle.user_id;
+    if (!isOwner) {
+      if (viewerUser && viewerUser.id) {
+        const existingView = await View.findOne({
+          where: { target_type: 'commercial', target_id: vehicle.id, user_id: viewerUser.id },
+        });
+        if (existingView) {
+          await existingView.update({ timestamp: new Date() });
+        } else {
+          await View.create({
+            target_type: 'commercial',
+            target_id: vehicle.id,
+            user_id: viewerUser.id,
+            timestamp: new Date(),
+          });
+        }
+      } else {
+        await View.create({
+          target_type: 'commercial',
+          target_id: vehicle.id,
+          user_id: null,
+          timestamp: new Date(),
+        });
+      }
+
+      await clearCachePattern(`commercial:views:${vehicle.id}:*`);
+    }
+  } catch (err) {
+    console.error('Failed to record commercial vehicle view:', err.message || err);
+  }
+
+  // Check wishlist status
+  let isWishlist = false;
+  if (viewerUser && viewerUser.id) {
+    const count = await Wishlist.count({
+      where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicle.id },
+    });
+    isWishlist = count > 0;
+  }
 
   const transformed = transformCommercialVehicleImages(vehicle, null, viewerUser);
   return {
@@ -1356,479 +1320,41 @@ exports.setPrimaryImage = async (id, imageId, userId, userRole) => {
 };
 
 /**
- * Standalone Video Upload for Commercial Vehicle
+ * Record a commercial vehicle view (Unique per user tracking & live metrics)
  */
-exports.uploadCommercialVideo = async (vehicleId, userId, userRole, file) => {
-  if (!file) throw new AppError('No video file provided', 400);
+exports.recordView = async (vehicleId, userId = null) => {
+  const vehicle = await CommercialVehicle.findByPk(vehicleId, { attributes: ['id', 'user_id'] });
+  if (!vehicle) return;
+  if (userId && vehicle.user_id === userId) return; // Don't count seller's own views
 
-  const vehicle = await CommercialVehicle.findByPk(vehicleId);
-  if (!vehicle) throw new AppError('Commercial vehicle not found', 404);
+  await vehicle.increment('views_count');
 
-  if (vehicle.user_id !== userId && userRole !== 'admin') {
-    throw new AppError('You are not authorized to update this listing', 403);
-  }
-
-  let videoUrl = file.path || file.secure_url;
-  if (videoUrl && (videoUrl.startsWith('https://res.cloudinary.com/') || videoUrl.startsWith('http://res.cloudinary.com/'))) {
-    videoUrl = videoUrl.replace('http://', 'https://');
-  } else if (file.path && fs.existsSync(file.path)) {
-    try {
-      const result = await cloudinary.uploader.upload(file.path, {
-        resource_type: 'video',
-        folder: `autodeal4u/commercial/${vehicleId}/videos`,
-        public_id: `video-${Date.now()}`,
-      });
-      videoUrl = result.secure_url;
-      try { fs.unlinkSync(file.path); } catch (e) {}
-    } catch (uploadErr) {
-      try { fs.unlinkSync(file.path); } catch (e) {}
-      throw new AppError(uploadErr.message || 'Failed to upload video to Cloudinary', 500);
-    }
-  }
-
-  if (!videoUrl || !videoUrl.startsWith('https://res.cloudinary.com/')) {
-    throw new AppError('Video upload failed: No valid Cloudinary URL returned.', 500);
-  }
-
-  if (vehicle.video_url && vehicle.video_url !== videoUrl) {
-    const oldPid = extractPublicIdFromUrl(vehicle.video_url);
-    if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => {});
-  }
-
-  vehicle.video_url = videoUrl;
-  await vehicle.save();
-  await invalidateCommercialCaches(vehicle.id, userId);
-
-  return videoUrl;
-};
-
-/**
- * Standalone Audio Upload for Commercial Vehicle
- */
-exports.uploadCommercialAudio = async (vehicleId, userId, userRole, file) => {
-  if (!file) throw new AppError('No audio file provided', 400);
-
-  const vehicle = await CommercialVehicle.findByPk(vehicleId);
-  if (!vehicle) throw new AppError('Commercial vehicle not found', 404);
-
-  if (vehicle.user_id !== userId && userRole !== 'admin') {
-    throw new AppError('You are not authorized to update this listing', 403);
-  }
-
-  let audioUrl = file.path || file.secure_url;
-  if (audioUrl && (audioUrl.startsWith('https://res.cloudinary.com/') || audioUrl.startsWith('http://res.cloudinary.com/'))) {
-    audioUrl = audioUrl.replace('http://', 'https://');
-  } else if (file.path && fs.existsSync(file.path)) {
-    try {
-      const result = await cloudinary.uploader.upload(file.path, {
-        resource_type: 'video',
-        folder: `autodeal4u/commercial/${vehicleId}/audio`,
-        public_id: `audio-${Date.now()}`,
-      });
-      audioUrl = result.secure_url;
-      try { fs.unlinkSync(file.path); } catch (e) {}
-    } catch (uploadErr) {
-      try { fs.unlinkSync(file.path); } catch (e) {}
-      throw new AppError(uploadErr.message || 'Failed to upload audio to Cloudinary', 500);
-    }
-  }
-
-  if (!audioUrl || !audioUrl.startsWith('https://res.cloudinary.com/')) {
-    throw new AppError('Audio upload failed: No valid Cloudinary URL returned.', 500);
-  }
-
-  if (vehicle.audio_url && vehicle.audio_url !== audioUrl) {
-    const oldPid = extractPublicIdFromUrl(vehicle.audio_url);
-    if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => {});
-  }
-
-  vehicle.audio_url = audioUrl;
-  await vehicle.save();
-  await invalidateCommercialCaches(vehicle.id, userId);
-
-  return audioUrl;
-};
-
-/**
- * Public Seller Commercial Listings
- */
-exports.getSellerCommercialListings = async (sellerId, excludeVehicleId = null, page = 1, limit = 10, viewerUser = null) => {
-  if (!isUuid(sellerId)) {
-    throw new AppError('Invalid seller ID format', 400);
-  }
-
-  const seller = await User.findByPk(sellerId);
-  if (!seller) {
-    throw new AppError('Seller not found', 404);
-  }
-
-  const cacheKey = `seller:commercial:${sellerId}:${page}:${limit}:${excludeVehicleId || 'none'}`;
-  let responseData = null;
   try {
-    if (redisClient.isOpen) {
-      const cached = await redisClient.get(cacheKey);
-      if (cached) responseData = JSON.parse(cached);
-    }
-  } catch (err) {
-    console.error('Redis cache error in getSellerCommercialListings:', err);
-  }
-
-  const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
-  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
-  const offset = (parsedPage - 1) * parsedLimit;
-
-  if (!responseData) {
-    const whereClause = {
-      user_id: sellerId,
-      status: 'active',
-    };
-    if (excludeVehicleId && isUuid(excludeVehicleId)) {
-      whereClause.id = { [Op.ne]: excludeVehicleId };
-    }
-
-    const { count, rows } = await CommercialVehicle.findAndCountAll({
-      distinct: true,
-      col: 'id',
-      where: whereClause,
-      include: [
-        { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
-        sellerInclude,
-        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
-        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-        { model: District, as: 'district', attributes: ['id', 'name'] },
-        { model: City, as: 'city', attributes: ['id', 'name'] },
-      ],
-      order: [['created_at', 'DESC']],
-      limit: parsedLimit,
-      offset,
-    });
-
-    const vehicleIds = rows.map((v) => v.id);
-    const wishlistCountMap = await getCommercialWishlistCountMap(vehicleIds);
-
-    const transformedVehicles = rows.map((v) => {
-      const transformed = transformCommercialVehicleImages(v, null, viewerUser);
-      return {
-        ...transformed,
-        wishlist_count: wishlistCountMap[v.id] || 0,
-      };
-    });
-
-    responseData = {
-      listings: transformedVehicles,
-      vehicles: transformedVehicles,
-      cars: transformedVehicles,
-      pagination: {
-        page: parsedPage,
-        limit: parsedLimit,
-        total: count,
-        totalPages: Math.ceil(count / parsedLimit) || 1,
-      },
-    };
-
-    try {
-      if (redisClient.isOpen) {
-        await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
-      }
-    } catch (err) {}
-  }
-
-  // Attach dynamic user-specific isWishlist without polluting cache
-  let wishlistSet = new Set();
-  const vList = responseData.listings || [];
-  if (viewerUser?.id && vList.length > 0) {
-    const vIds = vList.map((v) => v.id);
-    const userWishlists = await Wishlist.findAll({
-      where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vIds },
-      attributes: ['target_id'],
-      raw: true,
-    });
-    wishlistSet = new Set(userWishlists.map((w) => w.target_id));
-  }
-
-  const finalVehicles = vList.map((v) => {
-    const isW = wishlistSet.has(v.id);
-    return {
-      ...v,
-      wishlist_count: parseInt(v.wishlist_count || 0, 10) || 0,
-      isWishlist: isW,
-      is_wishlist: isW,
-    };
-  });
-
-  return {
-    ...responseData,
-    listings: finalVehicles,
-    vehicles: finalVehicles,
-    cars: finalVehicles,
-  };
-};
-
-/**
- * Get Similar Commercial Vehicles
- */
-exports.getSimilarCommercialVehicles = async (vehicleId, limit = 4, page = 1, viewerUser = null) => {
-  if (!isUuid(vehicleId)) {
-    throw new AppError('Invalid commercial vehicle ID format', 400);
-  }
-
-  const targetVehicle = await CommercialVehicle.findByPk(vehicleId);
-  if (!targetVehicle) {
-    throw new AppError('Commercial vehicle not found.', 404);
-  }
-
-  const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
-  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 4, 1), 50);
-  const cacheKeySimilar = `similar:commercial:${vehicleId}:${parsedPage}:${parsedLimit}`;
-
-  let similarData = null;
-  try {
-    if (redisClient.isOpen) {
-      const cached = await redisClient.get(cacheKeySimilar);
-      if (cached) similarData = JSON.parse(cached);
-    }
-  } catch (err) {
-    console.error('Redis cache error in getSimilarCommercialVehicles:', err);
-  }
-
-  const offset = (parsedPage - 1) * parsedLimit;
-
-  if (!similarData) {
-    // Step 1: Gather candidates (same brand or same vehicle_type)
-    const candidateWhere = {
-      status: 'active',
-      id: { [Op.ne]: vehicleId },
-      [Op.or]: [
-        { brand_id: targetVehicle.brand_id },
-        targetVehicle.vehicle_type_id ? { vehicle_type_id: targetVehicle.vehicle_type_id } : null,
-      ].filter(Boolean),
-    };
-
-    let candidates = await CommercialVehicle.findAll({
-      where: candidateWhere,
-      include: [
-        { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
-        sellerInclude,
-        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
-        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-        { model: District, as: 'district', attributes: ['id', 'name'] },
-        { model: City, as: 'city', attributes: ['id', 'name'] },
-      ],
-    });
-
-    // Step 2: Relevance scoring
-    let scoredCandidates = candidates.map((v) => {
-      let score = 0;
-      if (v.brand_id === targetVehicle.brand_id) score += 50;
-      if (v.vehicle_type_id && targetVehicle.vehicle_type_id && v.vehicle_type_id === targetVehicle.vehicle_type_id) score += 40;
-      if (v.fuel_type && targetVehicle.fuel_type && v.fuel_type.toLowerCase() === targetVehicle.fuel_type.toLowerCase()) score += 10;
-      if (v.ownership && targetVehicle.ownership && v.ownership === targetVehicle.ownership) score += 5;
-
-      if (targetVehicle.price && v.price) {
-        const diff = Math.abs(parseFloat(v.price) - parseFloat(targetVehicle.price)) / parseFloat(targetVehicle.price);
-        if (diff <= 0.20) score += 20;
-      }
-
-      if (targetVehicle.year && v.year) {
-        if (Math.abs(v.year - targetVehicle.year) <= 3) score += 10;
-      }
-      return { vehicle: v, score };
-    });
-
-    scoredCandidates.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return new Date(b.vehicle.created_at) - new Date(a.vehicle.created_at);
-    });
-
-    // Step 3: Fallback if no candidate matched
-    if (scoredCandidates.length === 0) {
-      const fallback = await CommercialVehicle.findAll({
-        where: {
-          status: 'active',
-          id: { [Op.ne]: vehicleId },
-        },
-        include: [
-          { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
-          sellerInclude,
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
-          { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-          { model: District, as: 'district', attributes: ['id', 'name'] },
-          { model: City, as: 'city', attributes: ['id', 'name'] },
-        ],
-        order: [['created_at', 'DESC']],
-        limit: parsedLimit,
+    if (userId) {
+      const existing = await View.findOne({
+        where: { target_type: 'commercial', target_id: vehicleId, user_id: userId },
       });
-      scoredCandidates = fallback.map((vehicle) => ({ vehicle, score: 0 }));
-    }
-
-    const total = scoredCandidates.length;
-    const paginatedSlice = scoredCandidates.slice(offset, offset + parsedLimit).map((sc) => sc.vehicle);
-    const vehicleIds = paginatedSlice.map((v) => v.id);
-    const wishlistCountMap = await getCommercialWishlistCountMap(vehicleIds);
-
-    const transformedVehicles = paginatedSlice.map((v) => {
-      const transformed = transformCommercialVehicleImages(v, null, viewerUser);
-      return {
-        ...transformed,
-        wishlist_count: wishlistCountMap[v.id] || 0,
-      };
-    });
-
-    similarData = {
-      data: transformedVehicles,
-      vehicles: transformedVehicles,
-      cars: transformedVehicles,
-      pagination: {
-        page: parsedPage,
-        limit: parsedLimit,
-        total,
-        totalPages: Math.ceil(total / parsedLimit) || 1,
-      },
-    };
-
-    try {
-      if (redisClient.isOpen) {
-        await redisClient.setEx(cacheKeySimilar, 300, JSON.stringify(similarData));
+      if (existing) {
+        await existing.update({ timestamp: new Date() });
+      } else {
+        await View.create({
+          target_type: 'commercial',
+          target_id: vehicleId,
+          user_id: userId,
+          timestamp: new Date(),
+        });
       }
-    } catch (err) {}
-  }
-
-  // Attach dynamic user-specific isWishlist without polluting cache
-  let wishlistSet = new Set();
-  const vList = similarData.data || [];
-  if (viewerUser?.id && vList.length > 0) {
-    const vIds = vList.map((v) => v.id);
-    const userWishlists = await Wishlist.findAll({
-      where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vIds },
-      attributes: ['target_id'],
-      raw: true,
-    });
-    wishlistSet = new Set(userWishlists.map(w => w.target_id));
-  }
-
-  const finalVehicles = vList.map((v) => {
-    const isW = wishlistSet.has(v.id);
-    return {
-      ...v,
-      wishlist_count: parseInt(v.wishlist_count || 0, 10) || 0,
-      isWishlist: isW,
-      is_wishlist: isW,
-    };
-  });
-
-  return {
-    ...similarData,
-    data: finalVehicles,
-    vehicles: finalVehicles,
-    cars: finalVehicles,
-  };
-};
-
-/**
- * Get Recommended Commercial Vehicles
- */
-exports.getRecommendedCommercialVehicles = async (targetVehicleId = null, currentUserId = null, limit = 4, viewerUser = null, excludeIds = []) => {
-  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 4, 1), 50);
-  const cacheKey = `recommended:commercial:${targetVehicleId || 'general'}:${currentUserId || 'trending'}:${parsedLimit}`;
-
-  let transformed = null;
-  try {
-    if (redisClient.isOpen) {
-      const cached = await redisClient.get(cacheKey);
-      if (cached) transformed = JSON.parse(cached);
+    } else {
+      await View.create({
+        target_type: 'commercial',
+        target_id: vehicleId,
+        user_id: null,
+        timestamp: new Date(),
+      });
     }
+
+    await clearCachePattern(`commercial:views:${vehicleId}:*`);
   } catch (err) {
-    console.error('Redis cache error in getRecommendedCommercialVehicles:', err);
+    console.error('Failed to record commercial vehicle view:', err.message || err);
   }
-
-  if (!transformed) {
-    const allExcludeIds = [...(targetVehicleId ? [targetVehicleId] : []), ...(Array.isArray(excludeIds) ? excludeIds : [])];
-
-    const whereClause = {
-      status: 'active',
-      ...(allExcludeIds.length > 0 ? { id: { [Op.notIn]: allExcludeIds } } : {}),
-    };
-
-    const recommendedRows = await CommercialVehicle.findAll({
-      where: whereClause,
-      include: [
-        { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
-        sellerInclude,
-        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
-        { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-        { model: District, as: 'district', attributes: ['id', 'name'] },
-        { model: City, as: 'city', attributes: ['id', 'name'] },
-      ],
-      order: [
-        ['is_featured', 'DESC'],
-        ['views_count', 'DESC'],
-        ['created_at', 'DESC'],
-      ],
-      limit: parsedLimit,
-    });
-
-    const vehicleIds = recommendedRows.map((v) => v.id);
-    const wishlistCountMap = await getCommercialWishlistCountMap(vehicleIds);
-
-    transformed = recommendedRows.map((v) => {
-      const item = transformCommercialVehicleImages(v, null, viewerUser);
-      return {
-        ...item,
-        wishlist_count: wishlistCountMap[v.id] || 0,
-      };
-    });
-
-    try {
-      if (redisClient.isOpen) {
-        await redisClient.setEx(cacheKey, 300, JSON.stringify(transformed));
-      }
-    } catch (err) {}
-  }
-
-  // Attach dynamic user-specific isWishlist without polluting cache
-  let wishlistSet = new Set();
-  const vList = transformed || [];
-  if (viewerUser?.id && vList.length > 0) {
-    const vIds = vList.map((v) => v.id);
-    const userWishlists = await Wishlist.findAll({
-      where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vIds },
-      attributes: ['target_id'],
-      raw: true,
-    });
-    wishlistSet = new Set(userWishlists.map(w => w.target_id));
-  }
-
-  const finalVehicles = vList.map((v) => {
-    const isW = wishlistSet.has(v.id);
-    return {
-      ...v,
-      wishlist_count: parseInt(v.wishlist_count || 0, 10) || 0,
-      isWishlist: isW,
-      is_wishlist: isW,
-    };
-  });
-
-  return finalVehicles;
-};
-
-/**
- * Combined Similar and Recommended Commercial Vehicles
- */
-exports.getSimilarRecommended = async (vehicleId, currentUserId = null, limit = 4, page = 1, viewerUser = null) => {
-  const similarData = await exports.getSimilarCommercialVehicles(vehicleId, limit, page, viewerUser);
-  const similarIds = (similarData.data || []).map((v) => v.id);
-  const recommendedData = await exports.getRecommendedCommercialVehicles(vehicleId, currentUserId, limit, viewerUser, similarIds);
-
-  return {
-    similarVehicles: similarData,
-    recommendedVehicles: recommendedData,
-    similarCars: similarData, // alias for car frontend compatibility
-    recommendedCars: recommendedData, // alias for car frontend compatibility
-    similar: similarData,
-    recommended: recommendedData,
-  };
 };

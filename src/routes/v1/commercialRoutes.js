@@ -78,6 +78,10 @@ router.get('/:id/recommended', optionalAuth, commercialVehicleController.getReco
 // ─── Single Commercial Vehicle by ID or Slug ────────────────────
 router.get('/:id', optionalAuth, commercialVehicleController.getCommercialVehicleById);
 
+// ─── Record View (Explicit Endpoint) ────────────────────────────
+router.get('/:id/view', optionalAuth, commercialVehicleController.recordView);
+router.post('/:id/view', optionalAuth, commercialVehicleController.recordView);
+
 // ─── Update Commercial Vehicle ──────────────────────────────────
 router.patch(
   '/:id',

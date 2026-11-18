@@ -15,5 +15,6 @@ router.get('/states/:stateId/cities', locationController.getCitiesByState);
 router.post('/seed', locationController.seedLocations);
 router.get('/dealers', limiter, locationController.getDealersByLocation);
 router.get('/dealers/:dealerId', limiter, locationController.getDealerProfile);
+router.get('/dealers/:dealerId/commercial', limiter, locationController.getDealerCommercialVehicles);
 
 module.exports = router;
