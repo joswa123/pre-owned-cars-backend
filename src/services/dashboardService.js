@@ -1,4 +1,4 @@
-const { Car, Lead, Requirement } = require('../models');
+const { Car, Lead, Requirement, CommercialVehicle } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
@@ -27,7 +27,7 @@ exports.getDashboardSummary = async (userId, role) => {
     }
   }
 
-  // 2. Leads ownership mapping: Dashboard counts leads received on user's car listings (seller_id)
+  // 2. Leads ownership mapping: Dashboard counts leads received on user's vehicle listings (seller_id)
   const leadWhere = { seller_id: userId };
 
   // 3. Dynamic Expiry: Auto-expire active requirements past expiry date before counting
@@ -47,7 +47,7 @@ exports.getDashboardSummary = async (userId, role) => {
   }
 
   // 4. Parallel aggregated COUNT queries with GROUP BY
-  const [carCounts, leadCounts, requirementCounts] = await Promise.all([
+  const [carCounts, commercialCounts, leadCounts, requirementCounts] = await Promise.all([
     // Cars by status (unscoped to correctly capture active, sold, and deleted statuses)
     Car.unscoped().findAll({
       where: { user_id: userId },
@@ -55,11 +55,18 @@ exports.getDashboardSummary = async (userId, role) => {
       group: ['status'],
       raw: true,
     }),
-    // Leads by source
+    // Commercial vehicles by status
+    CommercialVehicle.findAll({
+      where: { user_id: userId },
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('status')), 'count']],
+      group: ['status'],
+      raw: true,
+    }),
+    // Leads by source and target_type
     Lead.findAll({
       where: leadWhere,
-      attributes: ['source', [sequelize.fn('COUNT', sequelize.col('source')), 'count']],
-      group: ['source'],
+      attributes: ['source', 'target_type', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['source', 'target_type'],
       raw: true,
     }),
     // Requirements by status
@@ -79,12 +86,30 @@ exports.getDashboardSummary = async (userId, role) => {
       sold: 0,
       deleted: 0,
     },
+    commercial: {
+      total: 0,
+      active: 0,
+      sold: 0,
+      deleted: 0,
+      expired: 0,
+    },
+    vehicles: {
+      total: 0,
+      active: 0,
+      sold: 0,
+      deleted: 0,
+      expired: 0,
+    },
     leads: {
       total: 0,
       by_source: {
         whatsapp: 0,
         call: 0,
         message: 0,
+      },
+      by_target: {
+        car: 0,
+        commercial: 0,
       },
     },
     requirements: {
@@ -109,24 +134,59 @@ exports.getDashboardSummary = async (userId, role) => {
     } else if (status === 'deleted') {
       result.cars.deleted = count;
     } else {
-      // Other non-deleted statuses if any (e.g. pending, inactive)
       result.cars.total += count;
     }
   });
 
-  // 7. Populate Lead Counts
+  // 7. Populate Commercial Vehicle Counts (Total excludes soft-deleted records)
+  commercialCounts.forEach((row) => {
+    const status = row.status;
+    const count = parseInt(row.count, 10) || 0;
+    if (status === 'active') {
+      result.commercial.active = count;
+      result.commercial.total += count;
+    } else if (status === 'sold') {
+      result.commercial.sold = count;
+      result.commercial.total += count;
+    } else if (status === 'expired') {
+      result.commercial.expired = count;
+      result.commercial.total += count;
+    } else if (status === 'deleted') {
+      result.commercial.deleted = count;
+    } else {
+      result.commercial.total += count;
+    }
+  });
+
+  // 8. Populate Unified Vehicles Object (sums up statuses across both sources)
+  result.vehicles.active = result.cars.active + result.commercial.active;
+  result.vehicles.sold = result.cars.sold + result.commercial.sold;
+  result.vehicles.deleted = result.cars.deleted + result.commercial.deleted;
+  result.vehicles.expired = (result.cars.expired || 0) + result.commercial.expired;
+  result.vehicles.total = result.cars.total + result.commercial.total;
+
+  // 9. Populate Lead Counts (by source & by target)
   leadCounts.forEach((row) => {
     const source = (row.source || 'message').trim().toLowerCase();
+    const targetType = (row.target_type || 'car').trim().toLowerCase();
     const count = parseInt(row.count, 10) || 0;
+
     result.leads.total += count;
+
     if (result.leads.by_source[source] !== undefined) {
       result.leads.by_source[source] += count;
     } else {
       result.leads.by_source[source] = count;
     }
+
+    if (targetType === 'commercial') {
+      result.leads.by_target.commercial += count;
+    } else {
+      result.leads.by_target.car += count;
+    }
   });
 
-  // 8. Populate Requirement Counts (Total excludes soft-deleted records)
+  // 10. Populate Requirement Counts (Total excludes soft-deleted records)
   requirementCounts.forEach((row) => {
     const status = row.status;
     const count = parseInt(row.count, 10) || 0;
@@ -144,7 +204,7 @@ exports.getDashboardSummary = async (userId, role) => {
     }
   });
 
-  // 9. Cache in Redis
+  // 11. Cache in Redis
   if (redisClient.isOpen) {
     try {
       await redisClient.setEx(cacheKey, CACHE_TTL, JSON.stringify(result));

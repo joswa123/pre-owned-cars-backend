@@ -8,6 +8,8 @@ const { dealerFilterLimiter } = require('../../middlewares/rateLimiter');
 router.get('/', dealerController.getDealers);
 router.get('/:id/cars/filters', optionalAuth, dealerFilterLimiter, dealerController.getDealerCarFilters);
 router.get('/:id/cars', optionalAuth, dealerController.getDealerCars);
+router.get('/:id/commercial/filters', optionalAuth, dealerFilterLimiter, dealerController.getDealerCommercialFilters);
+router.get('/:id/commercial', optionalAuth, dealerController.getDealerCommercialVehicles);
 router.get('/:id', optionalAuth, dealerController.getDealer);
 
 module.exports = router;

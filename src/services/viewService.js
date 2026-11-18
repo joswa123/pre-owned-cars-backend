@@ -1,4 +1,4 @@
-const { View, Car, User, Brand, Model, CarStat } = require('../models');
+const { View, Car, User, Brand, Model, CarStat, CommercialVehicle, CarType } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const redisClient = require('../config/redis');
@@ -25,6 +25,13 @@ const decodeCursor = (cursorStr) => {
   return null;
 };
 
+const maskPhone = (phone) => {
+  if (!phone) return null;
+  const str = String(phone).trim();
+  if (str.length <= 4) return '******';
+  return '*'.repeat(str.length - 4) + str.slice(-4);
+};
+
 /**
  * Get distinct registered users who viewed a specific car (seller authorization check)
  */
@@ -39,10 +46,17 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
   });
 
   if (!car) {
+    // Check if carId is actually a commercial vehicle belonging to this seller
+    const commercial = await CommercialVehicle.findOne({
+      where: { id: carId, user_id: sellerId },
+    });
+    if (commercial) {
+      return exports.getCommercialViews(sellerId, carId, { limit, cursor });
+    }
     throw new AppError('Car not found or you are not authorized to view these metrics', 404);
   }
 
-  const limitNum = Math.min(parseInt(limit) || 20, 100);
+  const limitNum = Math.min(parseInt(limit, 10) || 20, 100);
   const cacheKey = `car:views:${carId}:${cursor || 'first'}:${limitNum}`;
 
   try {
@@ -55,7 +69,10 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
   }
 
   const baseRegisteredWhere = {
-    car_id: carId,
+    [Op.or]: [
+      { car_id: carId },
+      { target_type: 'car', target_id: carId },
+    ],
     user_id: { [Op.ne]: null },
   };
 
@@ -93,7 +110,14 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
       limit: limitNum,
     }),
     View.count({ where: baseRegisteredWhere }),
-    View.count({ where: { car_id: carId } }),
+    View.count({
+      where: {
+        [Op.or]: [
+          { car_id: carId },
+          { target_type: 'car', target_id: carId },
+        ],
+      },
+    }),
     CarStat.findOne({ where: { car_id: carId } }),
   ]);
 
@@ -118,12 +142,17 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
 
   const carName = [car.brand?.name, car.carModel?.name].filter(Boolean).join(' ') || 'Pre-Owned Car';
 
+  const carInfo = {
+    id: car.id,
+    name: carName,
+    number_plate: car.number_plate,
+    type: 'car',
+  };
+
   const result = {
-    car_info: {
-      id: car.id,
-      name: carName,
-      number_plate: car.number_plate,
-    },
+    car_info: carInfo,
+    vehicle_info: carInfo,
+    commercial_info: null,
     meta: {
       total_views: totalViews,
       registered_views: registeredViews,
@@ -144,6 +173,144 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
     }
   } catch (err) {
     console.error('Redis set cache error in getCarViews:', err);
+  }
+
+  return result;
+};
+
+/**
+ * Get distinct registered users who viewed a specific commercial vehicle (seller authorization check)
+ */
+exports.getCommercialViews = async (sellerId, commercialId, { limit = 20, cursor = null } = {}) => {
+  // 1. Security Check: Verify commercial vehicle exists and belongs to this seller
+  const vehicle = await CommercialVehicle.findOne({
+    where: { id: commercialId, user_id: sellerId },
+    include: [
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+    ],
+  });
+
+  if (!vehicle) {
+    // If not found in commercial, check if it's a regular car
+    const car = await Car.findOne({
+      where: { id: commercialId, user_id: sellerId },
+    });
+    if (car) {
+      return exports.getCarViews(sellerId, commercialId, { limit, cursor });
+    }
+    throw new AppError('Commercial vehicle not found or you are not authorized to view these metrics', 404);
+  }
+
+  const limitNum = Math.min(parseInt(limit, 10) || 20, 100);
+  const cacheKey = `commercial:views:${commercialId}:${cursor || 'first'}:${limitNum}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get cache error in getCommercialViews:', err);
+  }
+
+  const baseRegisteredWhere = {
+    target_type: 'commercial',
+    target_id: commercialId,
+    user_id: { [Op.ne]: null },
+  };
+
+  const queryWhere = { ...baseRegisteredWhere };
+  const decodedCursor = decodeCursor(cursor);
+  if (decodedCursor) {
+    if (decodedCursor.id) {
+      queryWhere[Op.or] = [
+        { timestamp: { [Op.lt]: new Date(decodedCursor.timestamp) } },
+        {
+          timestamp: new Date(decodedCursor.timestamp),
+          id: { [Op.lt]: decodedCursor.id },
+        },
+      ];
+    } else {
+      queryWhere.timestamp = { [Op.lt]: new Date(decodedCursor.timestamp) };
+    }
+  }
+
+  const [registeredResult, totalRegisteredCount, totalDbViews] = await Promise.all([
+    View.findAndCountAll({
+      where: queryWhere,
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'full_name', 'phone'],
+          required: false,
+        },
+      ],
+      order: [
+        ['timestamp', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      limit: limitNum,
+    }),
+    View.count({ where: baseRegisteredWhere }),
+    View.count({ where: { target_type: 'commercial', target_id: commercialId } }),
+  ]);
+
+  const views = registeredResult.rows;
+  const registeredViews = totalRegisteredCount;
+  const totalViews = Math.max(vehicle.views_count || 0, totalDbViews);
+  const anonymousViews = Math.max(totalViews - registeredViews, 0);
+
+  const formattedViews = views.map((v) => {
+    const json = typeof v.toJSON === 'function' ? v.toJSON() : v;
+    return {
+      user_name: json.user?.full_name || 'Anonymous Visitor',
+      user_phone: json.user?.phone ? maskPhone(json.user.phone) : 'N/A',
+      viewed_at: json.timestamp,
+    };
+  });
+
+  const lastView = views.length > 0 ? views[views.length - 1] : null;
+  const nextCursor = lastView
+    ? encodeCursor({ timestamp: lastView.timestamp, id: lastView.id })
+    : null;
+
+  const vehicleName = [vehicle.brand?.name, vehicle.vehicleType?.name].filter(Boolean).join(' ') || 'Commercial Vehicle';
+
+  const vehicleInfo = {
+    id: vehicle.id,
+    name: vehicleName,
+    year: vehicle.year,
+    price: vehicle.price,
+    status: vehicle.status,
+    type: 'commercial',
+  };
+
+  const result = {
+    car_info: vehicleInfo, // For backwards compatibility so existing UI components don't crash
+    vehicle_info: vehicleInfo,
+    commercial_info: vehicleInfo,
+    meta: {
+      total_views: totalViews,
+      registered_views: registeredViews,
+      anonymous_views: anonymousViews,
+    },
+    views: formattedViews,
+    pagination: {
+      total: registeredViews,
+      limit: limitNum,
+      next_cursor: nextCursor,
+      has_more: formattedViews.length === limitNum,
+    },
+  };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 30, JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('Redis set cache error in getCommercialViews:', err);
   }
 
   return result;

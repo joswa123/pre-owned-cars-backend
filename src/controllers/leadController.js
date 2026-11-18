@@ -21,9 +21,15 @@ exports.createLead = catchAsync(async (req, res) => {
  */
 exports.getLeadSummary = catchAsync(async (req, res) => {
   const sellerId = req.user.id;
-  const { status, limit = 20, cursor } = req.query;
+  const { status, limit = 20, cursor, target_type, type, targetType } = req.query;
+  const resolvedTargetType = target_type || type || targetType || null;
 
-  const result = await leadService.getLeadSummary(sellerId, { status, limit, cursor });
+  const result = await leadService.getLeadSummary(sellerId, {
+    status,
+    limit,
+    cursor,
+    target_type: resolvedTargetType,
+  });
 
   res.status(200).json({
     status: 'success',
@@ -81,9 +87,15 @@ exports.markAsRead = catchAsync(async (req, res) => {
  */
 exports.getSellerLeads = catchAsync(async (req, res) => {
   const sellerId = req.user.id;
-  const { status, page = 1, limit = 20, cursor } = req.query;
+  const { status, page = 1, limit = 20, cursor, target_type, type, targetType } = req.query;
+  const resolvedTargetType = target_type || type || targetType || null;
 
-  const result = await leadService.getSellerLeads(sellerId, { status, cursor }, page, limit);
+  const result = await leadService.getSellerLeads(
+    sellerId,
+    { status, cursor, target_type: resolvedTargetType },
+    page,
+    limit
+  );
 
   res.status(200).json({
     status: 'success',
@@ -96,9 +108,15 @@ exports.getSellerLeads = catchAsync(async (req, res) => {
  */
 exports.getBuyerLeads = catchAsync(async (req, res) => {
   const buyerId = req.user.id;
-  const { status, page = 1, limit = 20, cursor } = req.query;
+  const { status, page = 1, limit = 20, cursor, target_type, type, targetType } = req.query;
+  const resolvedTargetType = target_type || type || targetType || null;
 
-  const result = await leadService.getBuyerLeads(buyerId, { status, cursor }, page, limit);
+  const result = await leadService.getBuyerLeads(
+    buyerId,
+    { status, cursor, target_type: resolvedTargetType },
+    page,
+    limit
+  );
 
   res.status(200).json({
     status: 'success',

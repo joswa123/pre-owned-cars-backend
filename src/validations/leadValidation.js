@@ -38,13 +38,15 @@ const updateLeadStatusSchema = Joi.object({
 });
 
 const leadQuerySchema = Joi.object({
-  status: Joi.string().valid('new', 'contacted', 'closed').optional(),
+  status: Joi.string().valid('new', 'contacted', 'closed', 'all').optional(),
   page: Joi.number().integer().min(1).optional().default(1),
   limit: Joi.number().integer().min(1).max(100).optional().default(20),
   seller_id: Joi.string().uuid().optional(),
   car_id: Joi.string().uuid().optional(),
   target_id: Joi.string().uuid().optional(),
-  target_type: Joi.string().valid('car', 'commercial').optional(),
+  target_type: Joi.string().valid('car', 'commercial', 'all').optional(),
+  type: Joi.string().valid('car', 'commercial', 'all').optional(),
+  targetType: Joi.string().valid('car', 'commercial', 'all').optional(),
   start_date: Joi.date().iso().optional(),
   end_date: Joi.date().iso().optional(),
   search: Joi.string().optional(),

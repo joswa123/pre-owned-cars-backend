@@ -211,6 +211,8 @@ const queryCommercialVehicleSchema = Joi.object({
 
   user_id: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),
   seller_id: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),
+  dealer_id: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),
+  dealerId: Joi.alternatives().try(optionalHybridId, Joi.string().valid('me')).allow('', null).optional(),
 }).unknown(false);
 
 /**

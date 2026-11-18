@@ -188,7 +188,11 @@ Retrieve paginated reports with search and filter capabilities.
 Submit an enquiry for a car or commercial vehicle listing.
 
 - **Method / Endpoint:** `POST /api/v1/leads` or `POST /api/v1/enquiries`
-- **Auth:** Required (Registered User or Guest with name & phone)
+- **Auth:** Required (Registered User via Bearer Token or Guest with name & phone)
+- **User IDs Resolution:**
+  - **Buyer User ID (`buyer_id` / `user_id`):** Automatically extracted by the backend from the JWT token (`req.user.id`). If passing explicit buyer ID, `"user_id"` can be passed in the body.
+  - **Seller User ID (`seller_id`):** **DO NOT need to send.** The backend automatically fetches the vehicle (`target_id`), resolves its owner (`commercialVehicle.user_id` or `car.user_id`), and binds `seller_id` automatically.
+
 - **Request Body (Commercial Vehicle Example):**
 ```json
 {
@@ -196,10 +200,11 @@ Submit an enquiry for a car or commercial vehicle listing.
   "target_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "source": "whatsapp",
   "message": "Hi, I am interested in this vehicle. Is the price negotiable?",
-  "contact_phone": "9876543210"
+  "contact_phone": "9876543210",
+  "user_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" 
 }
 ```
-*(For cars: pass `"target_type": "car"`, `"target_id": "..."` or `"car_id": "..."`)*
+*(Notes: `user_id` is optional; if omitted, `req.user.id` from your auth header is used. For cars: pass `"target_type": "car"`, and `"target_id"` or `"car_id"`)*
 
 #### Success Response (`201 Created`)
 ```json
@@ -215,6 +220,9 @@ Submit an enquiry for a car or commercial vehicle listing.
     "is_viewed": false,
     "interacted_at": "2026-11-17T04:05:00.000Z",
     "created_at": "2026-11-17T04:05:00.000Z",
+    "buyer_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "user_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "seller_id": "8b7a6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
     "buyer": {
       "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
       "full_name": "Ravi Kumar",
@@ -226,6 +234,8 @@ Submit an enquiry for a car or commercial vehicle listing.
     "commercial": {
       "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
       "target_type": "commercial",
+      "user_id": "8b7a6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+      "seller_id": "8b7a6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
       "name": "Tata Mini Truck 2021",
       "brand": "Tata",
       "model": "Mini Truck",
@@ -388,3 +398,245 @@ Fetch chronological enquiry timeline for a specific listing (dynamically resolve
 - **Method / Endpoint:** `GET /api/v1/leads/me`
 - **Auth:** Required (Logged-in Buyer)
 - Returns unified paginated list of all enquiries submitted by the current user across both vehicle types.
+
+---
+
+## 4. Views Tracking Module (`View`)
+
+### 4.1 Overview & Polymorphic Architecture
+Views tracking records listing impressions and distinct viewer interactions for sellers. The system now supports both **Cars** and **Commercial Vehicles** polymorphically:
+
+1. **Database Schema:**
+   - `target_type`: ENUM(`'car'`, `'commercial'`) NOT NULL DEFAULT `'car'`
+   - `target_id`: UUID/CHAR(36) of the Car or Commercial Vehicle
+   - `car_id`: Legacy UUID column preserved for backward compatibility
+   - `user_id`: UUID of registered viewer (NULL for anonymous guest visitors)
+   - `timestamp`: Date/Time of the view
+
+2. **Phone Number Masking:**
+   - In commercial views analytics, registered viewer phone numbers are masked for privacy (e.g., `******3456`) using `*`.repeat(length - 4) + last4.
+
+3. **Mirror Contract UI Reuse:**
+   - Both `GET /views/car/:carId` and `GET /views/commercial/:id` return identical response keys:
+     - `car_info`: Always provided (contains vehicle data so frontend components accessing `data.car_info.name` do not crash).
+     - `vehicle_info`: Unified vehicle metadata object.
+     - `commercial_info`: Populated for commercial vehicles (`null` for cars).
+     - `meta`: Aggregate counts (`total_views`, `registered_views`, `anonymous_views`).
+     - `views`: List of viewers (`user_name`, `user_phone`, `viewed_at`).
+     - `pagination`: Cursor-based pagination metadata (`total`, `limit`, `next_cursor`, `has_more`).
+
+---
+
+### 4.2 Get Commercial Vehicle Views (Seller Analytics)
+Returns distinct registered users who viewed the seller's commercial vehicle, with masked phone numbers and aggregate impression stats.
+
+- **Method / Endpoints:**
+  - `GET /api/v1/views/commercial/:id`
+  - `GET /api/v1/views/commercial/:carId` (alias)
+  - `GET /api/v1/views/vehicle/:id` (polymorphic vehicle alias)
+  - `GET /api/v1/views/car/:carId` (backward-compatible fallback: automatically routes to commercial if `:carId` is a commercial vehicle)
+- **Auth:** Required (Seller who owns the vehicle)
+- **Query Parameters:**
+  - `limit` (number, default: `20`, max: `100`)
+  - `cursor` (string, base64 encoded cursor for pagination)
+
+#### Success Response (`200 OK`)
+```json
+{
+  "status": "success",
+  "data": {
+    "vehicle_info": {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "name": "Tata Mini Truck",
+      "year": 2021,
+      "price": 1450000,
+      "status": "active",
+      "type": "commercial"
+    },
+    "commercial_info": {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "name": "Tata Mini Truck",
+      "year": 2021,
+      "price": 1450000,
+      "status": "active",
+      "type": "commercial"
+    },
+    "car_info": {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "name": "Tata Mini Truck",
+      "year": 2021,
+      "price": 1450000,
+      "status": "active",
+      "type": "commercial"
+    },
+    "meta": {
+      "total_views": 154,
+      "registered_views": 12,
+      "anonymous_views": 142
+    },
+    "views": [
+      {
+        "user_name": "Ravi Kumar",
+        "user_phone": "******3210",
+        "viewed_at": "2026-11-18T05:30:00.000Z"
+      },
+      {
+        "user_name": "Priya Sharma",
+        "user_phone": "******7890",
+        "viewed_at": "2026-11-17T18:15:00.000Z"
+      }
+    ],
+    "pagination": {
+      "total": 12,
+      "limit": 20,
+      "next_cursor": "eyJ0aW1lc3RhbXAiOiIyMDI2LTExLTE3VDE4OjE1OjAwLjAwMFoiLCJpZCI6IjEyMyJ9",
+      "has_more": false
+    }
+  }
+}
+```
+
+---
+
+### 4.3 Record Commercial Vehicle View
+Views are automatically logged whenever a vehicle is fetched via `GET /api/v1/commercial/:id`. Additionally, an explicit view endpoint is provided:
+
+- **Method / Endpoint:** `POST /api/v1/commercial/:id/view` or `GET /api/v1/commercial/:id/view`
+- **Auth:** Optional (`optionalAuth` — records user ID if logged in, records `user_id: null` for guest visitors)
+- **Behavior:**
+  - Increments `views_count` on the commercial vehicle.
+  - Upserts `View` record (for registered users: updates `timestamp` if previously viewed without duplicating rows; for guests: appends guest view).
+  - Automatically suppresses views from the vehicle's seller (owner views are not counted).
+  - Invalidates views cache pattern (`commercial:views:${id}:*`).
+
+#### Success Response (`200 OK`)
+```json
+{
+  "status": "success",
+  "message": "View recorded successfully."
+}
+```
+
+---
+
+## 5. Dashboard & Dealer Inventory Modules
+
+### 5.1 User / Seller Dashboard (`GET /api/v1/users/me/dashboard`)
+Returns unified and category-specific inventory and lead statistics for the authenticated seller.
+
+- **Method / Endpoint:** `GET /api/v1/users/me/dashboard`
+- **Auth:** Required (Customer, Dealer, or Admin)
+- **Response Shape:**
+  - `cars`: Total, active, sold, deleted counts for cars (backward-compatible).
+  - `commercial`: Total, active, sold, deleted, expired counts for commercial vehicles.
+  - `vehicles`: Unified aggregate summing up statuses (`active`, `sold`, `deleted`, `expired`, `total`) across both sources.
+  - `leads`: Total leads, `by_source` (whatsapp, call, message), and `by_target` (`car`, `commercial`).
+  - `requirements`: Requirements metrics.
+
+#### Success Response (`200 OK`)
+```json
+{
+  "status": "success",
+  "data": {
+    "cars": {
+      "total": 5,
+      "active": 3,
+      "sold": 1,
+      "deleted": 1
+    },
+    "commercial": {
+      "total": 4,
+      "active": 3,
+      "sold": 1,
+      "deleted": 0,
+      "expired": 0
+    },
+    "vehicles": {
+      "total": 9,
+      "active": 6,
+      "sold": 2,
+      "deleted": 1,
+      "expired": 0
+    },
+    "leads": {
+      "total": 14,
+      "by_source": {
+        "whatsapp": 6,
+        "call": 5,
+        "message": 3
+      },
+      "by_target": {
+        "car": 8,
+        "commercial": 6
+      }
+    },
+    "requirements": {
+      "total": 2,
+      "active": 2,
+      "expired": 0,
+      "bought": 0,
+      "deleted": 0
+    }
+  }
+}
+```
+
+---
+
+### 5.2 Dealer Profile with Multi-Category Inventory (`GET /api/v1/locations/dealers/:dealerId`)
+Returns dealer details, contact information, location, active inventory counts, and initial inventory previews.
+
+- **Method / Endpoints:**
+  - `GET /api/v1/locations/dealers/:dealerId`
+  - `GET /api/v1/dealers/:id`
+- **Auth:** Public / OptionalAuth
+- **Query Parameters:**
+  - `type` (`'all'` | `'car'` | `'commercial'`, default: `'all'`):
+    - `type=car`: Bypasses commercial vehicle query entirely; returns up to 20 cars.
+    - `type=commercial`: Bypasses car query entirely; returns up to 20 commercial vehicles.
+    - `type=all` (default): Fetches top 10 cars and top 10 commercial vehicles, merges them by `created_at` DESC into `postedVehicles` (top 20 slice).
+- **Response Fields:**
+  - `inventory_counts`: `{ cars, commercial, total }` computed via database count.
+  - `postedCars`: Array of transformed active cars (`target_type: 'car'`).
+  - `postedCommercialVehicles`: Array of transformed active commercial vehicles (`target_type: 'commercial'`).
+  - `postedVehicles`: Merged top 20 array sorted by `created_at` DESC, with `target_type` tag.
+
+---
+
+### 5.3 Dealer Commercial Paginated Inventory & Facet Filters
+Full paginated, sorted, and filtered commercial vehicle inventory for a specific dealer showroom:
+
+- **Paginated Inventory Endpoints:**
+  - `GET /api/v1/locations/dealers/:dealerId/commercial`
+  - `GET /api/v1/dealers/:id/commercial`
+  - **Query Parameters:** `page`, `limit`, `sort_by`, `sort_order`, `brand_id`, `vehicle_type_id`, `min_price`, `max_price`, `min_km`, `max_km`, `min_year`, `max_year`, `fuel_type`, `ownership`, `search`.
+- **Dynamic Facet Filters Endpoint:**
+  - `GET /api/v1/dealers/:id/commercial/filters`
+  - Returns available brands, vehicle types, price/km/year ranges specific to this dealer's visible commercial inventory, backed by single-flight locking and tiered Redis caching.
+
+---
+
+## 6. Summary Table of All Polymorphic Routes
+
+| Module | Route / Endpoint | Methods | Auth | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| **Reports** | `/api/v1/car-reports` or `/api/v1/reports` | POST | Authenticated | Submit report for Car or Commercial Vehicle |
+| **Reports** | `/api/v1/admin/car-reports` or `/api/v1/car-reports` | GET | Admin | Admin list reports with `target_type` & `target_id` filtering |
+| **Reports** | `/api/v1/car-reports/:id` or `/api/v1/reports/:id` | GET | Admin | Get full report details with vehicle & seller |
+| **Leads** | `/api/v1/leads` or `/api/v1/enquiries` | POST | Authenticated / Guest | Submit enquiry for Car or Commercial Vehicle |
+| **Leads** | `/api/v1/leads/summary` | GET | Seller | Aggregated metrics for both Cars and Commercial listings |
+| **Leads** | `/api/v1/leads/commercial/:carId` | GET | Seller | Vehicle lead timeline for commercial vehicles |
+| **Leads** | `/api/v1/leads/vehicle/:carId` | GET | Seller | Polymorphic vehicle lead timeline |
+| **Leads** | `/api/v1/leads/seller` | GET | Seller | Seller leads inbox for all vehicle types |
+| **Views** | `/api/v1/views/commercial/:id` | GET | Seller | Distinct viewers list with masked phone numbers |
+| **Views** | `/api/v1/views/vehicle/:id` | GET | Seller | Polymorphic vehicle views list |
+| **Views** | `/api/v1/views/car/:carId` | GET | Seller | Car views list (with transparent fallback to commercial) |
+| **Views** | `/api/v1/commercial/:id/view` | GET, POST | Optional | Record commercial vehicle view |
+| **Dashboard** | `/api/v1/users/me/dashboard` | GET | Authenticated | Dashboard with `cars`, `commercial`, unified `vehicles`, `leads.by_target` |
+| **Dealer Profile** | `/api/v1/locations/dealers/:dealerId` | GET | Public | Dealer profile with `postedCars`, `postedCommercialVehicles`, `postedVehicles`, `inventory_counts` |
+| **Dealer Profile** | `/api/v1/dealers/:id` | GET | Optional | Dealer profile with `?type=car\|commercial\|all` bypass logic |
+| **Dealer Inventory** | `/api/v1/locations/dealers/:dealerId/commercial` | GET | Public | Full paginated commercial vehicle showroom for dealer |
+| **Dealer Inventory** | `/api/v1/dealers/:id/commercial` | GET | Optional | Full paginated commercial inventory with status scoping |
+| **Dealer Inventory** | `/api/v1/dealers/:id/commercial/filters` | GET | Optional | Dynamic commercial facet metadata with single-flight locking |
+
+

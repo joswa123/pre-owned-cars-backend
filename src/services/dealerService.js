@@ -9,6 +9,9 @@ const {
   State,
   District,
   City,
+  CommercialVehicle,
+  CommercialVehicleImage,
+  CarType,
 } = require('../models');
 const { Op, Sequelize, fn, col } = require('sequelize');
 const crypto = require('crypto');
@@ -79,7 +82,19 @@ exports.getActiveDealers = async (filters = {}, page = 1, limit = 20) => {
 /**
  * Get a single dealer by ID
  */
-exports.getDealerById = async (dealerId) => {
+exports.getDealerById = async (dealerId, type = 'all') => {
+  const typeParam = (type || 'all').toLowerCase();
+  const cacheKey = typeParam === 'all' ? `dealer:${dealerId}` : `dealer:${dealerId}:${typeParam}`;
+
+  if (redisClient.isOpen) {
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.error('[DealerService] Redis cache read error for dealer:', err);
+    }
+  }
+
   const dealer = await User.findOne({
     where: { id: dealerId, role: 'dealer', status: 'approved' },
     attributes: [
@@ -103,38 +118,95 @@ exports.getDealerById = async (dealerId) => {
       { model: State, as: 'stateDetail', attributes: ['name'] },
       { model: District, as: 'districtDetail', attributes: ['name'] },
       { model: City, as: 'cityDetail', attributes: ['name'] },
-      {
-        model: Car,
-        as: 'postedCars',
-        limit: 20,
-        order: [['created_at', 'DESC']],
-        where: { status: 'active', deleted_at: null },
-        required: false,
-        include: [
-          { model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] },
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-          { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
-          { model: District, as: 'district', attributes: ['id', 'name'] },
-          { model: City, as: 'city', attributes: ['id', 'name'] },
-        ],
-      },
     ],
   });
 
   if (!dealer) throw new AppError('Dealer not found', 404);
 
+  // Performance constraint: If type === 'car' or type === 'commercial', bypass the other query entirely!
+  const carLimit = typeParam === 'commercial' ? 0 : (typeParam === 'car' ? 20 : 10);
+  const commercialLimit = typeParam === 'car' ? 0 : (typeParam === 'commercial' ? 20 : 10);
+
+  const [rawCars, rawCommercial, carCount, commercialCount] = await Promise.all([
+    carLimit > 0
+      ? Car.findAll({
+          where: { user_id: dealerId, status: 'active', deleted_at: null },
+          limit: carLimit,
+          order: [['created_at', 'DESC']],
+          include: [
+            { model: CarImage, as: 'images', attributes: ['image_url', 'is_primary'] },
+            { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+            { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+            { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+            { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+            { model: District, as: 'district', attributes: ['id', 'name'] },
+            { model: City, as: 'city', attributes: ['id', 'name'] },
+          ],
+        })
+      : Promise.resolve([]),
+    commercialLimit > 0
+      ? CommercialVehicle.findAll({
+          where: { user_id: dealerId, status: 'active' },
+          limit: commercialLimit,
+          order: [['created_at', 'DESC']],
+          include: [
+            { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary', 'sort_order'] },
+            { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+            { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+            { model: State, as: 'state', attributes: ['id', 'name', 'code'] },
+            { model: District, as: 'district', attributes: ['id', 'name'] },
+            { model: City, as: 'city', attributes: ['id', 'name'] },
+          ],
+        })
+      : Promise.resolve([]),
+    Car.count({ where: { user_id: dealerId, status: 'active', deleted_at: null } }),
+    CommercialVehicle.count({ where: { user_id: dealerId, status: 'active' } }),
+  ]);
+
   const { transformCarImages } = require('./carService');
+  const { transformCommercialVehicleImages } = require('./commercialVehicleService');
   const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+
+  const postedCars = rawCars.map((c) => {
+    const transformed = transformCarImages(c.toJSON ? c.toJSON() : c, baseUrl);
+    transformed.target_type = 'car';
+    return transformed;
+  });
+
+  const postedCommercial = rawCommercial.map((cv) => {
+    const transformed = transformCommercialVehicleImages(cv, baseUrl);
+    transformed.target_type = 'commercial';
+    return transformed;
+  });
+
+  // Merge, sort by created_at DESC, and slice top 20
+  const mergedVehicles = [...postedCars, ...postedCommercial]
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    .slice(0, 20);
+
   const dealerJson = dealer.toJSON();
   dealerJson.location_text = [dealerJson.cityDetail?.name, dealerJson.districtDetail?.name, dealerJson.stateDetail?.name]
     .filter(Boolean)
     .join(', ');
 
-  if (Array.isArray(dealerJson.postedCars)) {
-    dealerJson.postedCars = dealerJson.postedCars.map(c => transformCarImages(c, baseUrl));
+  dealerJson.inventory_counts = {
+    cars: carCount,
+    commercial: commercialCount,
+    total: carCount + commercialCount,
+  };
+  dealerJson.postedCars = postedCars;
+  dealerJson.postedCommercialVehicles = postedCommercial;
+  dealerJson.commercialVehicles = postedCommercial; // alias
+  dealerJson.postedVehicles = mergedVehicles;
+
+  if (redisClient.isOpen) {
+    try {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(dealerJson));
+    } catch (err) {
+      console.error('[DealerService] Redis cache set error for dealer:', err);
+    }
   }
+
   return dealerJson;
 };
 
@@ -473,6 +545,225 @@ exports.getDealerCarFilters = async (dealerId, view = 'public') => {
   // 3. Lock acquired: compute from DB, write to cache, release lock
   try {
     return await computeDealerFiltersFromDb(dealerId, view, true);
+  } finally {
+    if (lockAcquired && redisClient.isOpen) {
+      await redisClient.del(lockKey).catch(() => {});
+    }
+  }
+};
+
+/**
+ * Compute commercial facet counts directly from the database for a dealer
+ */
+const computeDealerCommercialFiltersFromDb = async (dealerId, view, cacheResult = true) => {
+  const cacheKey = `dealer:${dealerId}:commercial:filters:${view}`;
+  const staleKey = `dealer:${dealerId}:commercial:filters:stale:${view}`;
+
+  const baseWhere = { user_id: dealerId };
+  if (view === 'public') {
+    baseWhere.status = 'active';
+  } else {
+    baseWhere.status = { [Op.ne]: 'deleted' };
+  }
+
+  const queryExecution = async () => {
+    const stats = await CommercialVehicle.findOne({
+      where: baseWhere,
+      attributes: [
+        [fn('COUNT', col('CommercialVehicle.id')), 'total_commercial_vehicles'],
+        [fn('MIN', col('price')), 'min_price'],
+        [fn('MAX', col('price')), 'max_price'],
+        [fn('MIN', col('km_driven')), 'min_km'],
+        [fn('MAX', col('km_driven')), 'max_km'],
+        [fn('MIN', col('year')), 'min_year'],
+        [fn('MAX', col('year')), 'max_year'],
+      ],
+      raw: true,
+    });
+
+    const totalCommercial = parseInt(stats?.total_commercial_vehicles, 10) || 0;
+
+    if (totalCommercial === 0) {
+      return {
+        view,
+        generated_at: new Date().toISOString(),
+        semantics: 'Facets reflect dealer full visible commercial inventory, computed from unfiltered status-scoped listings.',
+        facets: {
+          total_commercial_vehicles: 0,
+          total_vehicles: 0,
+          price_range: { min: null, max: null },
+          km_range: { min: null, max: null },
+          year_range: { min: null, max: null },
+          brands: [],
+          vehicle_types: [],
+          fuel_types: [],
+          ownerships: [],
+        },
+      };
+    }
+
+    const [brands, vehicleTypes, fuelTypes, ownerships] = await Promise.all([
+      CommercialVehicle.findAll({
+        where: baseWhere,
+        attributes: [
+          ['brand_id', 'id'],
+          [col('brand.name'), 'name'],
+          [fn('COUNT', col('CommercialVehicle.id')), 'count'],
+        ],
+        include: [{ model: Brand, as: 'brand', attributes: [] }],
+        group: ['CommercialVehicle.brand_id', 'brand.name'],
+        raw: true,
+      }),
+      CommercialVehicle.findAll({
+        where: baseWhere,
+        attributes: [
+          ['vehicle_type_id', 'id'],
+          [col('vehicleType.name'), 'name'],
+          [fn('COUNT', col('CommercialVehicle.id')), 'count'],
+        ],
+        include: [{ model: CarType, as: 'vehicleType', attributes: [] }],
+        group: ['CommercialVehicle.vehicle_type_id', 'vehicleType.name'],
+        raw: true,
+      }),
+      CommercialVehicle.findAll({
+        where: baseWhere,
+        attributes: [
+          ['fuel_type', 'name'],
+          [fn('COUNT', col('id')), 'count'],
+        ],
+        group: ['fuel_type'],
+        raw: true,
+      }),
+      CommercialVehicle.findAll({
+        where: baseWhere,
+        attributes: [
+          ['ownership', 'name'],
+          [fn('COUNT', col('id')), 'count'],
+        ],
+        group: ['ownership'],
+        raw: true,
+      }),
+    ]);
+
+    const formatBuckets = (list) =>
+      (list || [])
+        .filter((item) => item.name !== null && item.name !== undefined && String(item.name).trim() !== '')
+        .map((item) => ({
+          ...(item.id ? { id: item.id } : {}),
+          name: item.name,
+          count: parseInt(item.count, 10) || 0,
+        }));
+
+    return {
+      view,
+      generated_at: new Date().toISOString(),
+      semantics: 'Facets reflect dealer full visible commercial inventory, computed from unfiltered status-scoped listings.',
+      facets: {
+        total_commercial_vehicles: totalCommercial,
+        total_vehicles: totalCommercial,
+        price_range: {
+          min: stats.min_price !== null ? Number(stats.min_price) : null,
+          max: stats.max_price !== null ? Number(stats.max_price) : null,
+        },
+        km_range: {
+          min: stats.min_km !== null ? Number(stats.min_km) : null,
+          max: stats.max_km !== null ? Number(stats.max_km) : null,
+        },
+        year_range: {
+          min: stats.min_year !== null ? Number(stats.min_year) : null,
+          max: stats.max_year !== null ? Number(stats.max_year) : null,
+        },
+        brands: formatBuckets(brands),
+        vehicle_types: formatBuckets(vehicleTypes),
+        fuel_types: formatBuckets(fuelTypes),
+        ownerships: formatBuckets(ownerships),
+      },
+    };
+  };
+
+  const TIMEOUT_MS = 3000;
+  let timerId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timerId = setTimeout(() => {
+      const err = new Error('Facet query timed out');
+      err.code = 'ETIMEDOUT';
+      reject(err);
+    }, TIMEOUT_MS);
+  });
+
+  try {
+    const result = await Promise.race([queryExecution(), timeoutPromise]);
+    clearTimeout(timerId);
+
+    if (cacheResult && redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 600, JSON.stringify(result)).catch(() => {});
+      await redisClient.setEx(staleKey, 86400, JSON.stringify(result)).catch(() => {});
+    }
+
+    return result;
+  } catch (err) {
+    clearTimeout(timerId);
+    if (err.code === 'ETIMEDOUT') {
+      console.warn(`[DealerService] Commercial facet query timed out (3s) for dealer ${dealerId}`);
+      if (redisClient.isOpen) {
+        try {
+          const stale = await redisClient.get(staleKey);
+          if (stale) {
+            const staleData = JSON.parse(stale);
+            staleData.is_stale = true;
+            return staleData;
+          }
+        } catch (staleErr) {
+          console.error('[DealerService] Redis stale get error:', staleErr);
+        }
+      }
+    }
+    throw err;
+  }
+};
+
+/**
+ * Get dynamic filter facets for a dealer's commercial inventory.
+ * Uses single-flight lock to prevent cache stampedes.
+ */
+exports.getDealerCommercialFilters = async (dealerId, view = 'public') => {
+  await verifyDealerExists(dealerId, view);
+
+  const cacheKey = `dealer:${dealerId}:commercial:filters:${view}`;
+  const lockKey = `dealer:${dealerId}:commercial:filters:lock`;
+
+  if (redisClient.isOpen) {
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.error('[DealerService] Redis cache read error for commercial filters:', err);
+    }
+  }
+
+  let lockAcquired = false;
+  if (redisClient.isOpen) {
+    try {
+      const lockRes = await redisClient.set(lockKey, '1', { NX: true, EX: 5 });
+      lockAcquired = Boolean(lockRes);
+    } catch (err) {
+      console.error('[DealerService] Redis lock acquisition error:', err);
+    }
+
+    if (!lockAcquired) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      try {
+        const retryCached = await redisClient.get(cacheKey);
+        if (retryCached) return JSON.parse(retryCached);
+      } catch (err) {
+        console.error('[DealerService] Redis retry cache read error:', err);
+      }
+      return await computeDealerCommercialFiltersFromDb(dealerId, view, false);
+    }
+  }
+
+  try {
+    return await computeDealerCommercialFiltersFromDb(dealerId, view, true);
   } finally {
     if (lockAcquired && redisClient.isOpen) {
       await redisClient.del(lockKey).catch(() => {});

@@ -31,7 +31,7 @@ exports.getDealers = catchAsync(async (req, res) => {
 
 exports.getDealer = catchAsync(async (req, res) => {
   const dealerId = resolveDealerId(req);
-  const dealer = await dealerService.getDealerById(dealerId);
+  const dealer = await dealerService.getDealerById(dealerId, req.query.type);
   res.json({ status: 'success', data: dealer });
 });
 
@@ -130,4 +130,47 @@ exports.getDealerCars = catchAsync(async (req, res) => {
   );
 
   res.json({ status: 'success', data: result });
+});
+
+/**
+ * GET /dealers/:id/commercial/filters
+ * Returns dynamic facet metadata computed over the dealer's visible commercial inventory.
+ */
+exports.getDealerCommercialFilters = catchAsync(async (req, res) => {
+  const dealerId = resolveDealerId(req);
+  const isOwner = Boolean(req.user?.id && req.user.id === dealerId);
+  const view = isOwner ? 'owner' : 'public';
+
+  const result = await dealerService.getDealerCommercialFilters(dealerId, view);
+  res.json({ status: 'success', data: result });
+});
+
+/**
+ * GET /dealers/:id/commercial
+ * Returns filtered, paginated commercial inventory for a dealer.
+ */
+exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
+  const dealerId = resolveDealerId(req);
+  const isOwner = Boolean(req.user?.id && req.user.id === dealerId);
+  const commercialVehicleService = require('../services/commercialVehicleService');
+
+  const filters = { ...req.query, dealer_id: dealerId };
+  if (!isOwner) {
+    filters.status = 'active';
+  }
+
+  const result = await commercialVehicleService.getCommercialVehicles(
+    filters,
+    req.query.page || 1,
+    req.query.limit || 20,
+    req.query.sort_by || 'created_at',
+    req.query.sort_order || 'DESC',
+    req.user?.id || null,
+    req.user?.role || null
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
 });

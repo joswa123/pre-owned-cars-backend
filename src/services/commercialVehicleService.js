@@ -10,6 +10,7 @@ const {
   City,
   Wishlist,
   Lead,
+  View,
 } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
@@ -61,6 +62,7 @@ const invalidateCommercialCaches = async (vehicleId = null, userId = null) => {
     }
     await clearCachePattern('commercial:*');
     await clearCachePattern('seller:*');
+    await clearCachePattern('dealer:*');
     await clearCachePattern('global_search:*');
 
     const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
@@ -640,6 +642,12 @@ const buildCommercialFiltersWhere = async (rawFilters = {}) => {
     where.posted_by_type = String(rawFilters.posted_by_type).toLowerCase();
   }
 
+  // 12. Dealer / User ID filter
+  const targetDealerId = rawFilters.dealer_id || rawFilters.dealerId || rawFilters.user_id || rawFilters.userId || rawFilters.seller_id || rawFilters.sellerId;
+  if (targetDealerId && targetDealerId !== 'me' && targetDealerId !== 'all') {
+    where.user_id = targetDealerId;
+  }
+
   return { where, queryModel };
 };
 
@@ -745,6 +753,39 @@ exports.getCommercialVehicleById = async (identifier, viewerUser = null) => {
 
   // Increment views count
   await vehicle.increment('views_count');
+
+  // Record view in polymorphic views table
+  try {
+    const isOwner = viewerUser && viewerUser.id && viewerUser.id === vehicle.user_id;
+    if (!isOwner) {
+      if (viewerUser && viewerUser.id) {
+        const existingView = await View.findOne({
+          where: { target_type: 'commercial', target_id: vehicle.id, user_id: viewerUser.id },
+        });
+        if (existingView) {
+          await existingView.update({ timestamp: new Date() });
+        } else {
+          await View.create({
+            target_type: 'commercial',
+            target_id: vehicle.id,
+            user_id: viewerUser.id,
+            timestamp: new Date(),
+          });
+        }
+      } else {
+        await View.create({
+          target_type: 'commercial',
+          target_id: vehicle.id,
+          user_id: null,
+          timestamp: new Date(),
+        });
+      }
+
+      await clearCachePattern(`commercial:views:${vehicle.id}:*`);
+    }
+  } catch (err) {
+    console.error('Failed to record commercial vehicle view:', err.message || err);
+  }
 
   // Check wishlist status
   let isWishlist = false;
@@ -1099,4 +1140,44 @@ exports.setPrimaryImage = async (id, imageId, userId, userRole) => {
   await invalidateCommercialCaches(vehicle.id, userId);
 
   return { success: true, message: 'Primary image updated successfully' };
+};
+
+/**
+ * Record a commercial vehicle view (Unique per user tracking & live metrics)
+ */
+exports.recordView = async (vehicleId, userId = null) => {
+  const vehicle = await CommercialVehicle.findByPk(vehicleId, { attributes: ['id', 'user_id'] });
+  if (!vehicle) return;
+  if (userId && vehicle.user_id === userId) return; // Don't count seller's own views
+
+  await vehicle.increment('views_count');
+
+  try {
+    if (userId) {
+      const existing = await View.findOne({
+        where: { target_type: 'commercial', target_id: vehicleId, user_id: userId },
+      });
+      if (existing) {
+        await existing.update({ timestamp: new Date() });
+      } else {
+        await View.create({
+          target_type: 'commercial',
+          target_id: vehicleId,
+          user_id: userId,
+          timestamp: new Date(),
+        });
+      }
+    } else {
+      await View.create({
+        target_type: 'commercial',
+        target_id: vehicleId,
+        user_id: null,
+        timestamp: new Date(),
+      });
+    }
+
+    await clearCachePattern(`commercial:views:${vehicleId}:*`);
+  } catch (err) {
+    console.error('Failed to record commercial vehicle view:', err.message || err);
+  }
 };
