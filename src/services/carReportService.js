@@ -1,7 +1,43 @@
 // services/carReportService.js
-const { CarReport, Car, User, Brand, Model, CarImage, ReportReason } = require('../models');
+const {
+  CarReport,
+  Car,
+  CommercialVehicle,
+  CommercialVehicleImage,
+  CarType,
+  User,
+  Brand,
+  Model,
+  CarImage,
+  ReportReason,
+} = require('../models');
+const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const { resolveTarget } = require('../utils/targetResolver');
+
+const carInclude = {
+  model: Car,
+  as: 'car',
+  attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'brand_id', 'model_id', 'body_type'],
+  required: false,
+  include: [
+    { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+    { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+    { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+  ],
+};
+
+const commercialInclude = {
+  model: CommercialVehicle,
+  as: 'commercialVehicle',
+  attributes: ['id', 'year', 'price', 'status', 'brand_id', 'vehicle_type_id', 'views_count'],
+  required: false,
+  include: [
+    { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+    { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+    { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+  ],
+};
 
 /**
  * Submit a report for a car listing (authenticated / registered users only)
@@ -67,15 +103,8 @@ exports.createReport = async (reporterUser, data) => {
 
   return CarReport.findByPk(report.id, {
     include: [
-      {
-        model: Car,
-        as: 'car',
-        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status'],
-        include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-        ],
-      },
+      carInclude,
+      commercialInclude,
       {
         model: User,
         as: 'dealer',
@@ -95,8 +124,22 @@ exports.getReports = async (query = {}) => {
 
   const where = {};
   if (query.status) where.status = query.status;
+  if (query.target_type) {
+    where.target_type = query.target_type.toLowerCase();
+  }
   if (query.car_id || query.target_id) {
-    where.car_id = query.car_id || query.target_id;
+    const searchIds = [query.car_id, query.target_id].filter(Boolean);
+    if (searchIds.length === 1) {
+      where[Op.or] = [
+        { car_id: searchIds[0] },
+        { target_id: searchIds[0] },
+      ];
+    } else {
+      where[Op.or] = [
+        { car_id: { [Op.in]: searchIds } },
+        { target_id: { [Op.in]: searchIds } },
+      ];
+    }
   }
   if (query.dealer_id) where.dealer_id = query.dealer_id;
   if (query.reason) where.reason = query.reason;
@@ -107,16 +150,8 @@ exports.getReports = async (query = {}) => {
   const { count, rows } = await CarReport.findAndCountAll({
     where,
     include: [
-      {
-        model: Car,
-        as: 'car',
-        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'brand_id', 'model_id', 'body_type'],
-        include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-        ],
-      },
+      carInclude,
+      commercialInclude,
       {
         model: User,
         as: 'dealer',
@@ -160,15 +195,8 @@ exports.getUnreadCount = async () => {
 exports.getReportById = async (reportId) => {
   const report = await CarReport.findByPk(reportId, {
     include: [
-      {
-        model: Car,
-        as: 'car',
-        include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-        ],
-      },
+      carInclude,
+      commercialInclude,
       {
         model: User,
         as: 'dealer',

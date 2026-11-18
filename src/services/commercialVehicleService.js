@@ -10,6 +10,7 @@ const {
   City,
   Wishlist,
   Lead,
+  View,
 } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
@@ -67,6 +68,7 @@ const invalidateCommercialCaches = async (vehicleId = null, userId = null) => {
     await clearCachePattern('seller:*');
     await clearCachePattern('similar:commercial:*');
     await clearCachePattern('recommended:commercial:*');
+    await clearCachePattern('dealer:*');
     await clearCachePattern('global_search:*');
 
     const { clearCache: clearHttpCache } = require('../middlewares/cacheMiddleware');
@@ -521,7 +523,7 @@ exports.createCommercialVehicle = async (userId, userRole, rawData, files) => {
     }
     // Clean up uploaded Cloudinary images if transaction failed
     for (const pid of createdUploads) {
-      deleteCloudinaryMedia(pid).catch(() => {});
+      deleteCloudinaryMedia(pid).catch(() => { });
     }
     if (error instanceof AppError) throw error;
     if (error.name === 'SequelizeValidationError') {
@@ -781,6 +783,12 @@ const buildCommercialFiltersWhere = async (rawFilters = {}) => {
     where.created_at = { ...(where.created_at || {}), [Op.gte]: minCreatedAt };
   }
 
+  // 12. Dealer / User ID filter
+  const targetDealerId = rawFilters.dealer_id || rawFilters.dealerId || rawFilters.user_id || rawFilters.userId || rawFilters.seller_id || rawFilters.sellerId;
+  if (targetDealerId && targetDealerId !== 'me' && targetDealerId !== 'all') {
+    where.user_id = targetDealerId;
+  }
+
   return { where, queryModel };
 };
 
@@ -835,9 +843,9 @@ exports.getCommercialVehicles = async (
   const [userWishlists, wishlistCountMap] = await Promise.all([
     viewerUserId && vehicleIds.length > 0
       ? Wishlist.findAll({
-          where: { user_id: viewerUserId, target_type: 'commercial', target_id: vehicleIds },
-          attributes: ['target_id'],
-        })
+        where: { user_id: viewerUserId, target_type: 'commercial', target_id: vehicleIds },
+        attributes: ['target_id'],
+      })
       : Promise.resolve([]),
     getCommercialWishlistCountMap(vehicleIds),
   ]);
@@ -926,12 +934,45 @@ exports.getCommercialVehicleById = async (identifier, viewerUser = null) => {
   // Increment views count
   await vehicle.increment('views_count');
 
+  // Record view in polymorphic views table
+  try {
+    const isOwner = viewerUser && viewerUser.id && viewerUser.id === vehicle.user_id;
+    if (!isOwner) {
+      if (viewerUser && viewerUser.id) {
+        const existingView = await View.findOne({
+          where: { target_type: 'commercial', target_id: vehicle.id, user_id: viewerUser.id },
+        });
+        if (existingView) {
+          await existingView.update({ timestamp: new Date() });
+        } else {
+          await View.create({
+            target_type: 'commercial',
+            target_id: vehicle.id,
+            user_id: viewerUser.id,
+            timestamp: new Date(),
+          });
+        }
+      } else {
+        await View.create({
+          target_type: 'commercial',
+          target_id: vehicle.id,
+          user_id: null,
+          timestamp: new Date(),
+        });
+      }
+
+      await clearCachePattern(`commercial:views:${vehicle.id}:*`);
+    }
+  } catch (err) {
+    console.error('Failed to record commercial vehicle view:', err.message || err);
+  }
+
   // Check wishlist status and total wishlist count
   const [viewerWishlistCount, wishlistCount] = await Promise.all([
     viewerUser && viewerUser.id
       ? Wishlist.count({
-          where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicle.id },
-        })
+        where: { user_id: viewerUser.id, target_type: 'commercial', target_id: vehicle.id },
+      })
       : Promise.resolve(0),
     Wishlist.count({
       where: { target_type: 'commercial', target_id: vehicle.id },
@@ -986,10 +1027,10 @@ exports.getSellerCommercialVehicles = async (sellerId, filters = {}) => {
   const [userWishlists, wishlistCountMap] = await Promise.all([
     sellerId && vehicleIds.length > 0
       ? Wishlist.findAll({
-          where: { user_id: sellerId, target_type: 'commercial', target_id: vehicleIds },
-          attributes: ['target_id'],
-          raw: true,
-        })
+        where: { user_id: sellerId, target_type: 'commercial', target_id: vehicleIds },
+        attributes: ['target_id'],
+        raw: true,
+      })
       : Promise.resolve([]),
     getCommercialWishlistCountMap(vehicleIds),
   ]);
@@ -1079,19 +1120,19 @@ exports.updateCommercialVehicle = async (id, userId, userRole, rawData, files) =
     filteredData.video_url = getFileUrl(files.video[0]);
     if (vehicle.video_url && vehicle.video_url !== filteredData.video_url) {
       const oldVidPid = extractPublicIdFromUrl(vehicle.video_url);
-      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => {});
+      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => { });
     }
   } else if (rawData.video_url !== undefined) {
     filteredData.video_url = getFileUrl(rawData.video_url) || null;
     if (vehicle.video_url && filteredData.video_url === null) {
       const oldVidPid = extractPublicIdFromUrl(vehicle.video_url);
-      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => {});
+      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => { });
     }
   } else if (rawData.remove_video === true || rawData.remove_video === 'true') {
     filteredData.video_url = null;
     if (vehicle.video_url) {
       const oldVidPid = extractPublicIdFromUrl(vehicle.video_url);
-      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => {});
+      if (oldVidPid) deleteCloudinaryMedia(oldVidPid).catch(() => { });
     }
   }
 
@@ -1100,19 +1141,19 @@ exports.updateCommercialVehicle = async (id, userId, userRole, rawData, files) =
     filteredData.audio_url = getFileUrl(files.audio[0]);
     if (vehicle.audio_url && vehicle.audio_url !== filteredData.audio_url) {
       const oldAudPid = extractPublicIdFromUrl(vehicle.audio_url);
-      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => {});
+      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => { });
     }
   } else if (rawData.audio_url !== undefined) {
     filteredData.audio_url = getFileUrl(rawData.audio_url) || null;
     if (vehicle.audio_url && filteredData.audio_url === null) {
       const oldAudPid = extractPublicIdFromUrl(vehicle.audio_url);
-      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => {});
+      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => { });
     }
   } else if (rawData.remove_audio === true || rawData.remove_audio === 'true') {
     filteredData.audio_url = null;
     if (vehicle.audio_url) {
       const oldAudPid = extractPublicIdFromUrl(vehicle.audio_url);
-      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => {});
+      if (oldAudPid) deleteCloudinaryMedia(oldAudPid).catch(() => { });
     }
   }
 
@@ -1127,7 +1168,7 @@ exports.updateCommercialVehicle = async (id, userId, userRole, rawData, files) =
         transaction,
       });
       for (const img of oldImages) {
-        if (img.public_id) deleteCloudinaryMedia(img.public_id).catch(() => {});
+        if (img.public_id) deleteCloudinaryMedia(img.public_id).catch(() => { });
       }
       await CommercialVehicleImage.destroy({
         where: { commercial_vehicle_id: vehicle.id },
@@ -1310,7 +1351,7 @@ exports.deleteImage = async (id, imageId, userId, userRole) => {
     throw err;
   }
 
-  if (publicId) deleteCloudinaryMedia(publicId).catch(() => {});
+  if (publicId) deleteCloudinaryMedia(publicId).catch(() => { });
 
   await invalidateCommercialCaches(vehicle.id, userId);
 
@@ -1379,9 +1420,9 @@ exports.uploadCommercialVideo = async (vehicleId, userId, userRole, file) => {
         public_id: `video-${Date.now()}`,
       });
       videoUrl = result.secure_url;
-      try { fs.unlinkSync(file.path); } catch (e) {}
+      try { fs.unlinkSync(file.path); } catch (e) { }
     } catch (uploadErr) {
-      try { fs.unlinkSync(file.path); } catch (e) {}
+      try { fs.unlinkSync(file.path); } catch (e) { }
       throw new AppError(uploadErr.message || 'Failed to upload video to Cloudinary', 500);
     }
   }
@@ -1392,7 +1433,7 @@ exports.uploadCommercialVideo = async (vehicleId, userId, userRole, file) => {
 
   if (vehicle.video_url && vehicle.video_url !== videoUrl) {
     const oldPid = extractPublicIdFromUrl(vehicle.video_url);
-    if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => {});
+    if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => { });
   }
 
   vehicle.video_url = videoUrl;
@@ -1426,9 +1467,9 @@ exports.uploadCommercialAudio = async (vehicleId, userId, userRole, file) => {
         public_id: `audio-${Date.now()}`,
       });
       audioUrl = result.secure_url;
-      try { fs.unlinkSync(file.path); } catch (e) {}
+      try { fs.unlinkSync(file.path); } catch (e) { }
     } catch (uploadErr) {
-      try { fs.unlinkSync(file.path); } catch (e) {}
+      try { fs.unlinkSync(file.path); } catch (e) { }
       throw new AppError(uploadErr.message || 'Failed to upload audio to Cloudinary', 500);
     }
   }
@@ -1439,7 +1480,7 @@ exports.uploadCommercialAudio = async (vehicleId, userId, userRole, file) => {
 
   if (vehicle.audio_url && vehicle.audio_url !== audioUrl) {
     const oldPid = extractPublicIdFromUrl(vehicle.audio_url);
-    if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => {});
+    if (oldPid) deleteCloudinaryMedia(oldPid).catch(() => { });
   }
 
   vehicle.audio_url = audioUrl;
@@ -1531,7 +1572,7 @@ exports.getSellerCommercialListings = async (sellerId, excludeVehicleId = null, 
       if (redisClient.isOpen) {
         await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
       }
-    } catch (err) {}
+    } catch (err) { }
   }
 
   // Attach dynamic user-specific isWishlist without polluting cache
@@ -1693,7 +1734,7 @@ exports.getSimilarCommercialVehicles = async (vehicleId, limit = 4, page = 1, vi
       if (redisClient.isOpen) {
         await redisClient.setEx(cacheKeySimilar, 300, JSON.stringify(similarData));
       }
-    } catch (err) {}
+    } catch (err) { }
   }
 
   // Attach dynamic user-specific isWishlist without polluting cache
@@ -1786,7 +1827,7 @@ exports.getRecommendedCommercialVehicles = async (targetVehicleId = null, curren
       if (redisClient.isOpen) {
         await redisClient.setEx(cacheKey, 300, JSON.stringify(transformed));
       }
-    } catch (err) {}
+    } catch (err) { }
   }
 
   // Attach dynamic user-specific isWishlist without polluting cache
@@ -1831,4 +1872,44 @@ exports.getSimilarRecommended = async (vehicleId, currentUserId = null, limit = 
     similar: similarData,
     recommended: recommendedData,
   };
+};
+
+/**
+ * Record a commercial vehicle view (Unique per user tracking & live metrics)
+ */
+exports.recordView = async (vehicleId, userId = null) => {
+  const vehicle = await CommercialVehicle.findByPk(vehicleId, { attributes: ['id', 'user_id'] });
+  if (!vehicle) return;
+  if (userId && vehicle.user_id === userId) return; // Don't count seller's own views
+
+  await vehicle.increment('views_count');
+
+  try {
+    if (userId) {
+      const existing = await View.findOne({
+        where: { target_type: 'commercial', target_id: vehicleId, user_id: userId },
+      });
+      if (existing) {
+        await existing.update({ timestamp: new Date() });
+      } else {
+        await View.create({
+          target_type: 'commercial',
+          target_id: vehicleId,
+          user_id: userId,
+          timestamp: new Date(),
+        });
+      }
+    } else {
+      await View.create({
+        target_type: 'commercial',
+        target_id: vehicleId,
+        user_id: null,
+        timestamp: new Date(),
+      });
+    }
+
+    await clearCachePattern(`commercial:views:${vehicleId}:*`);
+  } catch (err) {
+    console.error('Failed to record commercial vehicle view:', err.message || err);
+  }
 };

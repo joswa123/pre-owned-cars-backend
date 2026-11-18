@@ -1,4 +1,18 @@
-const { Lead, Car, User, Brand, Model, Variant, CarImage, CarStat, View, Wishlist } = require('../models');
+const {
+  Lead,
+  Car,
+  CommercialVehicle,
+  CommercialVehicleImage,
+  CarType,
+  User,
+  Brand,
+  Model,
+  Variant,
+  CarImage,
+  CarStat,
+  View,
+  Wishlist,
+} = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const { AppError } = require('../utils/errorHandler');
@@ -42,12 +56,42 @@ const decodeCursor = (cursorStr) => {
   return null;
 };
 
+const leadCarInclude = {
+  model: Car.unscoped(),
+  as: 'car',
+  required: false,
+  attributes: ['id', 'user_id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
+  include: [
+    { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+    { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+    { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+    { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+    { model: CarStat, as: 'stats', required: false },
+  ],
+};
+
+const leadCommercialInclude = {
+  model: CommercialVehicle.unscoped ? CommercialVehicle.unscoped() : CommercialVehicle,
+  as: 'commercialVehicle',
+  required: false,
+  paranoid: false,
+  attributes: ['id', 'user_id', 'year', 'price', 'status', 'brand_id', 'vehicle_type_id', 'views_count'],
+  include: [
+    { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+    { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+    { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+  ],
+};
+
 const formatLead = (lead) => {
   if (!lead) return null;
   const json = typeof lead.toJSON === 'function' ? lead.toJSON() : { ...lead };
   const car = json.car;
   const carFormatted = car ? {
     id: car.id,
+    user_id: car.user_id || json.seller_id || null,
+    seller_id: car.user_id || json.seller_id || null,
+    target_type: 'car',
     name: [car.brand?.name, car.carModel?.name, car.carVariant?.name].filter(Boolean).join(' ') || 'Pre-Owned Car',
     brand: car.brand?.name || null,
     model: car.carModel?.name || null,
@@ -67,12 +111,58 @@ const formatLead = (lead) => {
     },
   } : null;
 
+  const commercial = json.commercialVehicle;
+  const commercialFormatted = commercial ? {
+    id: commercial.id,
+    user_id: commercial.user_id || json.seller_id || null,
+    seller_id: commercial.user_id || json.seller_id || null,
+    target_type: 'commercial',
+    name: [commercial.brand?.name, commercial.vehicleType?.name, commercial.year].filter(Boolean).join(' ') || 'Commercial Vehicle',
+    brand: commercial.brand?.name || null,
+    model: commercial.vehicleType?.name || null,
+    vehicle_type: commercial.vehicleType?.name || null,
+    variant: null,
+    year: commercial.year || null,
+    price: commercial.price || null,
+    status: commercial.status || null,
+    number_plate: null,
+    primary_image: commercial.images?.find((i) => i.is_primary)?.image_url || commercial.images?.[0]?.image_url || null,
+    metrics: {
+      views: commercial.views_count || 0,
+      total_enquiries: commercial.leads?.length || 0,
+      total_calls: 0,
+      total_whatsapp: 0,
+      total_messages: 0,
+      wishlist_count: commercial.wishlists?.length || 0,
+    },
+  } : null;
+
+  const isCommercial = json.target_type === 'commercial' || (!carFormatted && !!commercialFormatted);
+  const activeVehicle = isCommercial ? commercialFormatted : carFormatted;
+
+  const unifiedVehicle = activeVehicle ? {
+    id: activeVehicle.id,
+    user_id: activeVehicle.user_id || null,
+    seller_id: activeVehicle.seller_id || null,
+    target_type: activeVehicle.target_type,
+    name: activeVehicle.name,
+    brand: activeVehicle.brand,
+    model: activeVehicle.model,
+    variant: activeVehicle.variant || null,
+    year: activeVehicle.year,
+    price: activeVehicle.price,
+    status: activeVehicle.status,
+    primary_image: activeVehicle.primary_image,
+  } : null;
+
   const buyerName = json.buyer?.full_name || json.buyer_name || 'Anonymous';
   const buyerPhone = json.contact_phone || json.buyer?.phone || json.buyer_phone || 'N/A';
   const buyerEmail = json.buyer?.email || json.buyer_email || null;
 
   return {
     id: json.id,
+    target_type: json.target_type || (isCommercial ? 'commercial' : 'car'),
+    target_id: json.target_id || (isCommercial ? commercialFormatted?.id : carFormatted?.id) || json.car_id,
     interaction_id: json.id,
     type: json.source || 'message',
     status: json.status || 'new',
@@ -80,6 +170,8 @@ const formatLead = (lead) => {
     interacted_at: json.created_at || json.createdAt,
     created_at: json.created_at || json.createdAt,
     buyer_id: json.buyer_id,
+    user_id: json.buyer_id,
+    seller_id: json.seller_id,
     buyer: {
       id: json.buyer_id,
       full_name: buyerName,
@@ -90,7 +182,19 @@ const formatLead = (lead) => {
       state: json.buyer?.state || null,
       profile_picture: json.buyer?.profile_picture || null,
     },
-    car: carFormatted,
+    seller: json.seller ? {
+      id: json.seller.id,
+      full_name: json.seller.full_name,
+      phone: json.seller.phone,
+      email: json.seller.email,
+      role: json.seller.role,
+      city: json.seller.city || null,
+      state: json.seller.state || null,
+      profile_picture: json.seller.profile_picture || null,
+    } : null,
+    car: carFormatted, // Keep legacy field for backward compatibility
+    commercial: commercialFormatted,
+    vehicle: unifiedVehicle,
   };
 };
 
@@ -100,17 +204,8 @@ const formatLead = (lead) => {
 exports.getLeadById = async (leadId) => {
   const lead = await Lead.findByPk(leadId, {
     include: [
-      {
-        model: Car,
-        as: 'car',
-        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'brand_id', 'model_id', 'variant_id', 'body_type'],
-        include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-        ],
-      },
+      leadCarInclude,
+      leadCommercialInclude,
       {
         model: User,
         as: 'seller',
@@ -197,6 +292,8 @@ exports.createLead = async (userId, data) => {
   await clearCachePattern(`seller:lead_summary:${sellerId}:*`);
   if (targetType === 'car' && car) {
     await clearCachePattern(`car:leads:${car.id}:*`);
+  } else if (targetType === 'commercial' && commercialVehicle) {
+    await clearCachePattern(`car:leads:${commercialVehicle.id}:*`);
   }
   if (userId) {
     await clearCachePattern(`buyer:leads:${userId}:*`);
@@ -229,9 +326,11 @@ exports.createLead = async (userId, data) => {
 /**
  * Summary API: Cars grouped by lead stats with cursor pagination & Redis cache
  */
-exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = null } = {}) => {
+exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = null, target_type = null, type = null, targetType = null } = {}) => {
+  const rawTargetType = target_type || type || targetType || null;
+  const resolvedTarget = (rawTargetType && rawTargetType !== 'all') ? rawTargetType.toLowerCase() : null;
   const limitNum = Math.min(parseInt(limit) || 20, 100);
-  const cacheKey = `seller:lead_summary:${sellerId}:${status || 'all'}:${cursor || 'first'}:${limitNum}`;
+  const cacheKey = `seller:lead_summary:${sellerId}:${status || 'all'}:${resolvedTarget || 'all'}:${cursor || 'first'}:${limitNum}`;
 
   try {
     if (redisClient.isOpen) {
@@ -242,85 +341,142 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     console.error('Redis get cache error in getLeadSummary:', err);
   }
 
-  const whereClause = { user_id: sellerId };
+  const carWhere = { user_id: sellerId };
+  const commWhere = { user_id: sellerId };
   if (status && status !== 'all') {
-    whereClause.status = status.toLowerCase();
+    carWhere.status = status.toLowerCase();
+    commWhere.status = status.toLowerCase();
   } else {
-    whereClause.status = { [Op.ne]: 'deleted' };
+    carWhere.status = { [Op.ne]: 'deleted' };
+    commWhere.status = { [Op.ne]: 'deleted' };
   }
 
-  const decodedCursor = decodeCursor(cursor);
-  if (decodedCursor) {
-    if (decodedCursor.id) {
-      whereClause[Op.or] = [
-        { created_at: { [Op.lt]: new Date(decodedCursor.created_at) } },
-        {
-          created_at: new Date(decodedCursor.created_at),
-          id: { [Op.lt]: decodedCursor.id },
-        },
-      ];
-    } else {
-      whereClause.created_at = { [Op.lt]: new Date(decodedCursor.created_at) };
-    }
-  }
+  const shouldFetchCars = !resolvedTarget || resolvedTarget === 'car';
+  const shouldFetchCommercial = !resolvedTarget || resolvedTarget === 'commercial';
 
-  const cars = await Car.unscoped().findAll({
-    where: whereClause,
-    attributes: ['id', 'brand_id', 'model_id', 'variant_id', 'price', 'number_plate', 'status', 'created_at'],
-    include: [
-      {
-        model: Brand,
-        as: 'brand',
-        attributes: ['id', 'name'],
-      },
-      {
-        model: Model,
-        as: 'carModel',
-        attributes: ['id', 'name'],
-      },
-      {
-        model: Variant,
-        as: 'carVariant',
-        attributes: ['id', 'name'],
-      },
-      {
-        model: CarStat,
-        as: 'stats',
-        attributes: [
-          'views_count',
-          'enquiries_count',
-          'calls_count',
-          'whatsapp_count',
-          'messages_count',
-          'wishlist_count',
-        ],
-        required: false,
-      },
-      {
-        model: CarImage,
-        as: 'images',
-        attributes: ['id', 'image_url', 'is_primary'],
-        required: false,
-      },
-    ],
-    order: [
-      ['created_at', 'DESC'],
-      ['id', 'DESC'],
-    ],
-    limit: limitNum,
+  const [cars, commercialVehicles] = await Promise.all([
+    shouldFetchCars
+      ? Car.unscoped().findAll({
+          where: carWhere,
+          attributes: ['id', 'brand_id', 'model_id', 'variant_id', 'price', 'number_plate', 'status', 'created_at'],
+          include: [
+            { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+            { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+            { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
+            {
+              model: CarStat,
+              as: 'stats',
+              attributes: [
+                'views_count',
+                'enquiries_count',
+                'calls_count',
+                'whatsapp_count',
+                'messages_count',
+                'wishlist_count',
+              ],
+              required: false,
+            },
+            {
+              model: CarImage,
+              as: 'images',
+              attributes: ['id', 'image_url', 'is_primary'],
+              required: false,
+            },
+          ],
+          order: [
+            ['created_at', 'DESC'],
+            ['id', 'DESC'],
+          ],
+        })
+      : Promise.resolve([]),
+    shouldFetchCommercial
+      ? CommercialVehicle.findAll({
+          where: commWhere,
+          attributes: ['id', 'brand_id', 'vehicle_type_id', 'price', 'status', 'views_count', 'year', 'created_at'],
+          include: [
+            { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+            { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+            {
+              model: CommercialVehicleImage,
+              as: 'images',
+              attributes: ['id', 'image_url', 'is_primary'],
+              required: false,
+            },
+          ],
+          order: [
+            ['created_at', 'DESC'],
+            ['id', 'DESC'],
+          ],
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const unifiedList = [
+    ...cars.map((c) => {
+      const json = typeof c.toJSON === 'function' ? c.toJSON() : c;
+      const nameParts = [json.brand?.name, json.carModel?.name, json.carVariant?.name].filter(Boolean);
+      return {
+        id: json.id,
+        target_type: 'car',
+        name: nameParts.length > 0 ? nameParts.join(' ') : 'Pre-Owned Car',
+        price: json.price,
+        number_plate: json.number_plate,
+        status: json.status,
+        primary_image: json.images?.find((img) => img.is_primary)?.image_url || json.images?.[0]?.image_url || null,
+        stats: json.stats || {},
+        created_at: json.created_at,
+      };
+    }),
+    ...commercialVehicles.map((cv) => {
+      const json = typeof cv.toJSON === 'function' ? cv.toJSON() : cv;
+      const nameParts = [json.brand?.name, json.vehicleType?.name, json.year].filter(Boolean);
+      return {
+        id: json.id,
+        target_type: 'commercial',
+        name: nameParts.length > 0 ? nameParts.join(' ') : 'Commercial Vehicle',
+        price: json.price,
+        number_plate: null,
+        status: json.status,
+        primary_image: json.images?.find((img) => img.is_primary)?.image_url || json.images?.[0]?.image_url || null,
+        stats: { views_count: json.views_count || 0 },
+        created_at: json.created_at,
+      };
+    }),
+  ];
+
+  // Sort unified list descending by created_at then id
+  unifiedList.sort((a, b) => {
+    const timeA = new Date(a.created_at).getTime();
+    const timeB = new Date(b.created_at).getTime();
+    if (timeB !== timeA) return timeB - timeA;
+    return String(b.id).localeCompare(String(a.id));
   });
 
-  const carIds = cars.map((c) => c.id);
+  let pagedVehicles = unifiedList;
+  const decodedCursor = decodeCursor(cursor);
+  if (decodedCursor) {
+    const cursorTime = new Date(decodedCursor.created_at).getTime();
+    const cursorId = decodedCursor.id;
+    pagedVehicles = unifiedList.filter((v) => {
+      const vTime = new Date(v.created_at).getTime();
+      if (vTime < cursorTime) return true;
+      if (vTime === cursorTime && cursorId && String(v.id) < String(cursorId)) return true;
+      return false;
+    });
+  }
 
-  // Aggregate live counts from Lead, View, and Wishlist tables for accurate metrics
+  const pageSlice = pagedVehicles.slice(0, limitNum);
+  const vehicleIds = pageSlice.map((v) => v.id);
+
   let leadMap = {};
   let viewMap = {};
   let wishlistMap = {};
 
-  if (carIds.length > 0) {
+  if (vehicleIds.length > 0) {
     const [leadStats, viewStats, wishlistStats] = await Promise.all([
       Lead.findAll({
         attributes: [
+          'target_id',
           'car_id',
           [sequelize.fn('COUNT', sequelize.col('id')), 'total_leads'],
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) = 'call' THEN 1 ELSE 0 END")), 'calls'],
@@ -329,60 +485,74 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
           [sequelize.fn('SUM', sequelize.literal("CASE WHEN LOWER(source) NOT IN ('call', 'whatsapp', 'message', 'chat') THEN 1 ELSE 0 END")), 'other_enquiries'],
         ],
         where: {
-          car_id: { [Op.in]: carIds },
+          [Op.or]: [
+            { target_id: { [Op.in]: vehicleIds } },
+            { car_id: { [Op.in]: vehicleIds } },
+          ],
         },
-        group: ['car_id'],
+        group: ['target_id', 'car_id'],
         raw: true,
       }),
       View.findAll({
         attributes: [
+          'target_id',
           'car_id',
           [sequelize.fn('COUNT', sequelize.col('id')), 'views_count'],
         ],
-        where: { car_id: { [Op.in]: carIds } },
-        group: ['car_id'],
+        where: {
+          [Op.or]: [
+            { target_id: { [Op.in]: vehicleIds } },
+            { car_id: { [Op.in]: vehicleIds } },
+          ],
+        },
+        group: ['target_id', 'car_id'],
         raw: true,
       }),
       Wishlist.findAll({
         attributes: [
+          'target_id',
           'car_id',
           [sequelize.fn('COUNT', sequelize.col('id')), 'wishlist_count'],
         ],
-        where: { car_id: { [Op.in]: carIds } },
-        group: ['car_id'],
+        where: {
+          [Op.or]: [
+            { target_id: { [Op.in]: vehicleIds } },
+            { car_id: { [Op.in]: vehicleIds } },
+          ],
+        },
+        group: ['target_id', 'car_id'],
         raw: true,
       }),
     ]);
 
     leadStats.forEach((l) => {
-      leadMap[l.car_id] = {
-        total: parseInt(l.total_leads, 10) || 0,
-        calls: parseInt(l.calls, 10) || 0,
-        whatsapp: parseInt(l.whatsapp, 10) || 0,
-        messages: parseInt(l.messages, 10) || 0,
-        other: parseInt(l.other_enquiries, 10) || 0,
-      };
+      const key = l.target_id || l.car_id;
+      if (!leadMap[key]) {
+        leadMap[key] = { total: 0, calls: 0, whatsapp: 0, messages: 0, other: 0 };
+      }
+      leadMap[key].total += parseInt(l.total_leads, 10) || 0;
+      leadMap[key].calls += parseInt(l.calls, 10) || 0;
+      leadMap[key].whatsapp += parseInt(l.whatsapp, 10) || 0;
+      leadMap[key].messages += parseInt(l.messages, 10) || 0;
+      leadMap[key].other += parseInt(l.other_enquiries, 10) || 0;
     });
 
     viewStats.forEach((v) => {
-      viewMap[v.car_id] = parseInt(v.views_count, 10) || 0;
+      const key = v.target_id || v.car_id;
+      viewMap[key] = (viewMap[key] || 0) + (parseInt(v.views_count, 10) || 0);
     });
 
     wishlistStats.forEach((w) => {
-      wishlistMap[w.car_id] = parseInt(w.wishlist_count, 10) || 0;
+      const key = w.target_id || w.car_id;
+      wishlistMap[key] = (wishlistMap[key] || 0) + (parseInt(w.wishlist_count, 10) || 0);
     });
   }
 
-  const formattedCars = cars.map((car) => {
-    const json = typeof car.toJSON === 'function' ? car.toJSON() : car;
-    const nameParts = [json.brand?.name, json.carModel?.name, json.carVariant?.name].filter(Boolean);
-    const carName = nameParts.length > 0 ? nameParts.join(' ') : 'Pre-Owned Car';
-    const primaryImg = json.images?.find((img) => img.is_primary)?.image_url || json.images?.[0]?.image_url || null;
-
-    const stats = json.stats || {};
-    const lData = leadMap[json.id] || { total: 0, calls: 0, whatsapp: 0, messages: 0, other: 0 };
-    const dbViews = viewMap[json.id] || 0;
-    const dbWishlist = wishlistMap[json.id] || 0;
+  const formattedVehicles = pageSlice.map((v) => {
+    const stats = v.stats || {};
+    const lData = leadMap[v.id] || { total: 0, calls: 0, whatsapp: 0, messages: 0, other: 0 };
+    const dbViews = viewMap[v.id] || 0;
+    const dbWishlist = wishlistMap[v.id] || 0;
 
     const calls = lData.calls;
     const whatsapp = lData.whatsapp;
@@ -390,16 +560,19 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     const other = lData.other;
     const totalLeadCount = lData.total;
     const views = stats.views_count !== undefined ? Math.max(dbViews, stats.views_count) : dbViews;
-    const wishlist = dbWishlist; // Single source of truth from base table
-    const enquiries = other; // Non-call/whatsapp/message enquiries
+    const wishlist = dbWishlist;
+    const enquiries = other;
 
     return {
-      car_id: json.id,
-      name: carName,
-      price: json.price,
-      number_plate: json.number_plate,
-      status: json.status,
-      primary_image: primaryImg,
+      car_id: v.id,
+      id: v.id,
+      target_id: v.id,
+      target_type: v.target_type,
+      name: v.name,
+      price: v.price,
+      number_plate: v.number_plate || null,
+      status: v.status,
+      primary_image: v.primary_image,
       total_lead_count: totalLeadCount,
       breakdown: {
         calls,
@@ -409,21 +582,22 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
         views,
         wishlist,
       },
-      created_at: json.created_at,
+      created_at: v.created_at,
     };
   });
 
-  const lastCar = formattedCars.length > 0 ? formattedCars[formattedCars.length - 1] : null;
-  const nextCursor = lastCar
-    ? encodeCursor({ created_at: lastCar.created_at, id: lastCar.car_id })
+  const lastVehicle = formattedVehicles.length > 0 ? formattedVehicles[formattedVehicles.length - 1] : null;
+  const nextCursor = lastVehicle
+    ? encodeCursor({ created_at: lastVehicle.created_at, id: lastVehicle.id })
     : null;
 
   const result = {
-    cars: formattedCars,
+    cars: formattedVehicles, // legacy array key for existing clients
+    vehicles: formattedVehicles, // unified array key
     pagination: {
       limit: limitNum,
       next_cursor: nextCursor,
-      has_more: formattedCars.length === limitNum,
+      has_more: pagedVehicles.length > limitNum,
     },
   };
 
@@ -439,11 +613,11 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
 };
 
 /**
- * Drill-Down API: Fetch timeline of buyers for a specific car with composite cursor tie-breaker & source filter
+ * Drill-Down API: Fetch timeline of buyers for a specific car or commercial vehicle
  */
 exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, source = null } = {}) => {
-  // 1. Security Check: Verify car exists and belongs to this seller (unscoped to allow sold/deleted cars)
-  const car = await Car.unscoped().findOne({
+  // 1. Security Check: Verify vehicle exists and belongs to this seller (unscoped to allow sold/deleted cars)
+  let car = await Car.unscoped().findOne({
     where: { id: carId, user_id: sellerId },
     include: [
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
@@ -451,8 +625,24 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
     ],
   });
 
+  let commercial = null;
+  let targetType = 'car';
+
   if (!car) {
-    throw new AppError('Car not found or you are not authorized to view these leads', 404);
+    commercial = await CommercialVehicle.findOne({
+      where: { id: carId, user_id: sellerId },
+      include: [
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+      ],
+    });
+    if (commercial) {
+      targetType = 'commercial';
+    }
+  }
+
+  if (!car && !commercial) {
+    throw new AppError('Vehicle not found or you are not authorized to view these leads', 404);
   }
 
   const limitNum = Math.min(parseInt(limit) || 20, 100);
@@ -468,25 +658,31 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
   }
 
   const whereClause = {
-    car_id: carId,
+    [Op.or]: [
+      { target_id: carId },
+      { car_id: carId },
+    ],
   };
 
   const allowedSources = ['whatsapp', 'call', 'message'];
-if (source && allowedSources.includes(source)) {
-  whereClause.source = source;
-} else if (source) {
-  // Invalid source: ignore or throw validation error
-  throw new AppError('Invalid source filter. Allowed: whatsapp, call, message', 400);
-}
+  if (source && allowedSources.includes(source)) {
+    whereClause.source = source;
+  } else if (source) {
+    throw new AppError('Invalid source filter. Allowed: whatsapp, call, message', 400);
+  }
 
   const decodedCursor = decodeCursor(cursor);
   if (decodedCursor) {
     if (decodedCursor.id) {
-      whereClause[Op.or] = [
-        { created_at: { [Op.lt]: new Date(decodedCursor.created_at) } },
+      whereClause[Op.and] = [
         {
-          created_at: new Date(decodedCursor.created_at),
-          id: { [Op.lt]: decodedCursor.id },
+          [Op.or]: [
+            { created_at: { [Op.lt]: new Date(decodedCursor.created_at) } },
+            {
+              created_at: new Date(decodedCursor.created_at),
+              id: { [Op.lt]: decodedCursor.id },
+            },
+          ],
         },
       ];
     } else {
@@ -528,14 +724,20 @@ if (source && allowedSources.includes(source)) {
     ? encodeCursor({ created_at: lastLead.created_at, id: lastLead.id })
     : null;
 
-  const carName = [car.brand?.name, car.carModel?.name].filter(Boolean).join(' ') || 'Pre-Owned Car';
+  const vehicleName = car
+    ? ([car.brand?.name, car.carModel?.name].filter(Boolean).join(' ') || 'Pre-Owned Car')
+    : ([commercial.brand?.name, commercial.vehicleType?.name, commercial.year].filter(Boolean).join(' ') || 'Commercial Vehicle');
+
+  const vehicleInfo = {
+    id: car ? car.id : commercial.id,
+    target_type: targetType,
+    name: vehicleName,
+    number_plate: car?.number_plate || null,
+  };
 
   const result = {
-    car_info: {
-      id: car.id,
-      name: carName,
-      number_plate: car.number_plate,
-    },
+    car_info: vehicleInfo, // 100% backward compatibility
+    vehicle_info: vehicleInfo,
     leads: formattedLeads,
     pagination: {
       limit: limitNum,
@@ -587,10 +789,12 @@ exports.batchMarkAsRead = async (sellerId, leadIds = []) => {
 exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) => {
   const status = filters.status || null;
   const cursor = filters.cursor || null;
+  const rawTargetType = filters.target_type || filters.type || filters.targetType || null;
+  const targetType = (rawTargetType && rawTargetType !== 'all') ? rawTargetType.toLowerCase() : null;
   const limitNum = parseInt(limit) || 20;
   const pageNum = parseInt(page) || 1;
 
-  const cacheKey = `seller:leads:${sellerId}:${status || 'all'}:${cursor || pageNum}:${limitNum}`;
+  const cacheKey = `seller:leads:${sellerId}:${status || 'all'}:${targetType || 'all'}:${cursor || pageNum}:${limitNum}`;
 
   try {
     if (redisClient.isOpen) {
@@ -605,29 +809,24 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
   if (cursor) {
     where.created_at = { [Op.lt]: new Date(cursor) };
   }
-
-  const carWhere = {};
+  if (targetType) {
+    if (targetType === 'commercial') {
+      where.target_type = 'commercial';
+    } else if (targetType === 'car') {
+      where[Op.or] = [{ target_type: 'car' }, { target_type: null }];
+    } else {
+      where.target_type = targetType;
+    }
+  }
   if (status && status !== 'all') {
-    carWhere.status = status;
+    where.status = status;
   }
 
   const queryOptions = {
     where,
     include: [
-      {
-        model: Car.unscoped(),
-        as: 'car',
-        where: Object.keys(carWhere).length > 0 ? carWhere : undefined,
-        required: Object.keys(carWhere).length > 0,
-        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
-        include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-          { model: CarStat, as: 'stats', required: false },
-        ],
-      },
+      leadCarInclude,
+      leadCommercialInclude,
       {
         model: User,
         as: 'buyer',
@@ -678,36 +877,44 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
 exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
   const status = filters.status || null;
   const cursor = filters.cursor || null;
+  const rawTargetType = filters.target_type || filters.type || filters.targetType || null;
+  const targetType = (rawTargetType && rawTargetType !== 'all') ? rawTargetType.toLowerCase() : null;
   const limitNum = parseInt(limit) || 20;
   const pageNum = parseInt(page) || 1;
+
+  const cacheKey = `buyer:leads:${buyerId}:${status || 'all'}:${targetType || 'all'}:${cursor || pageNum}:${limitNum}`;
+
+  try {
+    if (redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get cache error in getBuyerLeads:', err);
+  }
 
   const where = { buyer_id: buyerId };
   if (cursor) {
     where.created_at = { [Op.lt]: new Date(cursor) };
   }
-
-  const carWhere = {};
+  if (targetType) {
+    if (targetType === 'commercial') {
+      where.target_type = 'commercial';
+    } else if (targetType === 'car') {
+      where[Op.or] = [{ target_type: 'car' }, { target_type: null }];
+    } else {
+      where.target_type = targetType;
+    }
+  }
   if (status && status !== 'all') {
-    carWhere.status = status;
+    where.status = status;
   }
 
   const queryOptions = {
     where,
     include: [
-      {
-        model: Car,
-        as: 'car',
-        where: Object.keys(carWhere).length > 0 ? carWhere : undefined,
-        required: Object.keys(carWhere).length > 0,
-        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'number_plate', 'brand_id', 'model_id', 'variant_id', 'body_type'],
-        include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-          { model: CarStat, as: 'stats', required: false },
-        ],
-      },
+      leadCarInclude,
+      leadCommercialInclude,
       {
         model: User,
         as: 'seller',
@@ -728,7 +935,7 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
   const lastLead = formattedLeads.length > 0 ? formattedLeads[formattedLeads.length - 1] : null;
   const next_cursor = lastLead ? (lastLead.interacted_at ? new Date(lastLead.interacted_at).toISOString() : null) : null;
 
-  return {
+  const response = {
     leads: formattedLeads,
     pagination: {
       limit: limitNum,
@@ -739,6 +946,16 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
       has_more: rows.length === limitNum,
     },
   };
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 60, JSON.stringify(response));
+    }
+  } catch (err) {
+    console.error('Redis set cache error in getBuyerLeads:', err);
+  }
+
+  return response;
 };
 
 /**
@@ -815,8 +1032,21 @@ exports.getAllLeadsForAdmin = async (filters = {}) => {
     where.seller_id = filters.seller_id;
   }
 
-  if (filters.car_id || filters.target_id) {
-    where.car_id = filters.car_id || filters.target_id;
+  const rawTargetType = filters.target_type || filters.type || filters.targetType || null;
+  const targetType = (rawTargetType && rawTargetType !== 'all') ? rawTargetType.toLowerCase() : null;
+  if (targetType) {
+    if (targetType === 'commercial') {
+      where.target_type = 'commercial';
+    } else if (targetType === 'car') {
+      where[Op.or] = [{ target_type: 'car' }, { target_type: null }];
+    } else {
+      where.target_type = targetType;
+    }
+  }
+
+  const vehicleId = filters.target_id || filters.car_id;
+  if (vehicleId) {
+    where[Op.or] = [{ car_id: vehicleId }, { target_id: vehicleId }];
   }
 
   if (filters.start_date || filters.end_date) {
@@ -841,17 +1071,8 @@ exports.getAllLeadsForAdmin = async (filters = {}) => {
   const { count, rows } = await Lead.findAndCountAll({
     where,
     include: [
-      {
-        model: Car,
-        as: 'car',
-        attributes: ['id', 'year', 'price', 'previous_price', 'has_price_drop', 'status', 'brand_id', 'model_id', 'variant_id', 'body_type'],
-        include: [
-          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-          { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-          { model: Variant, as: 'carVariant', attributes: ['id', 'name'] },
-          { model: CarImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-        ],
-      },
+      leadCarInclude,
+      leadCommercialInclude,
       {
         model: User,
         as: 'seller',
