@@ -32,15 +32,21 @@ module.exports = {
 
     // 4. Modify car-specific columns to allow NULL for commercial requirements
     if (existingCols.has('model_id')) {
-      await queryInterface.changeColumn('requirements', 'model_id', {
-        type: Sequelize.UUID,
-        allowNull: true,
-        references: {
-          model: 'models',
-          key: 'id',
-        },
-        onDelete: 'RESTRICT',
-      });
+      try {
+        await queryInterface.sequelize.query(
+          'ALTER TABLE `requirements` MODIFY COLUMN `model_id` CHAR(36) CHARACTER SET utf8 COLLATE utf8_bin NULL DEFAULT NULL;'
+        );
+      } catch (e) {
+        await queryInterface.changeColumn('requirements', 'model_id', {
+          type: Sequelize.UUID,
+          allowNull: true,
+          references: {
+            model: 'models',
+            key: 'id',
+          },
+          onDelete: 'RESTRICT',
+        });
+      }
     }
 
     if (existingCols.has('body_type')) {
