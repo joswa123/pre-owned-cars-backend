@@ -155,6 +155,7 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
 
   const vJson = typeof vehicle.toJSON === 'function' ? vehicle.toJSON() : { ...vehicle };
 
+  let sellerCompanyName = null;
   // Format seller
   if (vJson.seller) {
     const rawSeller = vehicle.seller;
@@ -162,7 +163,7 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
       rawSeller?.district?.name ||
       vJson.seller.district?.name ||
       (typeof vJson.seller.district === 'string' ? vJson.seller.district : null);
-    const sellerCompanyName =
+    sellerCompanyName =
       rawSeller?.dealerProfile?.company_name ||
       vJson.seller.dealerProfile?.company_name ||
       vJson.seller.company_name ||
@@ -200,6 +201,9 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
   vJson.district = districtObj;
   vJson.city = cityObj;
   vJson.cities = cityObj;
+  vJson.cityDetail = cityObj;
+  vJson.districtDetail = districtObj;
+  vJson.stateDetail = stateObj;
   vJson.districtName = districtName;
   vJson.cityName = cityName;
   vJson.stateName = stateName;
@@ -207,6 +211,7 @@ const transformCommercialVehicleImages = (vehicle, baseUrl = null, viewerUser = 
   vJson.city_name = cityName;
   vJson.state_name = stateName;
   vJson.location_text = locationText;
+  vJson.dealerProfile = sellerCompanyName ? { company_name: sellerCompanyName } : null;
 
   // Type & Brand helpers
   const vehicleTypeName = vJson.vehicleType?.name || null;

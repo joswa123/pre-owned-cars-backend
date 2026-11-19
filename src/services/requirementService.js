@@ -671,7 +671,7 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
 
   // ── Commercial Vehicle Match ──────────────────────────────────────────
   if (targetType === 'commercial') {
-    const { CommercialVehicle, CommercialVehicleImage, User: UserModel, State, City, Wishlist } = require('../models');
+    const { CommercialVehicle, CommercialVehicleImage, User: UserModel, State, District, City, Wishlist, DealerProfile } = require('../models');
     const { transformCommercialVehicleImages, getCommercialWishlistCountMap } = require('./commercialVehicleService');
     const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
 
@@ -709,8 +709,17 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
         { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
-        { model: UserModel, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
+        {
+          model: UserModel,
+          as: 'seller',
+          attributes: ['id', 'full_name', 'phone', 'role', 'city'],
+          include: [
+            { model: District, as: 'district', attributes: ['id', 'name'] },
+            { model: DealerProfile, as: 'dealerProfile', attributes: ['company_name'] },
+          ],
+        },
         { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: District, as: 'district', attributes: ['id', 'name'] },
         { model: City, as: 'city', attributes: ['id', 'name'] },
       ],
       order: [[sortBy, sortOrder]],
@@ -745,6 +754,10 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
         isWishlist: isW,
         is_wishlist: isW,
         wishlist_count: wishlistCountMap[v.id] || 0,
+        cityDetail: transformed.cityDetail || transformed.city || null,
+        districtDetail: transformed.districtDetail || transformed.district || null,
+        stateDetail: transformed.stateDetail || transformed.state || null,
+        dealerProfile: transformed.dealerProfile || transformed.seller?.dealerProfile || null,
       };
     });
 
@@ -757,6 +770,8 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
       requirement: formatRequirement(requirement),
       vehicles: transformedVehicles,
       cars: transformedVehicles, // backward compatibility
+      listings: transformedVehicles, // backward compatibility
+      data: transformedVehicles, // backward compatibility
     };
   }
 
@@ -784,10 +799,21 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
   const carService = require('./carService');
   const result = await carService.getCars(carFilters, page, limit, sortBy, sortOrder, userId);
 
+  const matchedCars = (result.cars || []).map((car) => ({
+    ...car,
+    cityDetail: car.cityDetail || car.city || null,
+    districtDetail: car.districtDetail || car.district || null,
+    stateDetail: car.stateDetail || car.state || null,
+    dealerProfile: car.dealerProfile || car.seller?.dealerProfile || null,
+  }));
+
   return {
     ...result,
     target_type: 'car',
     requirement: formatRequirement(requirement),
-    vehicles: result.cars || [],
+    vehicles: matchedCars,
+    cars: matchedCars,
+    listings: matchedCars,
+    data: matchedCars,
   };
 };

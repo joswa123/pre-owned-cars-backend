@@ -160,10 +160,11 @@ const transformCarImages = (car, baseUrl = null) => {
 
   const carJson = typeof car.toJSON === 'function' ? car.toJSON() : { ...car };
 
+  let sellerCompanyName = null;
   if (carJson.seller) {
     const rawSeller = car.seller;
     const sellerDistrictName = rawSeller?.district?.name || carJson.seller.district?.name || (typeof carJson.seller.district === 'string' ? carJson.seller.district : null);
-    const sellerCompanyName = rawSeller?.dealerProfile?.company_name || carJson.seller.dealerProfile?.company_name || carJson.seller.company_name || null;
+    sellerCompanyName = rawSeller?.dealerProfile?.company_name || carJson.seller.dealerProfile?.company_name || carJson.seller.company_name || null;
 
     carJson.seller = {
       ...carJson.seller,
@@ -221,6 +222,9 @@ const transformCarImages = (car, baseUrl = null) => {
   carJson.district = districtObj;
   carJson.city = cityObj;
   carJson.cities = cityObj; // alias requested: "we need district, cities, state"
+  carJson.cityDetail = cityObj;
+  carJson.districtDetail = districtObj;
+  carJson.stateDetail = stateObj;
   carJson.districtName = districtName;
   carJson.cityName = cityName;
   carJson.stateName = stateName;
@@ -228,6 +232,7 @@ const transformCarImages = (car, baseUrl = null) => {
   carJson.city_name = cityName;
   carJson.state_name = stateName;
   carJson.location_text = locationText;
+  carJson.dealerProfile = sellerCompanyName ? { company_name: sellerCompanyName } : null;
 
   // Attach icon URL directly for body type
   const normalizedBodyType = carJson.body_type ? carJson.body_type.toString().toLowerCase().trim() : '';
