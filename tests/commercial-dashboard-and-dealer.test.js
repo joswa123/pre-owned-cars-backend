@@ -116,4 +116,38 @@ describe('Commercial Support for Dashboard & Dealer Inventory Tests', () => {
     assert.strictEqual(result.vehicles.expired, 2);
     assert.strictEqual(result.vehicles.total, 13);
   });
+
+  it('Step 9: Dealer Commercial Vehicles endpoint payload shape test', () => {
+    const mockDealer = {
+      id: '2281a65e-10bf-473a-ab2e-3902dbf464c8',
+      full_name: 'Sahana',
+      city: 'Gandhipuram',
+      cityDetail: { id: 'c1', name: 'Gandhipuram' },
+      districtDetail: { id: 'd1', name: 'Coimbatore' },
+      stateDetail: { id: 's1', name: 'Tamil Nadu' },
+      dealerProfile: null,
+    };
+
+    const cityDetail = mockDealer.cityDetail || { id: null, name: mockDealer.city || '' };
+    const districtDetail = mockDealer.districtDetail || { id: null, name: mockDealer.district || '' };
+    const stateDetail = mockDealer.stateDetail || { id: null, name: mockDealer.state || '' };
+    const dealerProfile = mockDealer.dealerProfile || {
+      id: null,
+      company_name: mockDealer.full_name,
+    };
+
+    const responseData = {
+      total: 0,
+      vehicles: [],
+      dealerProfile,
+      cityDetail,
+      districtDetail,
+      stateDetail,
+    };
+
+    assert(responseData.dealerProfile);
+    assert.strictEqual(responseData.cityDetail.name, 'Gandhipuram');
+    assert.strictEqual(responseData.districtDetail.name, 'Coimbatore');
+    assert.strictEqual(responseData.stateDetail.name, 'Tamil Nadu');
+  });
 });

@@ -97,7 +97,7 @@ exports.getDealerById = async (dealerId, type = 'all') => {
   }
 
   const dealer = await User.findOne({
-    where: { id: dealerId, role: 'dealer', status: 'approved' },
+    where: { id: dealerId },
     attributes: [
       'id',
       'full_name',
@@ -107,6 +107,9 @@ exports.getDealerById = async (dealerId, type = 'all') => {
       'state_id',
       'district_id',
       'city_id',
+      'city',
+      'state',
+      'role',
       'whatsapp_number',
       'use_registered_for_whatsapp',
     ],
@@ -116,9 +119,9 @@ exports.getDealerById = async (dealerId, type = 'all') => {
         as: 'dealerProfile',
         attributes: ['company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'alt_phone', 'verified'],
       },
-      { model: State, as: 'stateDetail', attributes: ['name'] },
-      { model: District, as: 'districtDetail', attributes: ['name'] },
-      { model: City, as: 'cityDetail', attributes: ['name'] },
+      { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
+      { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
+      { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
     ],
   });
 
@@ -186,7 +189,35 @@ exports.getDealerById = async (dealerId, type = 'all') => {
     .slice(0, 20);
 
   const dealerJson = dealer.toJSON();
-  dealerJson.location_text = [dealerJson.cityDetail?.name, dealerJson.districtDetail?.name, dealerJson.stateDetail?.name]
+  const cityDetail = dealerJson.cityDetail || {
+    id: dealerJson.city_id || null,
+    name: dealerJson.city || '',
+  };
+  const districtDetail = dealerJson.districtDetail || {
+    id: dealerJson.district_id || null,
+    name: dealerJson.district || '',
+  };
+  const stateDetail = dealerJson.stateDetail || {
+    id: dealerJson.state_id || null,
+    name: dealerJson.state || '',
+  };
+  const dealerProfile = dealerJson.dealerProfile || {
+    id: null,
+    user_id: dealerJson.id,
+    company_name: dealerJson.full_name || 'Seller',
+    door_no: '',
+    building_name: '',
+    street_name: '',
+    pincode: '',
+    alt_phone: null,
+    verified: false,
+  };
+
+  dealerJson.cityDetail = cityDetail;
+  dealerJson.districtDetail = districtDetail;
+  dealerJson.stateDetail = stateDetail;
+  dealerJson.dealerProfile = dealerProfile;
+  dealerJson.location_text = [cityDetail.name, districtDetail.name, stateDetail.name]
     .filter(Boolean)
     .join(', ');
 
