@@ -27,45 +27,161 @@ exports.getActiveDealers = async (filters = {}, page = 1, limit = 20) => {
   const offset = (page - 1) * limit;
   const where = {
     role: 'dealer',
-    status: 'approved',
   };
 
   // Search by name or company name
-  if (filters.name) {
-    const search = `%${filters.name}%`;
-    where[Op.or] = [
-      { full_name: { [Op.like]: search } },
-      { '$dealerProfile.company_name$': { [Op.like]: search } },
-    ];
+  if (filters.name || filters.company_name) {
+    const search = `%${String(filters.name || filters.company_name).trim()}%`;
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        { full_name: { [Op.like]: search } },
+        { '$dealerProfile.company_name$': { [Op.like]: search } },
+      ],
+    });
   }
 
   // Location filters
-  if (filters.state_id) where.state_id = filters.state_id;
-  if (filters.district_id) where.district_id = filters.district_id;
-  if (filters.city_id) where.city_id = filters.city_id;
+  if (filters.city_id && String(filters.city_id).trim() !== '') {
+    const trimmedCityId = String(filters.city_id).trim();
+    const selectedCity = await City.findByPk(trimmedCityId, {
+      include: [{ model: District, as: 'district' }],
+    });
+
+    if (selectedCity) {
+      const districtName = selectedCity.district?.name?.toLowerCase();
+      const cityName = selectedCity.name?.toLowerCase();
+      const isMajorCityDistrict = districtName && cityName && (
+        districtName === cityName ||
+        districtName.includes(cityName) ||
+        cityName.includes(districtName)
+      );
+
+      if (isMajorCityDistrict && selectedCity.district_id) {
+        const districtCities = await City.findAll({
+          where: { district_id: selectedCity.district_id },
+          attributes: ['id'],
+          raw: true,
+        });
+        const cityIdsInDistrict = districtCities.map((c) => c.id);
+
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { city_id: selectedCity.id },
+            { district_id: selectedCity.district_id },
+            ...(cityIdsInDistrict.length > 0 ? [{ city_id: cityIdsInDistrict }] : []),
+            { city: { [Op.like]: `%${selectedCity.name}%` } },
+          ],
+        });
+      } else {
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { city_id: selectedCity.id },
+            { city: { [Op.like]: `%${selectedCity.name}%` } },
+          ],
+        });
+      }
+    } else {
+      where[Op.and] = where[Op.and] || [];
+      where[Op.and].push({
+        [Op.or]: [
+          { city_id: trimmedCityId },
+          { city: { [Op.like]: `%${trimmedCityId}%` } },
+        ],
+      });
+    }
+  } else if (filters.district_id && String(filters.district_id).trim() !== '') {
+    const trimmedDistrictId = String(filters.district_id).trim();
+    const districtCities = await City.findAll({
+      where: { district_id: trimmedDistrictId },
+      attributes: ['id'],
+      raw: true,
+    });
+    const cityIdsInDistrict = districtCities.map((c) => c.id);
+
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        { district_id: trimmedDistrictId },
+        ...(cityIdsInDistrict.length > 0 ? [{ city_id: cityIdsInDistrict }] : []),
+      ],
+    });
+  }
+
+  if (filters.state_id && String(filters.state_id).trim() !== '') {
+    where.state_id = String(filters.state_id).trim();
+  }
 
   const { count, rows } = await User.findAndCountAll({
     where,
-    attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture', 'state_id', 'district_id', 'city_id'],
+    subQuery: false,
+    distinct: true,
+    attributes: [
+      'id',
+      'full_name',
+      'phone',
+      'email',
+      'profile_picture',
+      'state_id',
+      'district_id',
+      'city_id',
+      'city',
+      'state',
+      'whatsapp_number',
+      'use_registered_for_whatsapp',
+      'role',
+      'status',
+    ],
     include: [
       {
         model: DealerProfile,
         as: 'dealerProfile',
-        attributes: ['company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'alt_phone', 'verified'],
+        attributes: ['id', 'company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'alt_phone', 'verified'],
+        required: false,
       },
-      { model: State, as: 'stateDetail', attributes: ['name'] },
-      { model: District, as: 'districtDetail', attributes: ['name'] },
-      { model: City, as: 'cityDetail', attributes: ['name'] },
+      { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
+      { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
+      { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
     ],
     limit: parseInt(limit, 10),
     offset,
     order: [['full_name', 'ASC']],
   });
 
-  // Transform to include location_text
+  // Transform to include location_text and safe default objects
   const dealers = rows.map((dealer) => {
-    const d = dealer.toJSON();
-    d.location_text = [d.cityDetail?.name, d.districtDetail?.name, d.stateDetail?.name].filter(Boolean).join(', ');
+    const d = dealer.toJSON ? dealer.toJSON() : { ...dealer };
+    const cityDetail = d.cityDetail || {
+      id: d.city_id || null,
+      name: d.city || '',
+    };
+    const districtDetail = d.districtDetail || {
+      id: d.district_id || null,
+      name: d.district || '',
+    };
+    const stateDetail = d.stateDetail || {
+      id: d.state_id || null,
+      name: d.state || '',
+    };
+    const dealerProfile = d.dealerProfile || {
+      id: null,
+      user_id: d.id,
+      company_name: d.full_name || 'Dealer',
+      door_no: '',
+      building_name: '',
+      street_name: '',
+      pincode: '',
+      alt_phone: null,
+      verified: false,
+    };
+
+    d.cityDetail = cityDetail;
+    d.districtDetail = districtDetail;
+    d.stateDetail = stateDetail;
+    d.dealerProfile = dealerProfile;
+    d.location_text = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
     return d;
   });
 
@@ -75,7 +191,7 @@ exports.getActiveDealers = async (filters = {}, page = 1, limit = 20) => {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
       total: count,
-      totalPages: Math.ceil(count / limit),
+      totalPages: Math.ceil(count / limit) || 1,
     },
   };
 };

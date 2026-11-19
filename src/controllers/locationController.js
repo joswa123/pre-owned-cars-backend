@@ -112,43 +112,173 @@ exports.getDealersByLocation = async (req, res, next) => {
     const { state_id, district_id, city_id, company_name, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
     const where = { role: 'dealer' };
-    
-    if (state_id) where.state_id = state_id;
-    if (district_id) where.district_id = district_id;
-    if (city_id) where.city_id = city_id;
 
-    const include = [{
-      model: DealerProfile,
-      as: 'dealerProfile',
-      attributes: ['company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'alt_phone', 'verified'],
-    }];
+    // 1. Intelligent Location Hierarchy Resolution
+    if (city_id && String(city_id).trim() !== '') {
+      const trimmedCityId = String(city_id).trim();
+      const selectedCity = await City.findByPk(trimmedCityId, {
+        include: [{ model: District, as: 'district' }],
+      });
 
-    if (company_name) {
-      include[0].where = { company_name: { [Op.like]: `%${company_name}%` } };
+      if (selectedCity) {
+        const districtName = selectedCity.district?.name?.toLowerCase();
+        const cityName = selectedCity.name?.toLowerCase();
+        const isMajorCityDistrict = districtName && cityName && (
+          districtName === cityName ||
+          districtName.includes(cityName) ||
+          cityName.includes(districtName)
+        );
+
+        if (isMajorCityDistrict && selectedCity.district_id) {
+          // Major hub (e.g. Coimbatore, Madurai): match dealers in city, district, or any locality under district
+          const districtCities = await City.findAll({
+            where: { district_id: selectedCity.district_id },
+            attributes: ['id'],
+            raw: true,
+          });
+          const cityIdsInDistrict = districtCities.map((c) => c.id);
+
+          where[Op.and] = where[Op.and] || [];
+          where[Op.and].push({
+            [Op.or]: [
+              { city_id: selectedCity.id },
+              { district_id: selectedCity.district_id },
+              ...(cityIdsInDistrict.length > 0 ? [{ city_id: cityIdsInDistrict }] : []),
+              { city: { [Op.like]: `%${selectedCity.name}%` } },
+            ],
+          });
+        } else {
+          where[Op.and] = where[Op.and] || [];
+          where[Op.and].push({
+            [Op.or]: [
+              { city_id: selectedCity.id },
+              { city: { [Op.like]: `%${selectedCity.name}%` } },
+            ],
+          });
+        }
+      } else {
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { city_id: trimmedCityId },
+            { city: { [Op.like]: `%${trimmedCityId}%` } },
+          ],
+        });
+      }
+    } else if (district_id && String(district_id).trim() !== '') {
+      const trimmedDistrictId = String(district_id).trim();
+      const districtCities = await City.findAll({
+        where: { district_id: trimmedDistrictId },
+        attributes: ['id'],
+        raw: true,
+      });
+      const cityIdsInDistrict = districtCities.map((c) => c.id);
+
+      where[Op.and] = where[Op.and] || [];
+      where[Op.and].push({
+        [Op.or]: [
+          { district_id: trimmedDistrictId },
+          ...(cityIdsInDistrict.length > 0 ? [{ city_id: cityIdsInDistrict }] : []),
+        ],
+      });
+    }
+
+    if (state_id && String(state_id).trim() !== '') {
+      where.state_id = String(state_id).trim();
+    }
+
+    // 2. Search by company name or dealer full name
+    if (company_name && String(company_name).trim() !== '') {
+      const search = `%${String(company_name).trim()}%`;
+      where[Op.and] = where[Op.and] || [];
+      where[Op.and].push({
+        [Op.or]: [
+          { full_name: { [Op.like]: search } },
+          { '$dealerProfile.company_name$': { [Op.like]: search } },
+        ],
+      });
     }
 
     const dealers = await User.findAndCountAll({
       where,
-      attributes: ['id', 'full_name', 'phone', 'email', 'profile_picture', 'state_id', 'district_id', 'city_id'],
+      subQuery: false,
+      distinct: true,
+      attributes: [
+        'id',
+        'full_name',
+        'phone',
+        'email',
+        'profile_picture',
+        'state_id',
+        'district_id',
+        'city_id',
+        'city',
+        'state',
+        'whatsapp_number',
+        'use_registered_for_whatsapp',
+        'role',
+        'status',
+      ],
       include: [
-        ...include,
-        { model: State, as: 'stateDetail', attributes: ['name'] },
-        { model: District, as: 'districtDetail', attributes: ['name'] },
-        { model: City, as: 'cityDetail', attributes: ['name'] },
+        {
+          model: DealerProfile,
+          as: 'dealerProfile',
+          attributes: ['id', 'company_name', 'door_no', 'building_name', 'street_name', 'pincode', 'alt_phone', 'verified'],
+          required: false,
+        },
+        { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
+        { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
+        { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
       ],
       limit: parseInt(limit),
       offset,
       order: [['full_name', 'ASC']],
     });
 
+    const transformedDealers = dealers.rows.map((dealer) => {
+      const d = dealer.toJSON ? dealer.toJSON() : { ...dealer };
+      const cityDetail = d.cityDetail || {
+        id: d.city_id || null,
+        name: d.city || '',
+      };
+      const districtDetail = d.districtDetail || {
+        id: d.district_id || null,
+        name: d.district || '',
+      };
+      const stateDetail = d.stateDetail || {
+        id: d.state_id || null,
+        name: d.state || '',
+      };
+      const dealerProfile = d.dealerProfile || {
+        id: null,
+        user_id: d.id,
+        company_name: d.full_name || 'Dealer',
+        door_no: '',
+        building_name: '',
+        street_name: '',
+        pincode: '',
+        alt_phone: null,
+        verified: false,
+      };
+
+      d.cityDetail = cityDetail;
+      d.districtDetail = districtDetail;
+      d.stateDetail = stateDetail;
+      d.dealerProfile = dealerProfile;
+      d.location_text = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
+
+      return d;
+    });
+
     res.json({
       status: 'success',
-      data: dealers.rows,
-      pagination: { 
-        page: parseInt(page), 
-        limit: parseInt(limit), 
-        total: dealers.count, 
-        totalPages: Math.ceil(dealers.count / limit) 
+      data: transformedDealers,
+      dealers: transformedDealers,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: dealers.count,
+        totalPages: Math.ceil(dealers.count / limit) || 1,
       },
     });
   } catch (error) {
