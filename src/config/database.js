@@ -54,11 +54,11 @@ const sequelize = new Sequelize(
       : false,
     dialectOptions,
     pool: {
-      max: process.env.NODE_ENV === 'test' ? 5 : (parseInt(process.env.DB_POOL_MAX) || 3),
-      min: process.env.NODE_ENV === 'test' ? 0 : (parseInt(process.env.DB_POOL_MIN) || 1),
+      max: process.env.NODE_ENV === 'test' ? 5 : (parseInt(process.env.DB_POOL_MAX) || 5),
+      min: process.env.NODE_ENV === 'test' ? 0 : (parseInt(process.env.DB_POOL_MIN) || 0),
       acquire: 30000,
-      idle: 5000,
-      evict: 1000,
+      idle: 20000,
+      evict: 10000,
     },
     retry: {
       max: 5,
@@ -69,6 +69,8 @@ const sequelize = new Sequelize(
         /ECONNRESET/,
         /ECONNREFUSED/,
         /PROTOCOL_CONNECTION_LOST/,
+        /PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR/,
+        /Cannot enqueue Quit after fatal error/,
       ],
       backoffBase: 1000,
       backoffExponent: 1.5,
@@ -80,6 +82,56 @@ const sequelize = new Sequelize(
     },
   }
 );
+
+// Patch ConnectionManager to prevent "Cannot enqueue Quit after fatal error" unhandled rejections
+// and ensure dead connections are properly validated before reuse.
+if (sequelize.connectionManager) {
+  const cm = sequelize.connectionManager;
+
+  // 1. Safe disconnect: NEVER reject when destroying a connection from pool
+  cm.disconnect = function (connection) {
+    if (!connection) return Promise.resolve();
+
+    // If protocol already ended or has fatal error, destroy the raw socket immediately without sending QUIT packet
+    if (
+      connection._protocol &&
+      (connection._protocol._ended || connection._protocol._fatalError)
+    ) {
+      try {
+        if (typeof connection.destroy === 'function') connection.destroy();
+      } catch (_) {}
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      try {
+        connection.end((err) => {
+          if (err) {
+            try {
+              if (typeof connection.destroy === 'function') connection.destroy();
+            } catch (_) {}
+          }
+          resolve(); // Always resolve, NEVER reject on pool disconnect
+        });
+      } catch (err) {
+        try {
+          if (typeof connection.destroy === 'function') connection.destroy();
+        } catch (_) {}
+        resolve();
+      }
+    });
+  };
+
+  // 2. Safe validate: correctly identify dead/fatal connections so pool discards them
+  cm.validate = function (connection) {
+    if (!connection) return false;
+    if (['disconnected', 'protocol_error'].indexOf(connection.state) !== -1) return false;
+    if (connection._fatalError) return false;
+    if (connection._protocol && (connection._protocol._fatalError || connection._protocol._ended)) return false;
+    if (connection._socket && (connection._socket.destroyed || !connection._socket.writable)) return false;
+    return true;
+  };
+}
 
 // Periodic keep-alive query to prevent connection drop / idle timeout on cloud providers
 if (process.env.NODE_ENV !== 'test') {

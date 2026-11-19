@@ -8,17 +8,37 @@ const PORT = process.env.PORT || 5000;
 
 // ─── Global Process Safety Handlers ──────────────────────────────────────────
 process.on('unhandledRejection', (reason) => {
-  if (reason && reason.message && (reason.message.includes('max requests limit exceeded') || reason.code === 'ECONNRESET')) {
-    logger.warn(`⚠️ Background Redis notice (non-fatal): ${reason.message}`);
-    return;
+  if (reason && reason.message) {
+    if (reason.message.includes('max requests limit exceeded') || reason.code === 'ECONNRESET') {
+      logger.warn(`⚠️ Background Redis notice (non-fatal): ${reason.message}`);
+      return;
+    }
+    if (
+      reason.message.includes('Cannot enqueue Quit after fatal error') ||
+      reason.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' ||
+      reason.original?.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR'
+    ) {
+      logger.warn(`⚠️ Background DB pool disconnect notice (non-fatal): ${reason.message}`);
+      return;
+    }
   }
   logger.error('Unhandled Rejection at:', reason);
 });
 
 process.on('uncaughtException', (err) => {
-  if (err && err.message && (err.message.includes('max requests limit exceeded') || err.code === 'ECONNRESET')) {
-    logger.warn(`⚠️ Background Redis notice (non-fatal): ${err.message}`);
-    return;
+  if (err && err.message) {
+    if (err.message.includes('max requests limit exceeded') || err.code === 'ECONNRESET') {
+      logger.warn(`⚠️ Background Redis notice (non-fatal): ${err.message}`);
+      return;
+    }
+    if (
+      err.message.includes('Cannot enqueue Quit after fatal error') ||
+      err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' ||
+      err.original?.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR'
+    ) {
+      logger.warn(`⚠️ Background DB pool disconnect notice (non-fatal): ${err.message}`);
+      return;
+    }
   }
   logger.error('💥 Uncaught Exception:', err);
 });
