@@ -82,6 +82,9 @@ User.hasMany(Requirement, { foreignKey: 'user_id', as: 'requirements' });
 Requirement.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 Requirement.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });
 Requirement.belongsTo(Model, { foreignKey: 'model_id', as: 'carModel' });
+Requirement.belongsTo(CarType, { foreignKey: 'vehicle_type_id', as: 'vehicleType' });
+CarType.hasMany(Requirement, { foreignKey: 'vehicle_type_id', as: 'requirements' });
+Requirement.belongsTo(VehicleType, { foreignKey: 'vehicle_type_id', as: 'vehicleTypeDetail' });
 
 // ==========================================
 // NOTIFICATION RELATIONSHIPS
@@ -94,6 +97,17 @@ Notification.belongsTo(Requirement, { foreignKey: 'requirement_id', as: 'require
 
 Car.hasMany(Notification, { foreignKey: 'car_id', as: 'notifications' });
 Notification.belongsTo(Car, { foreignKey: 'car_id', as: 'car' });
+CommercialVehicle.hasMany(Notification, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'commercial' },
+  as: 'notifications',
+});
+Notification.belongsTo(CommercialVehicle, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'commercialVehicle',
+});
 
 
 Car.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });

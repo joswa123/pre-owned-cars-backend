@@ -682,5 +682,164 @@ Wishlist operations support both regular **Cars** and **Commercial Vehicles** wi
 - `GET /api/v1/commercial/:id/recommended`: Top active featured and viewed listings.
 - `GET /api/v1/commercial/seller/:sellerId`: Filtered inventory by a specific dealer or individual seller.
 
+---
+
+## 8. Commercial Vehicle Buying Requirements (Post My Requirements)
+
+The Buying Requirements system ("Post My Requirements") provides buyers the ability to submit purchase requirements for Commercial Vehicles in addition to standard Cars. When sellers post or update inventory matching a buyer's requirement, automated push notifications are generated and delivered.
+
+### 8.1 Create Commercial Requirement (`POST /api/v1/requirements`)
+- **Method / Endpoint:** `POST /api/v1/requirements`
+- **Auth:** Required (Customer, Dealer, or Admin JWT)
+- **Content-Type:** `application/json`
+
+#### Commercial Payload Format:
+Accepts friendly mobile form fields (`vehicleTypeName`, `brandName`, nested `price` and `km_driven` objects, string `purchase_plan`) as well as database UUIDs (`brand_id`, `vehicle_type_id`, `min_price`, `max_price`, `min_km`, `max_km`, `purchase_plan_days`).
+
+```json
+{
+  "target_type": "commercial",
+  "brandName": "Tata",
+  "vehicleTypeName": "Mini Truck",
+  "year": 2022,
+  "price": {
+    "min": 250000,
+    "max": 500000
+  },
+  "km_driven": {
+    "min": 10000,
+    "max": 60000
+  },
+  "purchase_plan": "30 Days",
+  "description": "Looking for a well-maintained commercial mini truck for intra-city logistics"
+}
+```
+
+*Alternative Flattened Payload (UUID format):*
+```json
+{
+  "target_type": "commercial",
+  "brand_id": "0194e822-7f78-7065-985b-6f02ba94a4c4",
+  "vehicle_type_id": "0194e822-80aa-7560-983b-fa0c34511a77",
+  "year": 2022,
+  "min_price": 250000,
+  "max_price": 500000,
+  "min_km": 10000,
+  "max_km": 60000,
+  "purchase_plan_days": 30,
+  "description": "Looking for a well-maintained commercial mini truck"
+}
+```
+
+#### Field Explanations & Auto-Resolution:
+| Field | Type | Description |
+|---|---|---|
+| `target_type` | `String` | `'commercial'` (or `'car'`). If omitted and `vehicle_type_id` / `vehicleTypeName` is supplied, automatically inferred as `'commercial'`. |
+| `brandName` / `brand_id` | `String` | Name of commercial brand (e.g., `'Tata'`, `'Ashok Leyland'`, `'Eicher'`) or UUID. Name is resolved automatically to brand UUID. |
+| `vehicleTypeName` / `vehicle_type_id` | `String` | Commercial vehicle type (e.g., `'Mini Truck'`, `'Pickup'`, `'Tipper'`) or UUID. Name is resolved automatically to CarType/VehicleType UUID. |
+| `year` | `Integer` | Optional target manufacturing year. |
+| `price` / `min_price`, `max_price` | `Object` / `Number` | Price range budget in INR. Accepts either `{ min, max }` or `min_price` and `max_price`. |
+| `km_driven` / `min_km`, `max_km` | `Object` / `Number` | Target odometer range. Accepts either `{ min, max }` or `min_km` and `max_km`. |
+| `purchase_plan` / `purchase_plan_days` | `String` / `Number` | Buyer timeline (e.g., `"Immediate"` -> 7 days, `"15 Days"` -> 15 days, `"1 Month"` -> 30 days). Automatically sets `expiry_date = NOW() + days`. |
+| `description` | `String` | Optional notes/preferences from buyer. |
+
+#### Success Response (`201 Created`):
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "7d9b7346-608b-4a57-bfa4-f44bbfa1c0c2",
+    "target_type": "commercial",
+    "user_id": "2281a65e-10bf-473a-ab2e-3902dbf464c8",
+    "brand_id": "0194e822-7f78-7065-985b-6f02ba94a4c4",
+    "vehicle_type_id": "0194e822-80aa-7560-983b-fa0c34511a77",
+    "model_id": null,
+    "year": 2022,
+    "min_price": 250000,
+    "max_price": 500000,
+    "min_km": 10000,
+    "max_km": 60000,
+    "purchase_plan_days": 30,
+    "expiry_date": "2026-12-19T11:00:00.000Z",
+    "status": "active",
+    "description": "Looking for a well-maintained commercial mini truck",
+    "brand_name": "Tata",
+    "vehicle_type_name": "Mini Truck",
+    "vehicle_name": "Tata Mini Truck 2022",
+    "brand": { "id": "0194e822-7f78-7065-985b-6f02ba94a4c4", "name": "Tata" },
+    "vehicleType": { "id": "0194e822-80aa-7560-983b-fa0c34511a77", "name": "Mini Truck" }
+  }
+}
+```
+
+---
+
+### 8.2 Get Single Requirement (`GET /api/v1/requirements/:id`)
+- **Method / Endpoint:** `GET /api/v1/requirements/:id`
+- **Auth:** Required (Owner or Admin)
+- **Response:** Returns populated requirement object with `brand`, `vehicleType` (if commercial), and `carModel` (if car).
+
+---
+
+### 8.3 Get Buyer Requirements (`GET /api/v1/requirements/me`)
+- **Method / Endpoint:** `GET /api/v1/requirements/me`
+- **Auth:** Required (Logged-in User)
+- **Query Parameters:**
+  - `target_type`: `'commercial'` | `'car'` | `'all'` (default: `'all'`)
+  - `status`: `'active'` | `'inactive'` | `'expired'` | `'bought'` | `'sold'` | `'deleted'` | `'all'` (default: `'active'`)
+  - `page`: Page number (default: `1`)
+  - `limit`: Items per page (default: `20`)
+
+*Note on Status Aliases:* 
+- `?status=inactive`: Returns requirements that are explicitly `expired` OR have `expiry_date <= NOW()`.
+- `?status=sold`: Maps to requirements marked as `bought`.
+
+---
+
+### 8.4 Status Lifecycle Transition (`PATCH /api/v1/requirements/:id/status`)
+- **Method / Endpoint:** `PATCH /api/v1/requirements/:id/status`
+- **Auth:** Required (Owner or Admin)
+- **Payload:**
+```json
+{
+  "status": "sold",
+  "bought_from": "Direct Owner / Seller"
+}
+```
+*(Status `'sold'` is automatically mapped to DB status `'bought'`. Status `'inactive'` is mapped to `'expired'`.)*
+
+---
+
+### 8.5 Find Matching Vehicles (`GET /api/v1/requirements/:id/match-cars` & `/match-vehicles`)
+- **Method / Endpoint:** `GET /api/v1/requirements/:id/match-cars` or `GET /api/v1/requirements/:id/match-vehicles`
+- **Auth:** Required
+- **Behavior:**
+  - For **Commercial Requirements (`target_type: 'commercial'`)**: Searches active `CommercialVehicle` listings where `brand_id` matches, `vehicle_type_id` matches, price is between `min_price` and `max_price`, and km driven is between `min_km` and `max_km`.
+  - For **Car Requirements (`target_type: 'car'`)**: Searches active `Car` listings where `brand_id` matches, `model_id` matches, and optional body/transmission filters match.
+
+---
+
+### 8.6 Real-Time Matching & Push Notification Engine
+When a seller posts or updates a commercial vehicle (`POST /api/v1/commercial` or `PUT /api/v1/commercial/:id`):
+1. The backend automatically enqueues a matching job to `notificationQueue` (`commercialVehicleId`).
+2. `requirementMatchingService.matchRequirementsForCommercialVehicle` queries active commercial requirements meeting the vehicle's parameters (excluding listings owned by the requirement poster).
+3. Deduplicates notifications per buyer and vehicle listing.
+4. Generates a `Notification` record with `target_type: 'commercial'`, `target_id: vehicle.id`, and `type: 'requirement_match'`.
+5. Sends Firebase push notifications (`"New Commercial Vehicle Match! 🚚"`, `"A new commercial vehicle matching your requirement 'Tata Mini Truck' has been listed."`) to the matching buyers in real-time.
+
+---
+
+### 8.7 Admin Requirements Directory (`GET /api/v1/admin/requirements`)
+- **Method / Endpoint:** `GET /api/v1/admin/requirements`
+- **Auth:** Required (Admin)
+- **Query Parameters:**
+  - `target_type`: `'commercial'` | `'car'` | `'all'`
+  - `status`: `'active'` | `'inactive'` | `'bought'` | `'deleted'` | `'all'`
+  - `brand_id`: Filter by brand UUID
+  - `vehicle_type_id`: Filter by commercial vehicle type UUID
+  - `model_id`: Filter by car model UUID
+  - `start_date` / `end_date`: Filter by date range (ISO string)
+  - `page` & `limit`: Pagination parameters
+
 
 

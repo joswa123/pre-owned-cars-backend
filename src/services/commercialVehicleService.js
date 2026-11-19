@@ -16,6 +16,7 @@ const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
+const notificationQueue = require('../queues/notificationQueue');
 const fs = require('fs');
 const { cloudinary } = require('../config/cloudinary');
 const { generateUniqueSlug } = require('../utils/slugify');
@@ -503,6 +504,10 @@ exports.createCommercialVehicle = async (userId, userRole, rawData, files) => {
     await transaction.commit();
 
     await invalidateCommercialCaches(vehicle.id, userId);
+
+    notificationQueue.add({ commercialVehicleId: vehicle.id }).catch((err) => {
+      console.error('[Commercial Service] Failed to enqueue commercial vehicle matching job:', err);
+    });
 
     const fullVehicle = await CommercialVehicle.findByPk(vehicle.id, {
       include: [
@@ -1222,6 +1227,12 @@ exports.updateCommercialVehicle = async (id, userId, userRole, rawData, files) =
   }
 
   await invalidateCommercialCaches(vehicle.id, userId);
+
+  if (vehicle.status === 'active') {
+    notificationQueue.add({ commercialVehicleId: vehicle.id }).catch((err) => {
+      console.error('[Commercial Service] Failed to enqueue commercial vehicle matching job on update:', err);
+    });
+  }
 
   return exports.getCommercialVehicleById(vehicle.id, { id: userId, role: userRole });
 };

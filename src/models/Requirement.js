@@ -7,6 +7,11 @@ const Requirement = sequelize.define('Requirement', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
   },
+  target_type: {
+    type: DataTypes.ENUM('car', 'commercial'),
+    allowNull: false,
+    defaultValue: 'car',
+  },
   user_id: {
     type: DataTypes.UUID,
     allowNull: false,
@@ -21,9 +26,15 @@ const Requirement = sequelize.define('Requirement', {
   },
   model_id: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true,
     references: { model: 'models', key: 'id' },
     onDelete: 'RESTRICT',
+  },
+  vehicle_type_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: { model: 'car_types', key: 'id' },
+    onDelete: 'SET NULL',
   },
   year: {
     type: DataTypes.INTEGER,
@@ -47,7 +58,8 @@ const Requirement = sequelize.define('Requirement', {
   },
   body_type: {
     type: DataTypes.STRING(50),
-    allowNull: false,
+    allowNull: true,
+    defaultValue: null,
   },
   transmission: {
     type: DataTypes.STRING(100),
@@ -56,7 +68,8 @@ const Requirement = sequelize.define('Requirement', {
   },
   board_type: {
     type: DataTypes.STRING(50),
-    allowNull: false,
+    allowNull: true,
+    defaultValue: null,
   },
   color: {
     type: DataTypes.STRING(50),
@@ -87,6 +100,18 @@ const Requirement = sequelize.define('Requirement', {
   tableName: 'requirements',
   timestamps: true,
   underscored: true,
+  hooks: {
+    beforeValidate: (instance) => {
+      if (!instance.target_type) {
+        instance.target_type = instance.vehicle_type_id ? 'commercial' : 'car';
+      }
+    },
+  },
+  indexes: [
+    { fields: ['user_id', 'status'] },
+    { fields: ['target_type', 'status', 'expiry_date'] },
+    { fields: ['target_type', 'brand_id', 'vehicle_type_id'] },
+  ],
 });
 
 module.exports = Requirement;

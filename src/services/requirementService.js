@@ -1,4 +1,4 @@
-const { Requirement, Brand, Model, User } = require('../models');
+const { Requirement, Brand, Model, CarType, VehicleType, User } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const { AppError } = require('../utils/errorHandler');
@@ -14,9 +14,12 @@ const TRANSMISSION_CANONICAL_MAP = {
   'dct': 'DCT',
 };
 
+const isUuid = (val) =>
+  typeof val === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+
 /**
  * Parses raw transmission input into a normalized array of Title-Case transmissions.
- * Drops unrecognized values with a warning to ensure type safety.
  *
  * @param {string|string[]|null|undefined} raw
  * @returns {string[]} Normalized Title Case transmission list
@@ -45,21 +48,162 @@ function parseTransmissionList(raw) {
   return result;
 }
 
-exports.parseTransmissionList = parseTransmissionList;
-exports.ALLOWED_TRANSMISSIONS = ALLOWED_TRANSMISSIONS;
+/**
+ * Resolves purchase_plan / purchase_plan_days into an integer number of days.
+ * Handles inputs like: 30, "30", "30 Days", "1 Month", "Immediate"
+ *
+ * @param {string|number|null|undefined} raw
+ * @returns {number} Days between 1 and 365 (default: 30)
+ */
+function resolvePurchasePlanDays(raw) {
+  if (raw === undefined || raw === null || raw === '') return 30;
+  if (typeof raw === 'number' && !isNaN(raw)) {
+    return Math.min(Math.max(parseInt(raw, 10), 1), 365);
+  }
+  const str = String(raw).trim().toLowerCase();
+  const numMatch = str.match(/\d+/);
+  if (numMatch) {
+    const num = parseInt(numMatch[0], 10);
+    if (str.includes('month')) return Math.min(num * 30, 365);
+    if (str.includes('week')) return Math.min(num * 7, 365);
+    if (str.includes('year')) return 365;
+    return Math.min(Math.max(num, 1), 365);
+  }
+  if (str.includes('immediate') || str.includes('urgent')) return 7;
+  return 30;
+}
+
+const requirementIncludes = [
+  { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+  { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+  { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+];
 
 /**
- * Create a new Buying Requirement
+ * Normalizes requirement JSON response with helper fields.
+ */
+function formatRequirement(reqInstance) {
+  if (!reqInstance) return null;
+  const json = typeof reqInstance.toJSON === 'function' ? reqInstance.toJSON() : { ...reqInstance };
+  const targetType = json.target_type || (json.vehicle_type_id ? 'commercial' : 'car');
+
+  return {
+    ...json,
+    target_type: targetType,
+    brand_name: json.brand?.name || null,
+    model_name: json.carModel?.name || null,
+    vehicle_type_name: json.vehicleType?.name || null,
+    vehicle_name: targetType === 'commercial'
+      ? [json.brand?.name, json.vehicleType?.name, json.year].filter(Boolean).join(' ') || 'Commercial Requirement'
+      : [json.brand?.name, json.carModel?.name, json.year].filter(Boolean).join(' ') || 'Car Requirement',
+  };
+}
+
+exports.parseTransmissionList = parseTransmissionList;
+exports.ALLOWED_TRANSMISSIONS = ALLOWED_TRANSMISSIONS;
+exports.resolvePurchasePlanDays = resolvePurchasePlanDays;
+exports.formatRequirement = formatRequirement;
+
+/**
+ * Create a new Buying Requirement (Polymorphic: Car or Commercial Vehicle)
  */
 exports.createRequirement = async (userId, data) => {
-  // 1. Resolve Brand
-  const brandId = await resolveBrandId(data.brand_id);
+  const targetType = (data.target_type || (data.vehicle_type_id || data.vehicleTypeName ? 'commercial' : 'car')).toLowerCase();
+  const purchaseDays = resolvePurchasePlanDays(data.purchase_plan_days !== undefined ? data.purchase_plan_days : data.purchase_plan);
+
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() + purchaseDays);
+
+  const minPrice = (data.min_price !== undefined && data.min_price !== '')
+    ? data.min_price
+    : (data.price && typeof data.price === 'object' && data.price.min !== undefined && data.price.min !== '' ? data.price.min : null);
+  const maxPrice = (data.max_price !== undefined && data.max_price !== '')
+    ? data.max_price
+    : (data.price && typeof data.price === 'object' && data.price.max !== undefined && data.price.max !== '' ? data.price.max : null);
+  const minKm = (data.min_km !== undefined && data.min_km !== '')
+    ? data.min_km
+    : (data.km_driven && typeof data.km_driven === 'object' && data.km_driven.min !== undefined && data.km_driven.min !== ''
+      ? data.km_driven.min
+      : (data.km && typeof data.km === 'object' && data.km.min !== undefined && data.km.min !== '' ? data.km.min : null));
+  const maxKm = (data.max_km !== undefined && data.max_km !== '')
+    ? data.max_km
+    : (data.km_driven && typeof data.km_driven === 'object' && data.km_driven.max !== undefined && data.km_driven.max !== ''
+      ? data.km_driven.max
+      : (data.km && typeof data.km === 'object' && data.km.max !== undefined && data.km.max !== '' ? data.km.max : null));
+
+  if (targetType === 'commercial') {
+    // ── 1. Commercial Vehicle Requirement ──────────────────────────────
+    const brandInput = data.brand_id || data.brandName || data.brand;
+    if (!brandInput) throw new AppError('brand_id or brandName is required for commercial requirements', 400);
+
+    let brandId = null;
+    if (isUuid(brandInput) || !isNaN(brandInput)) {
+      brandId = await resolveBrandId(brandInput);
+    }
+    if (!brandId) {
+      const br = await Brand.findOne({ where: { name: String(brandInput).trim() } });
+      brandId = br ? br.id : null;
+    }
+    if (!brandId) throw new AppError('Brand not found', 404);
+
+    const typeInput = data.vehicle_type_id || data.vehicleTypeName || data.vehicle_type;
+    if (!typeInput) throw new AppError('vehicle_type_id or vehicleTypeName is required for commercial requirements', 400);
+
+    let vehicleTypeId = null;
+    if (isUuid(typeInput)) {
+      const vt = await CarType.findByPk(typeInput);
+      vehicleTypeId = vt ? vt.id : null;
+    } else {
+      const trimmedType = String(typeInput).trim();
+      const vt = await CarType.findOne({
+        where: {
+          [Op.or]: [
+            { slug: trimmedType.toLowerCase() },
+            { name: trimmedType },
+          ],
+        },
+      });
+      vehicleTypeId = vt ? vt.id : null;
+    }
+    if (!vehicleTypeId) throw new AppError('Vehicle type not found', 404);
+
+    const requirement = await Requirement.create({
+      target_type: 'commercial',
+      user_id: userId,
+      brand_id: brandId,
+      vehicle_type_id: vehicleTypeId,
+      model_id: null,
+      year: data.year || null,
+      min_price: minPrice,
+      max_price: maxPrice,
+      min_km: minKm,
+      max_km: maxKm,
+      body_type: data.body_type || null,
+      transmission: null,
+      board_type: data.board_type || null,
+      color: data.color || null,
+      purchase_plan_days: purchaseDays,
+      expiry_date: expiryDate,
+      status: 'active',
+      description: data.description || null,
+    });
+
+    const dashboardService = require('./dashboardService');
+    await dashboardService.invalidateDashboardCache(userId);
+
+    const saved = await Requirement.findByPk(requirement.id, {
+      include: requirementIncludes,
+    });
+    return formatRequirement(saved);
+  }
+
+  // ── 2. Car Requirement ─────────────────────────────────────────────
+  const brandId = await resolveBrandId(data.brand_id || data.brandName || data.brand);
   if (!brandId) {
     throw new AppError('Brand not found', 404);
   }
 
-  // 2. Resolve Model and check brand association
-  const modelId = await resolveModelId(data.model_id, brandId, data.body_type || 'SUV');
+  const modelId = await resolveModelId(data.model_id || data.modelName || data.model, brandId, data.body_type || 'SUV');
   if (!modelId) {
     throw new AppError('Model not found', 404);
   }
@@ -69,37 +213,28 @@ exports.createRequirement = async (userId, data) => {
     throw new AppError('Model does not belong to the selected brand', 400);
   }
 
-  // 3. Compute expiry date
-  const expiryDate = new Date();
-  expiryDate.setDate(expiryDate.getDate() + data.purchase_plan_days);
-
-  const minPrice = data.min_price !== undefined && data.min_price !== '' ? data.min_price : null;
-  const maxPrice = data.max_price !== undefined && data.max_price !== '' ? data.max_price : null;
-  const minKm = data.min_km !== undefined && data.min_km !== '' ? data.min_km : null;
-  const maxKm = data.max_km !== undefined && data.max_km !== '' ? data.max_km : null;
-
-  // 4. Normalize transmission
   let normalizedTransmission = null;
   if (data.transmission !== undefined && data.transmission !== null) {
     const parsed = parseTransmissionList(data.transmission);
     normalizedTransmission = parsed.length > 0 ? parsed.join(', ') : null;
   }
 
-  // 5. Create requirement
   const requirement = await Requirement.create({
+    target_type: 'car',
     user_id: userId,
     brand_id: brandId,
     model_id: modelId,
+    vehicle_type_id: null,
     year: data.year || null,
     min_price: minPrice,
     max_price: maxPrice,
     min_km: minKm,
     max_km: maxKm,
-    body_type: data.body_type,
+    body_type: data.body_type || 'SUV',
     transmission: normalizedTransmission,
-    board_type: data.board_type,
+    board_type: data.board_type || 'Own Board',
     color: data.color || null,
-    purchase_plan_days: data.purchase_plan_days,
+    purchase_plan_days: purchaseDays,
     expiry_date: expiryDate,
     status: 'active',
     description: data.description || null,
@@ -108,22 +243,18 @@ exports.createRequirement = async (userId, data) => {
   const dashboardService = require('./dashboardService');
   await dashboardService.invalidateDashboardCache(userId);
 
-  return await Requirement.findByPk(requirement.id, {
-    include: [
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-    ],
+  const saved = await Requirement.findByPk(requirement.id, {
+    include: requirementIncludes,
   });
+  return formatRequirement(saved);
 };
 
 /**
  * Get all requirements belonging to the authenticated user.
- * Returns all requirements (active, expired, bought, deleted) by default without automatic exclusion.
- * Optionally filters by status if provided in filters.
+ * Supports filters: status ('active', 'inactive', 'expired', 'bought', 'sold', 'deleted', 'all'), target_type ('car', 'commercial', 'all')
  */
 exports.getMyRequirements = async (userId, filters = {}) => {
   // 1. Run dynamic expiry logic: auto-expire requirements whose time has passed
-  // Only evaluate active ones. Bought and deleted requirements are untouched.
   await Requirement.update(
     { status: 'expired' },
     {
@@ -141,16 +272,42 @@ exports.getMyRequirements = async (userId, filters = {}) => {
 
   const where = { user_id: userId };
 
-  if (filters.status) {
-    where.status = filters.status;
+  // Status filtering with alias normalization
+  if (filters.status && filters.status !== 'all') {
+    const s = String(filters.status).toLowerCase();
+    if (s === 'active') {
+      where.status = 'active';
+      where.expiry_date = { [Op.gt]: new Date() };
+    } else if (s === 'inactive' || s === 'expired') {
+      where[Op.or] = [
+        { status: 'expired' },
+        { status: 'active', expiry_date: { [Op.lte]: new Date() } },
+      ];
+    } else if (s === 'bought' || s === 'sold') {
+      where.status = 'bought';
+    } else if (s === 'deleted') {
+      where.status = 'deleted';
+    } else {
+      where.status = s;
+    }
+  }
+
+  // Target type filtering
+  const rawTargetType = filters.target_type || filters.type || filters.targetType || null;
+  if (rawTargetType && rawTargetType !== 'all') {
+    const norm = String(rawTargetType).toLowerCase();
+    if (norm === 'commercial') {
+      where.target_type = 'commercial';
+    } else if (norm === 'car') {
+      where[Op.or] = [{ target_type: 'car' }, { target_type: null }];
+    } else {
+      where.target_type = norm;
+    }
   }
 
   const { count, rows } = await Requirement.findAndCountAll({
     where,
-    include: [
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-    ],
+    include: requirementIncludes,
     limit,
     offset,
     order: [['created_at', 'DESC']],
@@ -158,7 +315,7 @@ exports.getMyRequirements = async (userId, filters = {}) => {
 
   return {
     total: count,
-    requirements: rows,
+    requirements: rows.map(formatRequirement),
     page,
     limit,
     totalPages: Math.ceil(count / limit),
@@ -171,10 +328,7 @@ exports.getMyRequirements = async (userId, filters = {}) => {
 exports.getRequirementById = async (requirementId, userId) => {
   const requirement = await Requirement.findOne({
     where: { id: requirementId },
-    include: [
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-    ],
+    include: requirementIncludes,
   });
 
   if (!requirement) {
@@ -190,7 +344,7 @@ exports.getRequirementById = async (requirementId, userId) => {
     await requirement.update({ status: 'expired' });
   }
 
-  return requirement;
+  return formatRequirement(requirement);
 };
 
 /**
@@ -200,7 +354,6 @@ exports.updateRequirement = async (requirementId, userId, data) => {
   const transaction = await sequelize.transaction();
 
   try {
-    // 1. Fetch existing requirement
     const requirement = await Requirement.findOne({
       where: { id: requirementId },
       transaction,
@@ -214,31 +367,67 @@ exports.updateRequirement = async (requirementId, userId, data) => {
       throw new AppError('Unauthorized to update this requirement', 403);
     }
 
-    // Determine target brandId
+    const targetType = (data.target_type || requirement.target_type || 'car').toLowerCase();
+    const updateData = {};
+
+    // 1. Resolve Brand
     let resolvedBrandId = requirement.brand_id;
-    if (data.brand_id) {
-      resolvedBrandId = await resolveBrandId(data.brand_id, transaction);
+    const brandInput = data.brand_id || data.brandName || data.brand;
+    if (brandInput) {
+      if (isUuid(brandInput) || !isNaN(brandInput)) {
+        resolvedBrandId = await resolveBrandId(brandInput, transaction);
+      }
+      if (!resolvedBrandId) {
+        const br = await Brand.findOne({ where: { name: String(brandInput).trim() }, transaction });
+        resolvedBrandId = br ? br.id : null;
+      }
       if (!resolvedBrandId) throw new AppError('Brand not found', 404);
+      updateData.brand_id = resolvedBrandId;
     }
 
-    let resolvedModelId = requirement.model_id;
-    if (data.model_id) {
-      resolvedModelId = await resolveModelId(data.model_id, resolvedBrandId, data.body_type || requirement.body_type || 'SUV', transaction);
-      if (!resolvedModelId) throw new AppError('Model not found', 404);
-      const model = await Model.findByPk(resolvedModelId, { transaction });
-      const modelBrandId = model ? (model.brandId || model.brand_id) : null;
-      if (model && modelBrandId && modelBrandId !== resolvedBrandId) {
-        throw new AppError('Model does not belong to the selected brand', 400);
+    // 2. Resolve Model or Vehicle Type
+    if (targetType === 'commercial') {
+      const typeInput = data.vehicle_type_id || data.vehicleTypeName || data.vehicle_type;
+      if (typeInput) {
+        let vehicleTypeId = null;
+        if (isUuid(typeInput)) {
+          const vt = await CarType.findByPk(typeInput, { transaction });
+          vehicleTypeId = vt ? vt.id : null;
+        } else {
+          const trimmedType = String(typeInput).trim();
+          const vt = await CarType.findOne({
+            where: {
+              [Op.or]: [
+                { slug: trimmedType.toLowerCase() },
+                { name: trimmedType },
+              ],
+            },
+            transaction,
+          });
+          vehicleTypeId = vt ? vt.id : null;
+        }
+        if (!vehicleTypeId) throw new AppError('Vehicle type not found', 404);
+        updateData.vehicle_type_id = vehicleTypeId;
       }
-    } else if (data.brand_id && resolvedBrandId !== requirement.brand_id) {
-      const currentModel = await Model.findByPk(requirement.model_id, { transaction });
-      const currentModelBrandId = currentModel ? (currentModel.brandId || currentModel.brand_id) : null;
-      if (currentModelBrandId !== resolvedBrandId) {
-        throw new AppError('Model does not belong to the selected brand', 400);
+      updateData.target_type = 'commercial';
+    } else {
+      // Car target
+      let resolvedModelId = requirement.model_id;
+      const modelInput = data.model_id || data.modelName || data.model;
+      if (modelInput) {
+        resolvedModelId = await resolveModelId(modelInput, resolvedBrandId, data.body_type || requirement.body_type || 'SUV', transaction);
+        if (!resolvedModelId) throw new AppError('Model not found', 404);
+        const model = await Model.findByPk(resolvedModelId, { transaction });
+        const modelBrandId = model ? (model.brandId || model.brand_id) : null;
+        if (model && modelBrandId && modelBrandId !== resolvedBrandId) {
+          throw new AppError('Model does not belong to the selected brand', 400);
+        }
+        updateData.model_id = resolvedModelId;
       }
+      updateData.target_type = 'car';
     }
 
-    // 4. Prepare update fields (only allowed ones)
+    // 3. Prepare common fields
     const allowedFields = [
       'year',
       'min_price',
@@ -252,9 +441,6 @@ exports.updateRequirement = async (requirementId, userId, data) => {
       'description',
     ];
 
-    const updateData = {};
-    if (data.brand_id) updateData.brand_id = resolvedBrandId;
-    if (data.model_id) updateData.model_id = resolvedModelId;
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
         if (field === 'transmission') {
@@ -266,7 +452,19 @@ exports.updateRequirement = async (requirementId, userId, data) => {
       }
     }
 
-    // Validate range consistency if updating min/max bounds
+    if (data.price && typeof data.price === 'object') {
+      if (data.price.min !== undefined) updateData.min_price = data.price.min === '' ? null : data.price.min;
+      if (data.price.max !== undefined) updateData.max_price = data.price.max === '' ? null : data.price.max;
+    }
+    const kmObj = (data.km_driven && typeof data.km_driven === 'object')
+      ? data.km_driven
+      : (data.km && typeof data.km === 'object' ? data.km : null);
+    if (kmObj) {
+      if (kmObj.min !== undefined) updateData.min_km = kmObj.min === '' ? null : kmObj.min;
+      if (kmObj.max !== undefined) updateData.max_km = kmObj.max === '' ? null : kmObj.max;
+    }
+
+    // Range consistency validation
     const targetMinPrice = updateData.min_price !== undefined ? updateData.min_price : requirement.min_price;
     const targetMaxPrice = updateData.max_price !== undefined ? updateData.max_price : requirement.max_price;
     if (targetMinPrice !== null && targetMinPrice !== undefined && targetMaxPrice !== null && targetMaxPrice !== undefined) {
@@ -283,30 +481,20 @@ exports.updateRequirement = async (requirementId, userId, data) => {
       }
     }
 
-    // Support 'km' alias for 'km_driven'
-    if (data.km !== undefined && data.km_driven === undefined) {
-      updateData.km_driven = data.km !== '' && data.km !== null ? data.km : null;
-    }
-
-    // 5. Handle purchase_plan_days -> recompute expiry_date
-    if (data.purchase_plan_days !== undefined) {
-      const days = parseInt(data.purchase_plan_days);
-      if (isNaN(days) || days < 1 || days > 365) {
-        throw new AppError('purchase_plan_days must be between 1 and 365', 400);
-      }
+    // Purchase plan update
+    if (data.purchase_plan !== undefined || data.purchase_plan_days !== undefined) {
+      const days = resolvePurchasePlanDays(data.purchase_plan_days !== undefined ? data.purchase_plan_days : data.purchase_plan);
       const createdDate = new Date(requirement.created_at || requirement.createdAt);
       updateData.expiry_date = new Date(createdDate.getTime() + days * 24 * 60 * 60 * 1000);
       updateData.purchase_plan_days = days;
     }
 
-    // 6. Update the requirement
     await requirement.update(updateData, { transaction });
     await transaction.commit();
 
     const dashboardService = require('./dashboardService');
     await dashboardService.invalidateDashboardCache(userId);
 
-    // 7. Reload and return (with associations)
     return await exports.getRequirementById(requirementId, userId);
   } catch (error) {
     await transaction.rollback();
@@ -315,7 +503,7 @@ exports.updateRequirement = async (requirementId, userId, data) => {
 };
 
 /**
- * Update the status of a requirement
+ * Update the status of a requirement ('active', 'expired', 'inactive', 'bought', 'sold', 'deleted')
  */
 exports.updateRequirementStatus = async (requirementId, userId, data) => {
   const requirement = await Requirement.findOne({
@@ -326,12 +514,15 @@ exports.updateRequirementStatus = async (requirementId, userId, data) => {
     throw new AppError('Requirement not found or unauthorized', 404);
   }
 
-  const updateFields = { status: data.status };
+  let newStatus = String(data.status).toLowerCase();
+  if (newStatus === 'sold') newStatus = 'bought';
+  if (newStatus === 'inactive') newStatus = 'expired';
 
-  if (data.status === 'bought') {
+  const updateFields = { status: newStatus };
+
+  if (newStatus === 'bought') {
     updateFields.bought_from = data.bought_from;
   } else {
-    // Automatically clear bought_from when transitioning back or soft deleting
     updateFields.bought_from = null;
   }
 
@@ -340,12 +531,10 @@ exports.updateRequirementStatus = async (requirementId, userId, data) => {
   const dashboardService = require('./dashboardService');
   await dashboardService.invalidateDashboardCache(userId);
 
-  return await Requirement.findByPk(requirement.id, {
-    include: [
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
-    ],
+  const saved = await Requirement.findByPk(requirement.id, {
+    include: requirementIncludes,
   });
+  return formatRequirement(saved);
 };
 
 /**
@@ -360,7 +549,6 @@ exports.deleteRequirement = async (requirementId, userId) => {
     throw new AppError('Requirement not found or unauthorized', 404);
   }
 
-  // Soft delete requirement by setting status to 'deleted' and clearing bought_from
   await requirement.update({
     status: 'deleted',
     bought_from: null,
@@ -382,30 +570,53 @@ exports.getAllRequirementsForAdmin = async (filters = {}) => {
 
   const where = {};
 
-  if (filters.status) {
-    where.status = filters.status;
+  if (filters.status && filters.status !== 'all') {
+    const s = String(filters.status).toLowerCase();
+    if (s === 'active') {
+      where.status = 'active';
+      where.expiry_date = { [Op.gt]: new Date() };
+    } else if (s === 'inactive' || s === 'expired') {
+      where[Op.or] = [
+        { status: 'expired' },
+        { status: 'active', expiry_date: { [Op.lte]: new Date() } },
+      ];
+    } else if (s === 'bought' || s === 'sold') {
+      where.status = 'bought';
+    } else if (s === 'deleted') {
+      where.status = 'deleted';
+    } else {
+      where.status = s;
+    }
   }
 
-  if (filters.user_id) {
-    where.user_id = filters.user_id;
+  const rawTargetType = filters.target_type || filters.type || filters.targetType || null;
+  if (rawTargetType && rawTargetType !== 'all') {
+    const norm = String(rawTargetType).toLowerCase();
+    if (norm === 'commercial') {
+      where.target_type = 'commercial';
+    } else if (norm === 'car') {
+      where[Op.or] = [{ target_type: 'car' }, { target_type: null }];
+    } else {
+      where.target_type = norm;
+    }
   }
+
+  if (filters.user_id) where.user_id = filters.user_id;
+  if (filters.brand_id) where.brand_id = filters.brand_id;
+  if (filters.vehicle_type_id) where.vehicle_type_id = filters.vehicle_type_id;
+  if (filters.model_id) where.model_id = filters.model_id;
 
   if (filters.start_date || filters.end_date) {
     where.created_at = {};
-    if (filters.start_date) {
-      where.created_at[Op.gte] = new Date(filters.start_date);
-    }
-    if (filters.end_date) {
-      where.created_at[Op.lte] = new Date(filters.end_date);
-    }
+    if (filters.start_date) where.created_at[Op.gte] = new Date(filters.start_date);
+    if (filters.end_date) where.created_at[Op.lte] = new Date(filters.end_date);
   }
 
   const { count, rows } = await Requirement.findAndCountAll({
     where,
     include: [
       { model: User, as: 'user', attributes: ['id', 'full_name', 'phone', 'email'] },
-      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-      { model: Model, as: 'carModel', attributes: ['id', 'name'] },
+      ...requirementIncludes,
     ],
     limit,
     offset,
@@ -414,7 +625,7 @@ exports.getAllRequirementsForAdmin = async (filters = {}) => {
 
   return {
     total: count,
-    requirements: rows,
+    requirements: rows.map(formatRequirement),
     page,
     limit,
     totalPages: Math.ceil(count / limit),
@@ -422,11 +633,12 @@ exports.getAllRequirementsForAdmin = async (filters = {}) => {
 };
 
 /**
- * Match active cars to a requirement (exact match on provided fields)
+ * Match active vehicles to a requirement (polymorphic: matches cars or commercial vehicles)
  */
 exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {}) => {
   const requirement = await Requirement.findOne({
     where: { id: requirementId },
+    include: requirementIncludes,
   });
 
   if (!requirement) {
@@ -434,11 +646,11 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
   }
 
   if (requirement.user_id !== userId) {
-    throw new AppError('Unauthorized to search cars for this requirement', 403);
+    throw new AppError('Unauthorized to search vehicles for this requirement', 403);
   }
 
   if (requirement.status === 'deleted') {
-    throw new AppError('Cannot search cars for a deleted requirement', 400);
+    throw new AppError('Cannot search vehicles for a deleted requirement', 400);
   }
 
   // Dynamic expiry: update if past expiry
@@ -447,41 +659,94 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
   }
 
   if (requirement.status === 'expired') {
-    throw new AppError('Cannot search cars for an expired requirement', 400);
+    throw new AppError('Cannot search vehicles for an expired requirement', 400);
   }
 
-  // Build filter object for carService.getCars
+  const page = parseInt(queryParams.page) || 1;
+  const limit = parseInt(queryParams.limit) || 20;
+  const sortBy = queryParams.sortBy || 'created_at';
+  const sortOrder = queryParams.sortOrder || 'DESC';
+
+  const targetType = requirement.target_type || (requirement.vehicle_type_id ? 'commercial' : 'car');
+
+  // ── Commercial Vehicle Match ──────────────────────────────────────────
+  if (targetType === 'commercial') {
+    const { CommercialVehicle, CommercialVehicleImage, User: UserModel, State, City } = require('../models');
+    const { transformCommercialVehicleImages } = require('./commercialVehicleService');
+    const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
+
+    const where = {
+      status: 'active',
+    };
+
+    if (requirement.brand_id) {
+      where.brand_id = requirement.brand_id;
+    }
+    if (requirement.vehicle_type_id) {
+      where.vehicle_type_id = requirement.vehicle_type_id;
+    }
+    if (requirement.year) {
+      where.year = requirement.year;
+    }
+
+    if (requirement.min_price || requirement.max_price) {
+      where.price = {};
+      if (requirement.min_price) where.price[Op.gte] = parseFloat(requirement.min_price);
+      if (requirement.max_price) where.price[Op.lte] = parseFloat(requirement.max_price);
+    }
+
+    if (requirement.min_km || requirement.max_km) {
+      where.km_driven = {};
+      if (requirement.min_km) where.km_driven[Op.gte] = parseInt(requirement.min_km, 10);
+      if (requirement.max_km) where.km_driven[Op.lte] = parseInt(requirement.max_km, 10);
+    }
+
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await CommercialVehicle.findAndCountAll({
+      where,
+      include: [
+        { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+        { model: CommercialVehicleImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+        { model: UserModel, as: 'seller', attributes: ['id', 'full_name', 'phone', 'role', 'city'] },
+        { model: State, as: 'state', attributes: ['id', 'name'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+      ],
+      order: [[sortBy, sortOrder]],
+      limit,
+      offset,
+    });
+
+    const transformedVehicles = rows.map((v) => {
+      const transformed = transformCommercialVehicleImages(v, baseUrl);
+      transformed.target_type = 'commercial';
+      return transformed;
+    });
+
+    return {
+      total: count,
+      page,
+      limit,
+      totalPages: Math.ceil(count / limit),
+      target_type: 'commercial',
+      requirement: formatRequirement(requirement),
+      vehicles: transformedVehicles,
+      cars: transformedVehicles, // backward compatibility
+    };
+  }
+
+  // ── Car Match ──────────────────────────────────────────────────────────
   const carFilters = {};
 
-  if (requirement.brand_id) {
-    carFilters.brands = [requirement.brand_id];
-  }
-
-  if (requirement.model_id) {
-    carFilters.models = [requirement.model_id];
-  }
-
-  if (requirement.year !== null && requirement.year !== undefined && requirement.year !== '') {
-    carFilters.year = requirement.year;
-  }
-
-  if (requirement.min_price !== null && requirement.min_price !== undefined && requirement.min_price !== '') {
-    carFilters.min_price = requirement.min_price;
-  }
-  if (requirement.max_price !== null && requirement.max_price !== undefined && requirement.max_price !== '') {
-    carFilters.max_price = requirement.max_price;
-  }
-
-  if (requirement.min_km !== null && requirement.min_km !== undefined && requirement.min_km !== '') {
-    carFilters.min_km = requirement.min_km;
-  }
-  if (requirement.max_km !== null && requirement.max_km !== undefined && requirement.max_km !== '') {
-    carFilters.max_km = requirement.max_km;
-  }
-
-  if (requirement.body_type) {
-    carFilters.body_types = [requirement.body_type];
-  }
+  if (requirement.brand_id) carFilters.brands = [requirement.brand_id];
+  if (requirement.model_id) carFilters.models = [requirement.model_id];
+  if (requirement.year) carFilters.year = requirement.year;
+  if (requirement.min_price) carFilters.min_price = requirement.min_price;
+  if (requirement.max_price) carFilters.max_price = requirement.max_price;
+  if (requirement.min_km) carFilters.min_km = requirement.min_km;
+  if (requirement.max_km) carFilters.max_km = requirement.max_km;
+  if (requirement.body_type) carFilters.body_types = [requirement.body_type];
 
   if (requirement.transmission) {
     const parsed = parseTransmissionList(requirement.transmission);
@@ -490,15 +755,15 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
     }
   }
 
-  if (requirement.board_type) {
-    carFilters.board_types = [requirement.board_type];
-  }
-
-  const page = parseInt(queryParams.page) || 1;
-  const limit = parseInt(queryParams.limit) || 20;
-  const sortBy = queryParams.sortBy || 'created_at';
-  const sortOrder = queryParams.sortOrder || 'DESC';
+  if (requirement.board_type) carFilters.board_types = [requirement.board_type];
 
   const carService = require('./carService');
-  return await carService.getCars(carFilters, page, limit, sortBy, sortOrder, userId);
+  const result = await carService.getCars(carFilters, page, limit, sortBy, sortOrder, userId);
+
+  return {
+    ...result,
+    target_type: 'car',
+    requirement: formatRequirement(requirement),
+    vehicles: result.cars || [],
+  };
 };

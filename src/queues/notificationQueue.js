@@ -1,13 +1,18 @@
 const Queue = require('bull');
-const { matchRequirementsForCar } = require('../services/requirementMatchingService');
+const { matchRequirementsForCar, matchRequirementsForCommercialVehicle } = require('../services/requirementMatchingService');
 
 // In local dev or test, if Redis is down or has exceeded free quota, allow disabling Bull to prevent lockup
 if (process.env.DISABLE_BULL_IN_DEV === 'true' || process.env.NODE_ENV === 'test') {
   module.exports = {
     add: async (data) => {
-      console.log(`[Notification Queue Mock] Running matching synchronously for carId: ${data.carId}`);
       try {
-        await matchRequirementsForCar(data.carId);
+        if (data.commercialVehicleId) {
+          console.log(`[Notification Queue Mock] Running matching synchronously for commercialVehicleId: ${data.commercialVehicleId}`);
+          await matchRequirementsForCommercialVehicle(data.commercialVehicleId);
+        } else if (data.carId) {
+          console.log(`[Notification Queue Mock] Running matching synchronously for carId: ${data.carId}`);
+          await matchRequirementsForCar(data.carId);
+        }
       } catch (err) {
         console.warn(`[Notification Queue Mock] Synchronous matching warning: ${err.message}`);
       }
@@ -37,14 +42,18 @@ if (process.env.DISABLE_BULL_IN_DEV === 'true' || process.env.NODE_ENV === 'test
 
   // Process the jobs
   notificationQueue.process(async (job) => {
-    const { carId } = job.data;
-    if (!carId) {
-      throw new Error('carId is required in job data');
+    const { carId, commercialVehicleId } = job.data;
+    if (commercialVehicleId) {
+      console.log(`[Notification Queue] Processing commercial vehicle matching for commercialVehicleId: ${commercialVehicleId}`);
+      await matchRequirementsForCommercialVehicle(commercialVehicleId);
+      console.log(`[Notification Queue] Finished processing for commercialVehicleId: ${commercialVehicleId}`);
+    } else if (carId) {
+      console.log(`[Notification Queue] Processing car matching for carId: ${carId}`);
+      await matchRequirementsForCar(carId);
+      console.log(`[Notification Queue] Finished processing for carId: ${carId}`);
+    } else {
+      throw new Error('carId or commercialVehicleId is required in job data');
     }
-
-    console.log(`[Notification Queue] Processing car matching for carId: ${carId}`);
-    await matchRequirementsForCar(carId);
-    console.log(`[Notification Queue] Finished processing for carId: ${carId}`);
   });
 
   notificationQueue.on('error', (error) => {
