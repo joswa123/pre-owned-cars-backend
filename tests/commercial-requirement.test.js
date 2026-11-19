@@ -198,3 +198,4 @@ describe('Commercial Vehicle Support for Buying Requirements Tests', () => {
     assert.strictEqual(typeof getCommercialWishlistCountMap, 'function');
   });
 });
+

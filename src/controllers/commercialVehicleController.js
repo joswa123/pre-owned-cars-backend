@@ -370,3 +370,32 @@ exports.recordView = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Public: Get commercial vehicle types with brand & vehicle counts
+ * GET /api/v1/commercial/vehicle-types
+ * GET /api/v1/commercial/types
+ */
+exports.getCommercialVehicleTypes = catchAsync(async (req, res) => {
+  const types = await commercialVehicleService.getCommercialVehicleTypesWithCounts(req.query);
+  res.status(200).json({
+    status: 'success',
+    success: true,
+    data: types,
+    count: types.length,
+  });
+});
+
+/**
+ * Public: Get commercial brands with vehicle counts
+ * GET /api/v1/commercial/brands
+ */
+exports.getCommercialBrands = catchAsync(async (req, res) => {
+  const brands = await commercialVehicleService.getCommercialBrandsWithCounts(req.query);
+  res.status(200).json({
+    status: 'success',
+    success: true,
+    data: brands,
+    count: brands.length,
+  });
+});
+

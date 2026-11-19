@@ -11,6 +11,8 @@ const {
   Wishlist,
   Lead,
   View,
+  Category,
+  BrandType,
 } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
@@ -1929,4 +1931,299 @@ exports.recordView = async (vehicleId, userId = null) => {
   } catch (err) {
     console.error('Failed to record commercial vehicle view:', err.message || err);
   }
+};
+
+/**
+ * Get Commercial Vehicle Types with Brand and Vehicle Counts
+ * @param {Object} options
+ * @param {boolean} options.includeEmpty - Include vehicle types with 0 active vehicles (default: true)
+ * @param {boolean} options.includeBrands - Include brand list inside each vehicle type (default: false)
+ * @returns {Promise<Array>}
+ */
+exports.getCommercialVehicleTypesWithCounts = async (options = {}) => {
+  const includeEmpty = options.includeEmpty !== false && options.includeEmpty !== 'false';
+  const includeBrands = options.includeBrands === true || options.includeBrands === 'true';
+
+  const cacheKey = `commercial:vehicle_types:with_counts:empty=${includeEmpty}:brands=${includeBrands}`;
+  try {
+    if (redisClient && redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get error in getCommercialVehicleTypesWithCounts:', err);
+  }
+
+  // 1. Find Commercial Category
+  const commCat = await Category.findOne({
+    where: { slug: 'commercial' },
+    attributes: ['id'],
+  });
+
+  if (!commCat) {
+    return [];
+  }
+
+  // 2. Fetch all active CarType records belonging to commercial category
+  const types = await CarType.findAll({
+    where: {
+      is_active: true,
+      category_id: commCat.id,
+    },
+    order: [
+      ['order', 'ASC'],
+      ['name', 'ASC'],
+    ],
+  });
+
+  const typeIds = types.map((t) => t.id);
+  if (typeIds.length === 0) {
+    return [];
+  }
+
+  // 3. Parallel queries: active commercial vehicle counts and brand counts
+  const [vehicleCounts, brandCounts, brandDetails] = await Promise.all([
+    CommercialVehicle.findAll({
+      attributes: [
+        'vehicle_type_id',
+        [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
+      ],
+      where: {
+        status: 'active',
+        deleted_at: null,
+        vehicle_type_id: typeIds,
+      },
+      group: ['vehicle_type_id'],
+      raw: true,
+    }),
+    BrandType.findAll({
+      attributes: [
+        'type_id',
+        [Sequelize.fn('COUNT', Sequelize.fn('DISTINCT', Sequelize.col('brand_id'))), 'count'],
+      ],
+      where: {
+        type_id: typeIds,
+      },
+      group: ['type_id'],
+      raw: true,
+    }),
+    includeBrands
+      ? BrandType.findAll({
+          where: { type_id: typeIds },
+          include: [
+            {
+              model: Brand,
+              as: 'brand',
+              where: { is_active: true },
+              attributes: ['id', 'name', 'slug', 'logo'],
+            },
+          ],
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const vehicleCountMap = {};
+  vehicleCounts.forEach((r) => {
+    vehicleCountMap[r.vehicle_type_id] = parseInt(r.count, 10) || 0;
+  });
+
+  const brandCountMap = {};
+  brandCounts.forEach((r) => {
+    brandCountMap[r.type_id] = parseInt(r.count, 10) || 0;
+  });
+
+  const brandsPerTypeMap = {};
+  if (includeBrands && Array.isArray(brandDetails)) {
+    brandDetails.forEach((bt) => {
+      if (bt.brand) {
+        if (!brandsPerTypeMap[bt.type_id]) brandsPerTypeMap[bt.type_id] = [];
+        brandsPerTypeMap[bt.type_id].push({
+          id: bt.brand.id,
+          name: bt.brand.name,
+          slug: bt.brand.slug,
+          logo_url: bt.brand.logo || null,
+        });
+      }
+    });
+  }
+
+  let result = types.map((t) => {
+    const vCount = vehicleCountMap[t.id] || 0;
+    const bCount = brandCountMap[t.id] || (brandsPerTypeMap[t.id]?.length || 0);
+
+    const item = {
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      icon_url: t.icon_url || null,
+      order: t.order,
+      brands_count: bCount,
+      vehicles_count: vCount,
+      commercial_vehicles_count: vCount,
+    };
+
+    if (includeBrands) {
+      item.brands = brandsPerTypeMap[t.id] || [];
+    }
+
+    return item;
+  });
+
+  if (!includeEmpty) {
+    result = result.filter((item) => item.vehicles_count > 0);
+  }
+
+  // Sort: types with active vehicles first, then by display order, then alphabetical
+  result.sort((a, b) => {
+    if (b.vehicles_count !== a.vehicles_count) {
+      return b.vehicles_count - a.vehicles_count;
+    }
+    if (a.order !== b.order) {
+      return a.order - b.order;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  try {
+    if (redisClient && redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('Redis set error in getCommercialVehicleTypesWithCounts:', err);
+  }
+
+  return result;
+};
+
+/**
+ * Get Commercial Brands with Active Vehicle Counts
+ * @param {Object} options
+ * @param {string|null} options.vehicleTypeId - Optional vehicle type ID to filter brands and vehicle count
+ * @param {boolean} options.includeEmpty - Include brands with 0 active vehicles (default: true)
+ * @returns {Promise<Array>}
+ */
+exports.getCommercialBrandsWithCounts = async (options = {}) => {
+  const vehicleTypeId = options.vehicleTypeId || options.vehicle_type_id || options.type_id || null;
+  const includeEmpty = options.includeEmpty !== false && options.includeEmpty !== 'false';
+
+  const cacheKey = `commercial:brands:with_counts:type=${vehicleTypeId || 'all'}:empty=${includeEmpty}`;
+  try {
+    if (redisClient && redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error('Redis get error in getCommercialBrandsWithCounts:', err);
+  }
+
+  // 1. Find Commercial Category ID
+  const commCat = await Category.findOne({
+    where: { slug: 'commercial' },
+    attributes: ['id'],
+  });
+
+  if (!commCat) {
+    return [];
+  }
+
+  // 2. Determine target commercial vehicle types
+  let targetTypeIds = [];
+  if (vehicleTypeId) {
+    const isId = isUuid(vehicleTypeId);
+    const typeObj = await CarType.findOne({
+      where: isId ? { id: vehicleTypeId } : { slug: vehicleTypeId },
+      attributes: ['id'],
+    });
+    if (typeObj) {
+      targetTypeIds = [typeObj.id];
+    } else {
+      targetTypeIds = [vehicleTypeId];
+    }
+  } else {
+    const commTypes = await CarType.findAll({
+      where: { is_active: true, category_id: commCat.id },
+      attributes: ['id'],
+    });
+    targetTypeIds = commTypes.map((t) => t.id);
+  }
+
+  // 3. Find brand IDs mapped to these vehicle types in brand_types junction table
+  const mappedBrandTypes = targetTypeIds.length > 0
+    ? await BrandType.findAll({
+        attributes: ['brand_id'],
+        where: { type_id: targetTypeIds },
+        raw: true,
+      })
+    : [];
+  const brandIdsSet = new Set(mappedBrandTypes.map((b) => b.brand_id));
+
+  // 4. Query active commercial vehicle counts grouped by brand_id
+  const vehicleWhere = {
+    status: 'active',
+    deleted_at: null,
+  };
+  if (targetTypeIds.length > 0) {
+    vehicleWhere.vehicle_type_id = targetTypeIds.length === 1 ? targetTypeIds[0] : targetTypeIds;
+  }
+
+  const activeVehicles = await CommercialVehicle.findAll({
+    attributes: [
+      'brand_id',
+      [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
+    ],
+    where: vehicleWhere,
+    group: ['brand_id'],
+    raw: true,
+  });
+
+  const countMap = {};
+  activeVehicles.forEach((v) => {
+    countMap[v.brand_id] = parseInt(v.count, 10) || 0;
+    brandIdsSet.add(v.brand_id);
+  });
+
+  const allBrandIds = Array.from(brandIdsSet);
+  if (allBrandIds.length === 0) {
+    return [];
+  }
+
+  // 5. Fetch brand details
+  const brands = await Brand.findAll({
+    where: {
+      id: allBrandIds,
+      is_active: true,
+    },
+    order: [['name', 'ASC']],
+  });
+
+  let result = brands.map((b) => {
+    const count = countMap[b.id] || 0;
+    return {
+      id: b.id,
+      name: b.name,
+      slug: b.slug,
+      logo: b.logo || null,
+      logo_url: b.logo || b.logoUrl || null,
+      is_active: Boolean(b.is_active),
+      vehicles_count: count,
+      commercial_vehicles_count: count,
+    };
+  });
+
+  if (!includeEmpty) {
+    result = result.filter((b) => b.vehicles_count > 0);
+  }
+
+  // Sort: brands with stock first, then alphabetical
+  result.sort((a, b) => (b.vehicles_count - a.vehicles_count) || a.name.localeCompare(b.name));
+
+  try {
+    if (redisClient && redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('Redis set error in getCommercialBrandsWithCounts:', err);
+  }
+
+  return result;
 };
