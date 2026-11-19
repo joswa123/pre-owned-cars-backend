@@ -907,6 +907,7 @@ const getCommercialWishlistCountMap = async (vehicleIds) => {
   });
   return countMap;
 };
+exports.getCommercialWishlistCountMap = getCommercialWishlistCountMap;
 
 /**
  * Get Commercial Vehicle by ID or Slug

@@ -192,4 +192,9 @@ describe('Commercial Vehicle Support for Buying Requirements Tests', () => {
     assert(notificationQueue, 'Notification queue should be exported');
     assert.strictEqual(typeof notificationQueue.add, 'function');
   });
+
+  it('Step 12: commercialVehicleService exports getCommercialWishlistCountMap', () => {
+    const { getCommercialWishlistCountMap } = require('../src/services/commercialVehicleService');
+    assert.strictEqual(typeof getCommercialWishlistCountMap, 'function');
+  });
 });

@@ -671,8 +671,8 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
 
   // ── Commercial Vehicle Match ──────────────────────────────────────────
   if (targetType === 'commercial') {
-    const { CommercialVehicle, CommercialVehicleImage, User: UserModel, State, City } = require('../models');
-    const { transformCommercialVehicleImages } = require('./commercialVehicleService');
+    const { CommercialVehicle, CommercialVehicleImage, User: UserModel, State, City, Wishlist } = require('../models');
+    const { transformCommercialVehicleImages, getCommercialWishlistCountMap } = require('./commercialVehicleService');
     const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
 
     const where = {
@@ -718,10 +718,34 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
       offset,
     });
 
+    const vehicleIds = rows.map((v) => v.id);
+
+    let wishlistSet = new Set();
+    const [userWishlists, wishlistCountMap] = await Promise.all([
+      userId && vehicleIds.length > 0
+        ? Wishlist.findAll({
+            where: { user_id: userId, target_type: 'commercial', target_id: vehicleIds },
+            attributes: ['target_id'],
+            raw: true,
+          })
+        : Promise.resolve([]),
+      getCommercialWishlistCountMap(vehicleIds),
+    ]);
+
+    if (userId) {
+      wishlistSet = new Set(userWishlists.map((w) => w.target_id));
+    }
+
     const transformedVehicles = rows.map((v) => {
-      const transformed = transformCommercialVehicleImages(v, baseUrl);
+      const transformed = transformCommercialVehicleImages(v, baseUrl, { id: userId });
       transformed.target_type = 'commercial';
-      return transformed;
+      const isW = wishlistSet.has(v.id);
+      return {
+        ...transformed,
+        isWishlist: isW,
+        is_wishlist: isW,
+        wishlist_count: wishlistCountMap[v.id] || 0,
+      };
     });
 
     return {
