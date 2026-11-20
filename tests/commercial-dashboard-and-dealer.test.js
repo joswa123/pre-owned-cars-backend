@@ -150,4 +150,14 @@ describe('Commercial Support for Dashboard & Dealer Inventory Tests', () => {
     assert.strictEqual(responseData.districtDetail.name, 'Coimbatore');
     assert.strictEqual(responseData.stateDetail.name, 'Tamil Nadu');
   });
+
+  it('Step 10: Commercial routes should have vehicle-types, /vehicle-types/:vehicleTypeId/brands, and /brands/:vehicleTypeId', () => {
+    const commercialRoutes = require('../src/routes/v1/commercialRoutes');
+    const paths = commercialRoutes.stack.filter(r => r.route).map(r => r.route.path);
+    assert(paths.includes('/vehicle-types'), 'should have /vehicle-types');
+    assert(paths.includes('/vehicle-types/:vehicleTypeId/brands'), 'should have /vehicle-types/:vehicleTypeId/brands');
+    assert(paths.includes('/types/:typeId/brands'), 'should have /types/:typeId/brands');
+    assert(paths.includes('/brands'), 'should have /brands');
+    assert(paths.includes('/brands/:vehicleTypeId'), 'should have /brands/:vehicleTypeId');
+  });
 });

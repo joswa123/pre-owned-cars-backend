@@ -387,10 +387,26 @@ exports.getCommercialVehicleTypes = catchAsync(async (req, res) => {
 
 /**
  * Public: Get commercial brands with vehicle counts
- * GET /api/v1/commercial/brands
+ * Supports:
+ * - GET /api/v1/commercial/brands (all commercial brands)
+ * - GET /api/v1/commercial/brands?vehicle_type_id=<id>
+ * - GET /api/v1/commercial/brands/:vehicleTypeId
+ * - GET /api/v1/commercial/vehicle-types/:vehicleTypeId/brands
+ * - GET /api/v1/commercial/types/:typeId/brands
  */
 exports.getCommercialBrands = catchAsync(async (req, res) => {
-  const brands = await commercialVehicleService.getCommercialBrandsWithCounts(req.query);
+  const options = {
+    ...req.query,
+    vehicle_type_id:
+      req.params.vehicleTypeId ||
+      req.params.typeId ||
+      req.params.id ||
+      req.query.vehicle_type_id ||
+      req.query.vehicleTypeId ||
+      req.query.type_id ||
+      null,
+  };
+  const brands = await commercialVehicleService.getCommercialBrandsWithCounts(options);
   res.status(200).json({
     status: 'success',
     success: true,

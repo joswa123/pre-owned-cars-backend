@@ -62,7 +62,10 @@ router.get('/', optionalAuth, commercialVehicleController.getCommercialVehicles)
 // ─── Commercial Catalog: Vehicle Types & Brands with Counts (MUST BE BEFORE /:id) ──
 router.get('/vehicle-types', commercialVehicleController.getCommercialVehicleTypes);
 router.get('/types', commercialVehicleController.getCommercialVehicleTypes);
+router.get('/vehicle-types/:vehicleTypeId/brands', commercialVehicleController.getCommercialBrands);
+router.get('/types/:typeId/brands', commercialVehicleController.getCommercialBrands);
 router.get('/brands', commercialVehicleController.getCommercialBrands);
+router.get('/brands/:vehicleTypeId', commercialVehicleController.getCommercialBrands);
 
 // ─── Get Current Seller's Commercial Vehicles (MUST BE BEFORE /:id) ──
 router.get('/me', protect, commercialVehicleController.getUserCommercialVehicles);
