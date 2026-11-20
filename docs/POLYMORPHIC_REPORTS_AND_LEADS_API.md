@@ -527,9 +527,9 @@ Returns unified and category-specific inventory and lead statistics for the auth
 - **Method / Endpoint:** `GET /api/v1/users/me/dashboard`
 - **Auth:** Required (Customer, Dealer, or Admin)
 - **Response Shape:**
-  - `cars`: Total, active, sold, deleted counts for cars (backward-compatible).
-  - `commercial`: Total, active, sold, deleted, expired counts for commercial vehicles.
-  - `vehicles`: Unified aggregate summing up statuses (`active`, `sold`, `deleted`, `expired`, `total`) across both sources.
+  - Total, active, sold, deleted, expired counts for commercial vehicles.
+  - `vehicles`: Unifie`cars`: Total, active, sold, deleted counts for cars (backward-compatible).
+  - `commercial`: d aggregate summing up statuses (`active`, `sold`, `deleted`, `expired`, `total`) across both sources.
   - `leads`: Total leads, `by_source` (whatsapp, call, message), and `by_target` (`car`, `commercial`).
   - `requirements`: Requirements metrics.
 
