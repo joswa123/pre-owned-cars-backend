@@ -551,3 +551,134 @@ exports.getDealerCommercialVehicles = async (req, res, next) => {
     next(error);
   }
 };
+
+// 5. Get dealer cars (paginated)
+exports.getDealerCars = async (req, res, next) => {
+  try {
+    const { dealerId } = req.params;
+    const dealerService = require('../services/dealerService');
+    const viewerUserId = req.user?.id || null;
+
+    const dealer = await User.findOne({
+      where: { id: dealerId },
+      attributes: [
+        'id',
+        'full_name',
+        'phone',
+        'email',
+        'profile_picture',
+        'whatsapp_number',
+        'use_registered_for_whatsapp',
+        'city',
+        'state',
+        'district_id',
+        'city_id',
+        'state_id',
+        'role',
+      ],
+      include: [
+        { model: DealerProfile, as: 'dealerProfile' },
+        { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
+        { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
+        { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
+      ],
+    });
+
+    if (!dealer) {
+      return res.status(404).json({ status: 'error', message: 'Dealer not found' });
+    }
+
+    const cityDetail = dealer.cityDetail
+      ? (dealer.cityDetail.toJSON ? dealer.cityDetail.toJSON() : dealer.cityDetail)
+      : { id: dealer.city_id || null, name: dealer.city || '' };
+
+    const districtDetail = dealer.districtDetail
+      ? (dealer.districtDetail.toJSON ? dealer.districtDetail.toJSON() : dealer.districtDetail)
+      : { id: dealer.district_id || null, name: dealer.district || '' };
+
+    const stateDetail = dealer.stateDetail
+      ? (dealer.stateDetail.toJSON ? dealer.stateDetail.toJSON() : dealer.stateDetail)
+      : { id: dealer.state_id || null, name: dealer.state || '' };
+
+    const dealerProfile = dealer.dealerProfile
+      ? (dealer.dealerProfile.toJSON ? dealer.dealerProfile.toJSON() : dealer.dealerProfile)
+      : {
+          id: null,
+          user_id: dealer.id,
+          company_name: dealer.full_name || 'Seller',
+          door_no: '',
+          building_name: '',
+          street_name: '',
+          pincode: '',
+          alt_phone: null,
+          verified: false,
+        };
+
+    const locationText = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
+
+    const ALLOWED_SORT_BY = ['created_at', 'price', 'km_driven', 'year'];
+    const ALLOWED_SORT_ORDER = ['ASC', 'DESC'];
+
+    const rawSortBy = String(req.query.sort_by || 'created_at').trim().toLowerCase();
+    const sortBy = ALLOWED_SORT_BY.includes(rawSortBy) ? rawSortBy : 'created_at';
+
+    const rawSortOrder = String(req.query.sort_order || 'DESC').trim().toUpperCase();
+    const sortOrder = ALLOWED_SORT_ORDER.includes(rawSortOrder) ? rawSortOrder : 'DESC';
+
+    const result = await dealerService.getDealerCars(
+      dealerId,
+      req.query,
+      parseInt(req.query.page, 10) || 1,
+      parseInt(req.query.limit, 10) || 20,
+      sortBy,
+      sortOrder,
+      'public',
+      viewerUserId
+    );
+
+    const total = result.pagination?.total !== undefined ? result.pagination.total : (result.cars?.length || 0);
+    const page = result.pagination?.page || parseInt(req.query.page, 10) || 1;
+    const limit = result.pagination?.limit || parseInt(req.query.limit, 10) || 20;
+    const totalPages = result.pagination?.totalPages || Math.ceil(total / limit) || 1;
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        ...result,
+        total,
+        page,
+        limit,
+        totalPages,
+        dealerProfile,
+        cityDetail,
+        districtDetail,
+        stateDetail,
+        location_text: locationText,
+        dealer: {
+          id: dealer.id,
+          full_name: dealer.full_name,
+          phone: dealer.phone,
+          email: dealer.email,
+          profile_picture: dealer.profile_picture,
+          whatsapp_number: dealer.whatsapp_number,
+          use_registered_for_whatsapp: dealer.use_registered_for_whatsapp,
+          role: dealer.role,
+          dealerProfile,
+          cityDetail,
+          districtDetail,
+          stateDetail,
+          location_text: locationText,
+        },
+        id: dealer.id,
+        full_name: dealer.full_name,
+        phone: dealer.phone,
+        email: dealer.email,
+        profile_picture: dealer.profile_picture,
+        whatsapp_number: dealer.whatsapp_number,
+        use_registered_for_whatsapp: dealer.use_registered_for_whatsapp,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

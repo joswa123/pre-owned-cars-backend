@@ -6,7 +6,7 @@ const { catchAsync, AppError } = require('../utils/errorHandler');
  * Returns 401 if 'me' is requested without authentication.
  */
 const resolveDealerId = (req) => {
-  let dealerId = req.params.id;
+  let dealerId = req.params.dealerId || req.params.id;
   if (dealerId === 'me') {
     if (!req.user?.id) {
       throw new AppError('Authentication required to access own inventory.', 401);

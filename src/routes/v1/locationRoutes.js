@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const locationController = require('../../controllers/locationController');
-const { limiter } = require('../../middlewares/rateLimiter');
+const dealerController = require('../../controllers/dealerController');
+const { limiter, dealerFilterLimiter } = require('../../middlewares/rateLimiter');
+const { optionalAuth } = require('../../middlewares/auth');
 
 const { cacheMiddleware } = require('../../middlewares/cacheMiddleware');
 
@@ -14,7 +16,10 @@ router.get('/districts/:districtId/cities', locationController.getCitiesByDistri
 router.get('/states/:stateId/cities', locationController.getCitiesByState);
 router.post('/seed', locationController.seedLocations);
 router.get('/dealers', limiter, locationController.getDealersByLocation);
-router.get('/dealers/:dealerId', limiter, locationController.getDealerProfile);
-router.get('/dealers/:dealerId/commercial', limiter, locationController.getDealerCommercialVehicles);
+router.get('/dealers/:dealerId', limiter, optionalAuth, locationController.getDealerProfile);
+router.get('/dealers/:dealerId/cars/filters', optionalAuth, dealerFilterLimiter, dealerController.getDealerCarFilters);
+router.get('/dealers/:dealerId/cars', limiter, optionalAuth, locationController.getDealerCars);
+router.get('/dealers/:dealerId/commercial/filters', optionalAuth, dealerFilterLimiter, dealerController.getDealerCommercialFilters);
+router.get('/dealers/:dealerId/commercial', limiter, optionalAuth, locationController.getDealerCommercialVehicles);
 
 module.exports = router;
