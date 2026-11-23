@@ -64,7 +64,7 @@ const handleGetTargetWishlists = (targetType, paramKey) =>
     const query = validateRequestPart(targetWishlistsQuerySchema, req.query || {}, res);
     if (!query) return;
 
-    const targetId = req.params[paramKey];
+    const targetId = req.params[paramKey] || req.params.id || req.params.carId || req.params.commercialId;
     const serviceMethod =
       targetType === 'commercial'
         ? wishlistService.getCommercialWishlists

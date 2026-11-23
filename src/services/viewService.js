@@ -36,8 +36,8 @@ const maskPhone = (phone) => {
  * Get distinct registered users who viewed a specific car (seller authorization check)
  */
 exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}) => {
-  // 1. Security Check: Verify car exists and belongs to this seller
-  const car = await Car.findOne({
+  // 1. Security Check: Verify car exists and belongs to this seller (unscoped to allow sold/deleted cars)
+  const car = await Car.unscoped().findOne({
     where: { id: carId, user_id: sellerId },
     include: [
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
@@ -46,9 +46,10 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
   });
 
   if (!car) {
-    // Check if carId is actually a commercial vehicle belonging to this seller
+    // Check if carId is actually a commercial vehicle belonging to this seller (paranoid: false to allow sold/deleted)
     const commercial = await CommercialVehicle.findOne({
       where: { id: carId, user_id: sellerId },
+      paranoid: false,
     });
     if (commercial) {
       return exports.getCommercialViews(sellerId, carId, { limit, cursor });
@@ -131,6 +132,7 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
     return {
       user_name: json.user?.full_name || 'Anonymous Visitor',
       user_phone: json.user?.phone || 'N/A',
+      masked_phone: json.user?.phone ? maskPhone(json.user.phone) : 'N/A',
       viewed_at: json.timestamp,
     };
   });
@@ -182,9 +184,10 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
  * Get distinct registered users who viewed a specific commercial vehicle (seller authorization check)
  */
 exports.getCommercialViews = async (sellerId, commercialId, { limit = 20, cursor = null } = {}) => {
-  // 1. Security Check: Verify commercial vehicle exists and belongs to this seller
+  // 1. Security Check: Verify commercial vehicle exists and belongs to this seller (paranoid: false to allow sold/deleted)
   const vehicle = await CommercialVehicle.findOne({
     where: { id: commercialId, user_id: sellerId },
+    paranoid: false,
     include: [
       { model: Brand, as: 'brand', attributes: ['id', 'name'] },
       { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
@@ -192,8 +195,8 @@ exports.getCommercialViews = async (sellerId, commercialId, { limit = 20, cursor
   });
 
   if (!vehicle) {
-    // If not found in commercial, check if it's a regular car
-    const car = await Car.findOne({
+    // If not found in commercial, check if it's a regular car (unscoped to allow sold/deleted)
+    const car = await Car.unscoped().findOne({
       where: { id: commercialId, user_id: sellerId },
     });
     if (car) {
@@ -266,7 +269,8 @@ exports.getCommercialViews = async (sellerId, commercialId, { limit = 20, cursor
     const json = typeof v.toJSON === 'function' ? v.toJSON() : v;
     return {
       user_name: json.user?.full_name || 'Anonymous Visitor',
-      user_phone: json.user?.phone ? maskPhone(json.user.phone) : 'N/A',
+      user_phone: json.user?.phone || 'N/A',
+      masked_phone: json.user?.phone ? maskPhone(json.user.phone) : 'N/A',
       viewed_at: json.timestamp,
     };
   });
@@ -284,6 +288,7 @@ exports.getCommercialViews = async (sellerId, commercialId, { limit = 20, cursor
     year: vehicle.year,
     price: vehicle.price,
     status: vehicle.status,
+    number_plate: null,
     type: 'commercial',
   };
 

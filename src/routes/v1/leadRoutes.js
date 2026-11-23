@@ -13,18 +13,29 @@ const leadController = require('../../controllers/leadController');
 router.post('/', protect, validate(createLeadSchema), leadController.createLead);
 router.get('/summary', protect, leadController.getLeadSummary);
 router.get('/car/:carId', protect, leadController.getCarLeads);
+router.get('/car/:id', protect, leadController.getCarLeads);
+router.get('/commercial/:commercialId', protect, leadController.getCarLeads);
 router.get('/commercial/:carId', protect, leadController.getCarLeads);
+router.get('/commercial/:id', protect, leadController.getCarLeads);
 router.get('/vehicle/:carId', protect, leadController.getCarLeads);
+router.get('/vehicle/:id', protect, leadController.getCarLeads);
 router.get('/seller', protect, leadController.getSellerLeads);
 router.get('/seller/leads', protect, leadController.getSellerLeads);
 router.get('/seller/summary', protect, leadController.getLeadSummary);
 router.get('/seller/car/:carId', protect, leadController.getCarLeads);
+router.get('/seller/car/:id', protect, leadController.getCarLeads);
+router.get('/seller/commercial/:commercialId', protect, leadController.getCarLeads);
 router.get('/seller/commercial/:carId', protect, leadController.getCarLeads);
+router.get('/seller/commercial/:id', protect, leadController.getCarLeads);
 router.get('/seller/vehicle/:carId', protect, leadController.getCarLeads);
+router.get('/seller/vehicle/:id', protect, leadController.getCarLeads);
 router.get('/me', protect, leadController.getBuyerLeads);
 router.patch('/batch-read', protect, leadController.batchMarkAsRead);
 router.patch('/:id/read', protect, leadController.markAsRead);
 router.patch('/:id/status', protect, validate(updateLeadStatusSchema), leadController.updateLeadStatus);
+
+// ── Single Lead Details Endpoint ───────────────────────────────────
+router.get('/:id', protect, leadController.getLeadById);
 
 // ── Legacy Compatibility Endpoints ────────────────────────────────
 router.post('/:id/enquire', protect, leadController.enquire);

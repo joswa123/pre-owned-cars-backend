@@ -371,6 +371,48 @@ exports.recordView = catchAsync(async (req, res) => {
 });
 
 /**
+ * Record Customer Interaction on Commercial Vehicle (View, Call, WhatsApp, Message, Enquiry, Wishlist)
+ * POST /api/v1/commercial/:id/interact
+ */
+exports.recordInteraction = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { type = 'view' } = req.body;
+  const userId = req.user ? req.user.id : null;
+  const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+
+  if (type === 'view') {
+    await commercialVehicleService.recordView(id, userId);
+  } else {
+    await commercialVehicleService.recordInteraction(id, userId, type, ipAddress, req.body);
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: `${type} interaction recorded successfully.`,
+  });
+});
+
+/**
+ * Enquire on commercial vehicle by vehicle ID in param
+ * POST /api/v1/commercial/:id/enquire
+ */
+exports.enquire = catchAsync(async (req, res) => {
+  const { id: commercialId } = req.params;
+  const userId = req.user?.id;
+  const leadService = require('../services/leadService');
+  const lead = await leadService.createLead(userId, {
+    ...req.body,
+    target_id: commercialId,
+    target_type: 'commercial',
+  });
+
+  res.status(201).json({
+    status: 'success',
+    data: lead,
+  });
+});
+
+/**
  * Public: Get commercial vehicle types with brand & vehicle counts
  * GET /api/v1/commercial/vehicle-types
  * GET /api/v1/commercial/types

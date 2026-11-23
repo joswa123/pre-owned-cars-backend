@@ -132,7 +132,15 @@ const normalizeTargetType = (targetType = 'car') => {
 
 const resolveVehicleType = async (targetId, explicitType = null) => {
   if (explicitType) {
-    return normalizeTargetType(explicitType);
+    const normalized = normalizeTargetType(explicitType);
+    if (normalized === 'car' && targetId) {
+      const carExists = await Car.findByPk(targetId, { attributes: ['id'] });
+      if (!carExists) {
+        const commExists = await CommercialVehicle.findByPk(targetId, { attributes: ['id'] });
+        if (commExists) return 'commercial';
+      }
+    }
+    return normalized;
   }
   if (targetId) {
     const commercial = await CommercialVehicle.findByPk(targetId, { attributes: ['id'] });
@@ -609,19 +617,26 @@ exports.getWishlist = async (userId, options = {}) => {
  * Get users who wishlisted a specific car or commercial vehicle (strict seller ownership check).
  */
 exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { limit = 20, cursor = null } = {}) => {
-  const type = normalizeTargetType(targetType);
+  let type = normalizeTargetType(targetType);
 
   let listing = null;
   let infoPayload = null;
 
   if (type === 'commercial') {
     listing = await CommercialVehicle.findByPk(targetId, {
+      paranoid: false,
       include: [
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
       ],
     });
+
     if (!listing) {
+      // Check if targetId is actually a car (polymorphic fallback)
+      const car = await Car.unscoped().findByPk(targetId, { attributes: ['id', 'user_id'] });
+      if (car) {
+        return exports.getTargetWishlists(sellerId, targetId, 'car', { limit, cursor });
+      }
       throw new AppError('Commercial vehicle not found', 404);
     }
     if (listing.user_id !== sellerId) {
@@ -629,22 +644,27 @@ exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { li
     }
     const name = [listing.brand?.name, listing.vehicleType?.name].filter(Boolean).join(' ') || 'Commercial Vehicle';
     infoPayload = {
-      key: 'vehicle_info',
-      value: {
-        id: listing.id,
-        name,
-        slug: listing.slug || null,
-        year: listing.year || null,
-      },
+      id: listing.id,
+      name,
+      slug: listing.slug || null,
+      year: listing.year || null,
+      number_plate: null,
+      type: 'commercial',
     };
   } else {
-    listing = await Car.findByPk(targetId, {
+    listing = await Car.unscoped().findByPk(targetId, {
       include: [
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: Model, as: 'carModel', attributes: ['id', 'name'] },
       ],
     });
+
     if (!listing) {
+      // Check if targetId is actually a commercial vehicle (polymorphic fallback)
+      const commercial = await CommercialVehicle.findByPk(targetId, { attributes: ['id', 'user_id'], paranoid: false });
+      if (commercial) {
+        return exports.getTargetWishlists(sellerId, targetId, 'commercial', { limit, cursor });
+      }
       throw new AppError('Car not found', 404);
     }
     if (listing.user_id !== sellerId) {
@@ -652,12 +672,10 @@ exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { li
     }
     const carName = [listing.brand?.name, listing.carModel?.name].filter(Boolean).join(' ') || 'Pre-Owned Car';
     infoPayload = {
-      key: 'car_info',
-      value: {
-        id: listing.id,
-        name: carName,
-        number_plate: listing.number_plate,
-      },
+      id: listing.id,
+      name: carName,
+      number_plate: listing.number_plate || null,
+      type: 'car',
     };
   }
 
@@ -726,7 +744,8 @@ exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { li
     const json = typeof w.toJSON === 'function' ? w.toJSON() : w;
     return {
       user_name: json.user?.full_name || 'Anonymous',
-      user_phone: maskPhone(json.user?.phone),
+      user_phone: json.user?.phone || 'N/A',
+      masked_phone: maskPhone(json.user?.phone),
       wishlisted_at: json.created_at,
     };
   });
@@ -738,7 +757,9 @@ exports.getTargetWishlists = async (sellerId, targetId, targetType = 'car', { li
 
   const result = {
     target_type: type,
-    [infoPayload.key]: infoPayload.value,
+    car_info: infoPayload, // Always provided for backward compatibility
+    vehicle_info: infoPayload, // Unified vehicle info
+    commercial_info: type === 'commercial' ? infoPayload : null,
     total_wishlists: parseInt(totalWishlists, 10) || 0,
     wishlists: formattedWishlists,
     pagination: {

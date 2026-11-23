@@ -10,11 +10,16 @@ router.use(protect);
 
 router.get('/', wishlistController.getWishlist);
 router.get('/car/:carId', wishlistController.getCarWishlists);
+router.get('/car/:id', wishlistController.getCarWishlists);
 router.get('/commercial/:commercialId', wishlistController.getCommercialWishlists);
+router.get('/commercial/:id', wishlistController.getCommercialWishlists);
+router.get('/vehicle/:id', wishlistController.getCarWishlists);
 router.post('/', validate(wishlistWriteSchema), wishlistController.addToWishlist);
 router.post('/toggle', validate(wishlistWriteSchema), wishlistController.toggleWishlist);
 router.delete('/commercial/:commercialId', wishlistController.removeFromWishlist);
+router.delete('/commercial/:id', wishlistController.removeFromWishlist);
 router.delete('/car/:carId', wishlistController.removeFromWishlist);
+router.delete('/car/:id', wishlistController.removeFromWishlist);
 router.delete('/:id', wishlistController.removeFromWishlist);
 router.delete('/', wishlistController.removeFromWishlist);
 

@@ -86,9 +86,11 @@ router.get('/:id/recommended', optionalAuth, commercialVehicleController.getReco
 // ─── Single Commercial Vehicle by ID or Slug ────────────────────
 router.get('/:id', optionalAuth, commercialVehicleController.getCommercialVehicleById);
 
-// ─── Record View (Explicit Endpoint) ────────────────────────────
+// ─── Record View & Interactions ────────────────────────────
 router.get('/:id/view', optionalAuth, commercialVehicleController.recordView);
 router.post('/:id/view', optionalAuth, commercialVehicleController.recordView);
+router.post('/:id/interact', optionalAuth, commercialVehicleController.recordInteraction);
+router.post('/:id/enquire', optionalAuth, commercialVehicleController.enquire);
 
 // ─── Update Commercial Vehicle ──────────────────────────────────
 router.patch(

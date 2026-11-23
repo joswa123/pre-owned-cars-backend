@@ -9,7 +9,7 @@ const createLeadSchema = Joi.object({
     'string.base': 'target_id must be a string',
     'string.guid': 'target_id must be a valid UUID',
   }),
-  target_type: Joi.string().valid('car', 'commercial').optional().default('car'),
+  target_type: Joi.string().valid('car', 'commercial').optional(),
   user_id: Joi.string().uuid().optional().messages({
     'string.guid': 'user_id must be a valid UUID',
   }),

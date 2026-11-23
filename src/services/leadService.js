@@ -112,6 +112,11 @@ const formatLead = (lead) => {
   } : null;
 
   const commercial = json.commercialVehicle;
+  const commLeads = Array.isArray(commercial?.leads) ? commercial.leads : [];
+  const commCalls = commLeads.filter((l) => String(l.source || '').toLowerCase() === 'call').length;
+  const commWhatsapp = commLeads.filter((l) => String(l.source || '').toLowerCase() === 'whatsapp').length;
+  const commMessages = commLeads.filter((l) => ['message', 'chat'].includes(String(l.source || '').toLowerCase())).length;
+
   const commercialFormatted = commercial ? {
     id: commercial.id,
     user_id: commercial.user_id || json.seller_id || null,
@@ -129,11 +134,11 @@ const formatLead = (lead) => {
     primary_image: commercial.images?.find((i) => i.is_primary)?.image_url || commercial.images?.[0]?.image_url || null,
     metrics: {
       views: commercial.views_count || 0,
-      total_enquiries: commercial.leads?.length || 0,
-      total_calls: 0,
-      total_whatsapp: 0,
-      total_messages: 0,
-      wishlist_count: commercial.wishlists?.length || 0,
+      total_enquiries: commLeads.length || (json.target_type === 'commercial' ? 1 : 0),
+      total_calls: commCalls,
+      total_whatsapp: commWhatsapp,
+      total_messages: commMessages,
+      wishlist_count: Array.isArray(commercial.wishlists) ? commercial.wishlists.length : 0,
     },
   } : null;
 
@@ -228,20 +233,54 @@ exports.getLeadById = async (leadId) => {
  * Create a new lead/enquiry
  */
 exports.createLead = async (userId, data) => {
-  const targetType = (data.target_type || (data.car_id ? 'car' : 'commercial')).toLowerCase();
-  const targetId = data.target_id || data.car_id || data.carId;
-
+  const targetId = data.target_id || data.car_id || data.carId || data.commercial_id || data.commercialId;
   if (!targetId) throw new AppError('target_id or car_id is required', 400);
 
+  let rawType = (data.target_type || (data.commercial_id || data.commercialId ? 'commercial' : null)) ? String(data.target_type || (data.commercial_id || data.commercialId ? 'commercial' : '')).toLowerCase() : null;
   let car = null;
   let commercialVehicle = null;
   let sellerId = null;
+  let targetType = rawType;
 
+  // Auto-detect targetType if not specified or check if target exists in opposite table
   if (targetType === 'commercial') {
     commercialVehicle = await resolveTarget('commercial', targetId);
     if (!commercialVehicle) {
-      throw new AppError('Commercial vehicle not found', 404);
+      // Check if it's actually a car
+      car = await Car.findByPk(targetId);
+      if (car) {
+        targetType = 'car';
+      } else {
+        throw new AppError('Commercial vehicle not found', 404);
+      }
     }
+  } else if (targetType === 'car') {
+    car = await Car.findByPk(targetId);
+    if (!car) {
+      // Check if it's actually a commercial vehicle
+      commercialVehicle = await resolveTarget('commercial', targetId);
+      if (commercialVehicle) {
+        targetType = 'commercial';
+      } else {
+        throw new AppError('Car not found', 404);
+      }
+    }
+  } else {
+    // No target_type specified - auto-detect by querying tables
+    car = await Car.findByPk(targetId);
+    if (car) {
+      targetType = 'car';
+    } else {
+      commercialVehicle = await resolveTarget('commercial', targetId);
+      if (commercialVehicle) {
+        targetType = 'commercial';
+      } else {
+        throw new AppError('Vehicle not found', 404);
+      }
+    }
+  }
+
+  if (targetType === 'commercial' && commercialVehicle) {
     if (commercialVehicle.status !== 'active') {
       throw new AppError('Commercial vehicle is not available for enquiry', 400);
     }
@@ -249,9 +288,7 @@ exports.createLead = async (userId, data) => {
       throw new AppError('Cannot enquire on your own commercial vehicle listing', 400);
     }
     sellerId = commercialVehicle.user_id;
-  } else {
-    car = await Car.findByPk(targetId);
-    if (!car) throw new AppError('Car not found', 404);
+  } else if (car) {
     if (car.status !== 'active') throw new AppError('Car is not available for enquiry', 400);
     if (car.user_id === userId) {
       throw new AppError('Cannot enquire on your own car listing', 400);
@@ -718,6 +755,7 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
   if (!car) {
     commercial = await CommercialVehicle.findOne({
       where: { id: carId, user_id: sellerId },
+      paranoid: false,
       include: [
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
         { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
@@ -797,10 +835,16 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
     const json = typeof lead.toJSON === 'function' ? lead.toJSON() : lead;
     const buyerName = json.buyer?.full_name || json.buyer_name || 'Anonymous';
     const buyerPhone = json.contact_phone || json.buyer?.phone || json.buyer_phone || 'N/A';
+    const buyerEmail = json.buyer?.email || json.buyer_email || null;
 
     return {
+      id: json.id,
+      lead_id: json.id,
       buyer_name: buyerName,
       buyer_phone: buyerPhone,
+      buyer_email: buyerEmail,
+      message: json.message || null,
+      status: json.status || 'new',
       interacted_at: json.created_at,
       source: json.source || 'message',
     };
@@ -823,8 +867,10 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
   };
 
   const result = {
+    target_type: targetType,
     car_info: vehicleInfo, // 100% backward compatibility
     vehicle_info: vehicleInfo,
+    commercial_info: targetType === 'commercial' ? vehicleInfo : null,
     leads: formattedLeads,
     pagination: {
       limit: limitNum,

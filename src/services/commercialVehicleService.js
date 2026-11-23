@@ -1955,6 +1955,74 @@ exports.recordView = async (vehicleId, userId = null) => {
 };
 
 /**
+ * Record Customer Interaction on Commercial Vehicle (View, Call, WhatsApp, Message, Enquiry, Wishlist)
+ */
+exports.recordInteraction = async (vehicleId, userId = null, type = 'view', ipAddress = null, body = {}) => {
+  const VALID_INTERACTION_TYPES = ['view', 'call', 'whatsapp', 'message', 'enquiry', 'wishlist'];
+  if (!vehicleId || !VALID_INTERACTION_TYPES.includes(type)) return;
+
+  const vehicle = await CommercialVehicle.findByPk(vehicleId, { attributes: ['id', 'user_id', 'status'], paranoid: false });
+  if (!vehicle) return;
+  if (userId && vehicle.user_id === userId) return; // Don't count seller's own interactions
+
+  if (type === 'view') {
+    return await exports.recordView(vehicleId, userId);
+  }
+
+  if (type === 'wishlist') {
+    const wishlistService = require('./wishlistService');
+    if (userId) {
+      return await wishlistService.addToWishlist(userId, vehicleId, 'commercial');
+    }
+    return;
+  }
+
+  if (['call', 'whatsapp', 'message', 'enquiry'].includes(type)) {
+    const leadService = require('./leadService');
+    const source = type === 'enquiry' ? 'message' : type;
+
+    try {
+      if (userId || (body.name && body.phone)) {
+        await leadService.createLead(userId, {
+          target_id: vehicleId,
+          target_type: 'commercial',
+          source,
+          name: body.name || null,
+          phone: body.phone || body.contact_phone || null,
+          contact_phone: body.contact_phone || body.phone || null,
+          message: body.message || `Customer initiated ${source} enquiry`,
+        });
+      } else {
+        // Fast click recording for guests (e.g. tapping WhatsApp button)
+        const { Lead } = require('../models');
+        await Lead.create({
+          target_type: 'commercial',
+          target_id: vehicleId,
+          seller_id: vehicle.user_id,
+          buyer_id: null,
+          buyer_name: body.name || 'Guest User',
+          buyer_phone: body.phone || body.contact_phone || 'N/A',
+          contact_phone: body.contact_phone || body.phone || 'N/A',
+          source,
+          message: body.message || `Customer tapped ${source}`,
+          status: 'new',
+          is_viewed: false,
+        });
+
+        await clearCachePattern(`seller:leads:${vehicle.user_id}:*`);
+        await clearCachePattern(`seller:lead_summary:${vehicle.user_id}:*`);
+        await clearCachePattern(`car:leads:${vehicleId}:*`);
+
+        const dashboardService = require('./dashboardService');
+        await dashboardService.invalidateDashboardCache(vehicle.user_id);
+      }
+    } catch (leadErr) {
+      console.warn(`Could not create lead on ${source} interaction for commercial vehicle ${vehicleId}: ${leadErr.message}`);
+    }
+  }
+};
+
+/**
  * Get Commercial Vehicle Types with Brand and Vehicle Counts
  * @param {Object} options
  * @param {boolean} options.includeEmpty - Include vehicle types with 0 active vehicles (default: true)

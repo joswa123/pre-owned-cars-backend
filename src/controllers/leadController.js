@@ -38,13 +38,12 @@ exports.getLeadSummary = catchAsync(async (req, res) => {
 });
 
 /**
- * Get drill-down leads timeline for a specific car
+ * Get drill-down leads timeline for a specific car or commercial vehicle
  */
-// In leadController.js
 exports.getCarLeads = catchAsync(async (req, res) => {
-  const { carId } = req.params;
-  const { limit = 20, cursor = null, source = null } = req.query; // ✅ source must be extracted
-  const sellerId = req.user.id; // or req.user.id
+  const carId = req.params.carId || req.params.id || req.params.commercialId;
+  const { limit = 20, cursor = null, source = null } = req.query;
+  const sellerId = req.user.id;
 
   const result = await leadService.getCarLeads(sellerId, carId, { limit, cursor, source });
   res.json({ status: 'success', data: result });
@@ -143,12 +142,43 @@ exports.updateLeadStatus = catchAsync(async (req, res) => {
 });
 
 /**
- * Legacy: Enquire on car by car ID in param
+ * Get single lead details by ID
+ * GET /api/v1/leads/:id
+ */
+exports.getLeadById = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const lead = await leadService.getLeadById(id);
+
+  if (!lead) {
+    return res.status(404).json({
+      status: 'fail',
+      message: 'Lead not found',
+    });
+  }
+
+  // Authorization check: buyer, seller, or admin can view
+  const userId = req.user.id;
+  const userRole = req.user.role;
+  if (userRole !== 'admin' && lead.seller_id !== userId && lead.buyer_id !== userId) {
+    return res.status(403).json({
+      status: 'fail',
+      message: 'You are not authorized to view this lead',
+    });
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: lead,
+  });
+});
+
+/**
+ * Legacy: Enquire on car or commercial vehicle by ID in param
  */
 exports.enquire = catchAsync(async (req, res) => {
-  const { id: carId } = req.params;
+  const { id: vehicleId } = req.params;
   const userId = req.user?.id;
-  const lead = await leadService.createLead(userId, { ...req.body, car_id: carId });
+  const lead = await leadService.createLead(userId, { ...req.body, target_id: vehicleId, car_id: vehicleId });
 
   res.status(201).json({
     status: 'success',
