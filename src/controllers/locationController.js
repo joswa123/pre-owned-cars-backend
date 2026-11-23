@@ -184,7 +184,21 @@ exports.getDealersByLocation = async (req, res, next) => {
     }
 
     if (state_id && String(state_id).trim() !== '') {
-      where.state_id = String(state_id).trim();
+      const trimmedStateId = String(state_id).trim();
+      const stateCities = await City.findAll({
+        where: { state_id: trimmedStateId },
+        attributes: ['id'],
+        raw: true,
+      });
+      const cityIdsInState = stateCities.map((c) => c.id);
+
+      where[Op.and] = where[Op.and] || [];
+      where[Op.and].push({
+        [Op.or]: [
+          { state_id: trimmedStateId },
+          ...(cityIdsInState.length > 0 ? [{ city_id: cityIdsInState }] : []),
+        ],
+      });
     }
 
     // 2. Search by company name or dealer full name
@@ -228,7 +242,19 @@ exports.getDealersByLocation = async (req, res, next) => {
         },
         { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
         { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
-        { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
+        {
+          model: City,
+          as: 'cityDetail',
+          attributes: ['id', 'name'],
+          include: [
+            {
+              model: District,
+              as: 'district',
+              attributes: ['id', 'name'],
+              include: [{ model: State, as: 'state', attributes: ['id', 'name', 'code'] }],
+            },
+          ],
+        },
       ],
       limit: parseInt(limit),
       offset,
@@ -237,15 +263,27 @@ exports.getDealersByLocation = async (req, res, next) => {
 
     const transformedDealers = dealers.rows.map((dealer) => {
       const d = dealer.toJSON ? dealer.toJSON() : { ...dealer };
-      const cityDetail = d.cityDetail || {
+      const fallbackDistrict = d.districtDetail || d.cityDetail?.district || null;
+      const fallbackState = d.stateDetail || d.cityDetail?.district?.state || null;
+
+      const cityDetail = d.cityDetail ? {
+        id: d.cityDetail.id,
+        name: d.cityDetail.name,
+      } : {
         id: d.city_id || null,
         name: d.city || '',
       };
-      const districtDetail = d.districtDetail || {
+      const districtDetail = fallbackDistrict ? {
+        id: fallbackDistrict.id,
+        name: fallbackDistrict.name,
+      } : {
         id: d.district_id || null,
         name: d.district || '',
       };
-      const stateDetail = d.stateDetail || {
+      const stateDetail = fallbackState ? {
+        id: fallbackState.id,
+        name: fallbackState.name,
+      } : {
         id: d.state_id || null,
         name: d.state || '',
       };
@@ -261,11 +299,27 @@ exports.getDealersByLocation = async (req, res, next) => {
         verified: false,
       };
 
+      const showroomLocation = {
+        showroom_name: dealerProfile.company_name || d.full_name || 'Dealer',
+        door_no: dealerProfile.door_no || '',
+        building_name: dealerProfile.building_name || '',
+        street_name: dealerProfile.street_name || '',
+        pincode: dealerProfile.pincode || '',
+        city: cityDetail.name || '',
+        city_id: cityDetail.id || null,
+        district: districtDetail.name || '',
+        district_id: districtDetail.id || null,
+        state: stateDetail.name || '',
+        state_id: stateDetail.id || null,
+        address_text: [dealerProfile.door_no, dealerProfile.building_name, dealerProfile.street_name, cityDetail.name, districtDetail.name, stateDetail.name, dealerProfile.pincode].filter(Boolean).join(', '),
+      };
+
       d.cityDetail = cityDetail;
       d.districtDetail = districtDetail;
       d.stateDetail = stateDetail;
       d.dealerProfile = dealerProfile;
       d.location_text = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
+      d.showroom_location = showroomLocation;
 
       return d;
     });
@@ -321,7 +375,19 @@ exports.getDealerProfile = async (req, res, next) => {
         { model: DealerProfile, as: 'dealerProfile' },
         { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
         { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
-        { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
+        {
+          model: City,
+          as: 'cityDetail',
+          attributes: ['id', 'name'],
+          include: [
+            {
+              model: District,
+              as: 'district',
+              attributes: ['id', 'name'],
+              include: [{ model: State, as: 'state', attributes: ['id', 'name', 'code'] }],
+            },
+          ],
+        },
       ],
     });
 
@@ -374,14 +440,34 @@ exports.getDealerProfile = async (req, res, next) => {
     const baseUrl = process.env.BASE_URL || 'https://pre-owned-cars-backend.onrender.com';
 
     const postedCars = rawCars.map((c) => {
-      const transformed = transformCarImages(c.toJSON ? c.toJSON() : c, baseUrl);
+      const json = c.toJSON ? c.toJSON() : c;
+      const transformed = transformCarImages(json, baseUrl);
       transformed.target_type = 'car';
+      transformed.listing_location = {
+        city: json.city?.name || json.city || null,
+        city_id: json.city_id || null,
+        district: json.district?.name || json.district || null,
+        district_id: json.district_id || null,
+        state: json.state?.name || json.state || null,
+        state_id: json.state_id || null,
+        location_text: [json.city?.name || json.city, json.district?.name || json.district, json.state?.name || json.state].filter(Boolean).join(', '),
+      };
       return transformed;
     });
 
     const postedCommercial = rawCommercial.map((cv) => {
-      const transformed = transformCommercialVehicleImages(cv, baseUrl);
+      const json = cv.toJSON ? cv.toJSON() : cv;
+      const transformed = transformCommercialVehicleImages(json, baseUrl);
       transformed.target_type = 'commercial';
+      transformed.listing_location = {
+        city: json.city?.name || null,
+        city_id: json.city_id || null,
+        district: json.district?.name || null,
+        district_id: json.district_id || null,
+        state: json.state?.name || null,
+        state_id: json.state_id || null,
+        location_text: [json.city?.name, json.district?.name, json.state?.name].filter(Boolean).join(', '),
+      };
       return transformed;
     });
 
@@ -391,15 +477,27 @@ exports.getDealerProfile = async (req, res, next) => {
       .slice(0, 20);
 
     const dealerJson = dealer.toJSON();
-    const cityDetail = dealerJson.cityDetail || {
+    const fallbackDistrict = dealerJson.districtDetail || dealerJson.cityDetail?.district || null;
+    const fallbackState = dealerJson.stateDetail || dealerJson.cityDetail?.district?.state || null;
+
+    const cityDetail = dealerJson.cityDetail ? {
+      id: dealerJson.cityDetail.id,
+      name: dealerJson.cityDetail.name,
+    } : {
       id: dealerJson.city_id || null,
       name: dealerJson.city || '',
     };
-    const districtDetail = dealerJson.districtDetail || {
+    const districtDetail = fallbackDistrict ? {
+      id: fallbackDistrict.id,
+      name: fallbackDistrict.name,
+    } : {
       id: dealerJson.district_id || null,
       name: dealerJson.district || '',
     };
-    const stateDetail = dealerJson.stateDetail || {
+    const stateDetail = fallbackState ? {
+      id: fallbackState.id,
+      name: fallbackState.name,
+    } : {
       id: dealerJson.state_id || null,
       name: dealerJson.state || '',
     };
@@ -415,11 +513,27 @@ exports.getDealerProfile = async (req, res, next) => {
       verified: false,
     };
 
+    const showroomLocation = {
+      showroom_name: dealerProfile.company_name || dealerJson.full_name || 'Dealer',
+      door_no: dealerProfile.door_no || '',
+      building_name: dealerProfile.building_name || '',
+      street_name: dealerProfile.street_name || '',
+      pincode: dealerProfile.pincode || '',
+      city: cityDetail.name || '',
+      city_id: cityDetail.id || null,
+      district: districtDetail.name || '',
+      district_id: districtDetail.id || null,
+      state: stateDetail.name || '',
+      state_id: stateDetail.id || null,
+      address_text: [dealerProfile.door_no, dealerProfile.building_name, dealerProfile.street_name, cityDetail.name, districtDetail.name, stateDetail.name, dealerProfile.pincode].filter(Boolean).join(', '),
+    };
+
     dealerJson.cityDetail = cityDetail;
     dealerJson.districtDetail = districtDetail;
     dealerJson.stateDetail = stateDetail;
     dealerJson.dealerProfile = dealerProfile;
     dealerJson.location_text = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
+    dealerJson.showroom_location = showroomLocation;
     dealerJson.inventory_counts = {
       cars: carCount,
       commercial: commercialCount,
@@ -468,7 +582,19 @@ exports.getDealerCommercialVehicles = async (req, res, next) => {
         { model: DealerProfile, as: 'dealerProfile' },
         { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
         { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
-        { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
+        {
+          model: City,
+          as: 'cityDetail',
+          attributes: ['id', 'name'],
+          include: [
+            {
+              model: District,
+              as: 'district',
+              attributes: ['id', 'name'],
+              include: [{ model: State, as: 'state', attributes: ['id', 'name', 'code'] }],
+            },
+          ],
+        },
       ],
     });
 
@@ -476,33 +602,59 @@ exports.getDealerCommercialVehicles = async (req, res, next) => {
       return res.status(404).json({ status: 'error', message: 'Dealer not found' });
     }
 
-    const cityDetail = dealer.cityDetail
-      ? (dealer.cityDetail.toJSON ? dealer.cityDetail.toJSON() : dealer.cityDetail)
-      : { id: dealer.city_id || null, name: dealer.city || '' };
+    const fallbackDistrict = dealer.districtDetail || dealer.cityDetail?.district || null;
+    const fallbackState = dealer.stateDetail || dealer.cityDetail?.district?.state || null;
 
-    const districtDetail = dealer.districtDetail
-      ? (dealer.districtDetail.toJSON ? dealer.districtDetail.toJSON() : dealer.districtDetail)
-      : { id: dealer.district_id || null, name: dealer.district || '' };
+    const cityDetail = dealer.cityDetail ? {
+      id: dealer.cityDetail.id,
+      name: dealer.cityDetail.name,
+    } : {
+      id: dealer.city_id || null,
+      name: dealer.city || '',
+    };
+    const districtDetail = fallbackDistrict ? {
+      id: fallbackDistrict.id,
+      name: fallbackDistrict.name,
+    } : {
+      id: dealer.district_id || null,
+      name: dealer.district || '',
+    };
+    const stateDetail = fallbackState ? {
+      id: fallbackState.id,
+      name: fallbackState.name,
+    } : {
+      id: dealer.state_id || null,
+      name: dealer.state || '',
+    };
 
-    const stateDetail = dealer.stateDetail
-      ? (dealer.stateDetail.toJSON ? dealer.stateDetail.toJSON() : dealer.stateDetail)
-      : { id: dealer.state_id || null, name: dealer.state || '' };
-
-    const dealerProfile = dealer.dealerProfile
-      ? (dealer.dealerProfile.toJSON ? dealer.dealerProfile.toJSON() : dealer.dealerProfile)
-      : {
-          id: null,
-          user_id: dealer.id,
-          company_name: dealer.full_name || 'Seller',
-          door_no: '',
-          building_name: '',
-          street_name: '',
-          pincode: '',
-          alt_phone: null,
-          verified: false,
-        };
+    const dealerProfile = dealer.dealerProfile || {
+      id: null,
+      user_id: dealer.id,
+      company_name: dealer.full_name || 'Seller',
+      door_no: '',
+      building_name: '',
+      street_name: '',
+      pincode: '',
+      alt_phone: null,
+      verified: false,
+    };
 
     const locationText = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
+
+    const showroomLocation = {
+      showroom_name: dealerProfile.company_name || dealer.full_name || 'Dealer',
+      door_no: dealerProfile.door_no || '',
+      building_name: dealerProfile.building_name || '',
+      street_name: dealerProfile.street_name || '',
+      pincode: dealerProfile.pincode || '',
+      city: cityDetail.name || '',
+      city_id: cityDetail.id || null,
+      district: districtDetail.name || '',
+      district_id: districtDetail.id || null,
+      state: stateDetail.name || '',
+      state_id: stateDetail.id || null,
+      address_text: [dealerProfile.door_no, dealerProfile.building_name, dealerProfile.street_name, cityDetail.name, districtDetail.name, stateDetail.name, dealerProfile.pincode].filter(Boolean).join(', '),
+    };
 
     const result = await commercialVehicleService.getCommercialVehicles(
       { ...req.query, dealer_id: dealerId },
@@ -514,15 +666,37 @@ exports.getDealerCommercialVehicles = async (req, res, next) => {
       viewerUserRole
     );
 
+    const total = result.pagination?.total !== undefined ? result.pagination.total : (result.total || result.vehicles?.length || 0);
+    const page = result.pagination?.page || parseInt(req.query.page, 10) || 1;
+    const limit = result.pagination?.limit || parseInt(req.query.limit, 10) || 20;
+    const totalPages = result.pagination?.totalPages || Math.ceil(total / limit) || 1;
+    const pagination = result.pagination || {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    };
+
     res.status(200).json({
       status: 'success',
       data: {
         ...result,
+        vehicles: result.vehicles || [],
+        commercial: result.vehicles || [],
+        cars: result.cars || result.vehicles || [],
+        total,
+        page,
+        limit,
+        totalPages,
+        pagination,
         dealerProfile,
         cityDetail,
         districtDetail,
         stateDetail,
         location_text: locationText,
+        showroom_location: showroomLocation,
         dealer: {
           id: dealer.id,
           full_name: dealer.full_name,
@@ -537,6 +711,7 @@ exports.getDealerCommercialVehicles = async (req, res, next) => {
           districtDetail,
           stateDetail,
           location_text: locationText,
+          showroom_location: showroomLocation,
         },
         id: dealer.id,
         full_name: dealer.full_name,
@@ -580,7 +755,19 @@ exports.getDealerCars = async (req, res, next) => {
         { model: DealerProfile, as: 'dealerProfile' },
         { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
         { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
-        { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
+        {
+          model: City,
+          as: 'cityDetail',
+          attributes: ['id', 'name'],
+          include: [
+            {
+              model: District,
+              as: 'district',
+              attributes: ['id', 'name'],
+              include: [{ model: State, as: 'state', attributes: ['id', 'name', 'code'] }],
+            },
+          ],
+        },
       ],
     });
 
@@ -588,33 +775,59 @@ exports.getDealerCars = async (req, res, next) => {
       return res.status(404).json({ status: 'error', message: 'Dealer not found' });
     }
 
-    const cityDetail = dealer.cityDetail
-      ? (dealer.cityDetail.toJSON ? dealer.cityDetail.toJSON() : dealer.cityDetail)
-      : { id: dealer.city_id || null, name: dealer.city || '' };
+    const fallbackDistrict = dealer.districtDetail || dealer.cityDetail?.district || null;
+    const fallbackState = dealer.stateDetail || dealer.cityDetail?.district?.state || null;
 
-    const districtDetail = dealer.districtDetail
-      ? (dealer.districtDetail.toJSON ? dealer.districtDetail.toJSON() : dealer.districtDetail)
-      : { id: dealer.district_id || null, name: dealer.district || '' };
+    const cityDetail = dealer.cityDetail ? {
+      id: dealer.cityDetail.id,
+      name: dealer.cityDetail.name,
+    } : {
+      id: dealer.city_id || null,
+      name: dealer.city || '',
+    };
+    const districtDetail = fallbackDistrict ? {
+      id: fallbackDistrict.id,
+      name: fallbackDistrict.name,
+    } : {
+      id: dealer.district_id || null,
+      name: dealer.district || '',
+    };
+    const stateDetail = fallbackState ? {
+      id: fallbackState.id,
+      name: fallbackState.name,
+    } : {
+      id: dealer.state_id || null,
+      name: dealer.state || '',
+    };
 
-    const stateDetail = dealer.stateDetail
-      ? (dealer.stateDetail.toJSON ? dealer.stateDetail.toJSON() : dealer.stateDetail)
-      : { id: dealer.state_id || null, name: dealer.state || '' };
-
-    const dealerProfile = dealer.dealerProfile
-      ? (dealer.dealerProfile.toJSON ? dealer.dealerProfile.toJSON() : dealer.dealerProfile)
-      : {
-          id: null,
-          user_id: dealer.id,
-          company_name: dealer.full_name || 'Seller',
-          door_no: '',
-          building_name: '',
-          street_name: '',
-          pincode: '',
-          alt_phone: null,
-          verified: false,
-        };
+    const dealerProfile = dealer.dealerProfile || {
+      id: null,
+      user_id: dealer.id,
+      company_name: dealer.full_name || 'Seller',
+      door_no: '',
+      building_name: '',
+      street_name: '',
+      pincode: '',
+      alt_phone: null,
+      verified: false,
+    };
 
     const locationText = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
+
+    const showroomLocation = {
+      showroom_name: dealerProfile.company_name || dealer.full_name || 'Dealer',
+      door_no: dealerProfile.door_no || '',
+      building_name: dealerProfile.building_name || '',
+      street_name: dealerProfile.street_name || '',
+      pincode: dealerProfile.pincode || '',
+      city: cityDetail.name || '',
+      city_id: cityDetail.id || null,
+      district: districtDetail.name || '',
+      district_id: districtDetail.id || null,
+      state: stateDetail.name || '',
+      state_id: stateDetail.id || null,
+      address_text: [dealerProfile.door_no, dealerProfile.building_name, dealerProfile.street_name, cityDetail.name, districtDetail.name, stateDetail.name, dealerProfile.pincode].filter(Boolean).join(', '),
+    };
 
     const ALLOWED_SORT_BY = ['created_at', 'price', 'km_driven', 'year'];
     const ALLOWED_SORT_ORDER = ['ASC', 'DESC'];
@@ -636,24 +849,37 @@ exports.getDealerCars = async (req, res, next) => {
       viewerUserId
     );
 
-    const total = result.pagination?.total !== undefined ? result.pagination.total : (result.cars?.length || 0);
+    const total = result.pagination?.total !== undefined ? result.pagination.total : (result.total || result.cars?.length || 0);
     const page = result.pagination?.page || parseInt(req.query.page, 10) || 1;
     const limit = result.pagination?.limit || parseInt(req.query.limit, 10) || 20;
     const totalPages = result.pagination?.totalPages || Math.ceil(total / limit) || 1;
+    const pagination = result.pagination || {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    };
 
     res.status(200).json({
       status: 'success',
       data: {
         ...result,
+        cars: result.cars || [],
+        vehicles: result.vehicles || result.cars || [],
+        commercial: [],
         total,
         page,
         limit,
         totalPages,
+        pagination,
         dealerProfile,
         cityDetail,
         districtDetail,
         stateDetail,
         location_text: locationText,
+        showroom_location: showroomLocation,
         dealer: {
           id: dealer.id,
           full_name: dealer.full_name,
@@ -668,6 +894,7 @@ exports.getDealerCars = async (req, res, next) => {
           districtDetail,
           stateDetail,
           location_text: locationText,
+          showroom_location: showroomLocation,
         },
         id: dealer.id,
         full_name: dealer.full_name,

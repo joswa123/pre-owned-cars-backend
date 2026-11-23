@@ -196,6 +196,7 @@ const formatLead = (lead) => {
     car: carFormatted, // Keep legacy field for backward compatibility
     commercial: commercialFormatted,
     vehicle: unifiedVehicle,
+    is_vehicle_deleted: !activeVehicle || activeVehicle.status === 'deleted' || activeVehicle.status === null,
   };
 };
 
@@ -327,11 +328,16 @@ exports.createLead = async (userId, data) => {
 /**
  * Summary API: Cars grouped by lead stats with cursor pagination & Redis cache
  */
-exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = null, target_type = null, type = null, targetType = null } = {}) => {
+exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = null, target_type = null, type = null, targetType = null, include_deleted = null, includeDeleted = null } = {}) => {
   const rawTargetType = target_type || type || targetType || null;
   const resolvedTarget = (rawTargetType && rawTargetType !== 'all') ? rawTargetType.toLowerCase() : null;
   const limitNum = Math.min(parseInt(limit) || 20, 100);
-  const cacheKey = `seller:lead_summary:${sellerId}:${status || 'all'}:${resolvedTarget || 'all'}:${cursor || 'first'}:${limitNum}`;
+
+  const rawIncludeDeleted = include_deleted !== null ? include_deleted : includeDeleted;
+  const isIncludeDeleted = String(rawIncludeDeleted || '').toLowerCase() === 'true';
+  const isOnlyDeleted = String(rawIncludeDeleted || '').toLowerCase() === 'only';
+
+  const cacheKey = `seller:lead_summary:${sellerId}:${status || 'all'}:${resolvedTarget || 'all'}:${rawIncludeDeleted || 'false'}:${cursor || 'first'}:${limitNum}`;
 
   try {
     if (redisClient.isOpen) {
@@ -344,12 +350,22 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
 
   const carWhere = { user_id: sellerId };
   const commWhere = { user_id: sellerId };
-  if (status && status !== 'all') {
-    carWhere.status = status.toLowerCase();
-    commWhere.status = status.toLowerCase();
+  if (isOnlyDeleted) {
+    carWhere.status = 'deleted';
+    commWhere.status = 'deleted';
+  } else if (isIncludeDeleted) {
+    if (status && status !== 'all') {
+      carWhere.status = status.toLowerCase();
+      commWhere.status = status.toLowerCase();
+    }
   } else {
-    carWhere.status = { [Op.ne]: 'deleted' };
-    commWhere.status = { [Op.ne]: 'deleted' };
+    if (status && status !== 'all') {
+      carWhere.status = status.toLowerCase();
+      commWhere.status = status.toLowerCase();
+    } else {
+      carWhere.status = { [Op.ne]: 'deleted' };
+      commWhere.status = { [Op.ne]: 'deleted' };
+    }
   }
 
   const shouldFetchCars = !resolvedTarget || resolvedTarget === 'car';
@@ -573,6 +589,7 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
       price: v.price,
       number_plate: v.number_plate || null,
       status: v.status,
+      is_vehicle_deleted: v.status === 'deleted',
       primary_image: v.primary_image,
       total_lead_count: totalLeadCount,
       breakdown: {
@@ -594,6 +611,10 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
   let totalLeads = 0;
   let totalViews = 0;
   let totalWishlist = 0;
+  let activeInventoryLeads = 0;
+  let deletedInventoryLeads = 0;
+  let totalCarLeads = 0;
+  let totalCommLeads = 0;
 
   formattedVehicles.forEach((v) => {
     const b = v.breakdown || {};
@@ -604,7 +625,33 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     totalLeads += v.total_lead_count || 0;
     totalViews += b.views || 0;
     totalWishlist += b.wishlist || 0;
+    if (v.status === 'deleted') {
+      deletedInventoryLeads += v.total_lead_count || 0;
+    } else {
+      activeInventoryLeads += v.total_lead_count || 0;
+    }
+    if (v.target_type === 'commercial') {
+      totalCommLeads += v.total_lead_count || 0;
+    } else {
+      totalCarLeads += v.total_lead_count || 0;
+    }
   });
+
+  if (!isIncludeDeleted && !isOnlyDeleted) {
+    try {
+      const delLeadCount = await Lead.count({
+        where: {
+          seller_id: sellerId,
+          [Op.and]: [
+            sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+          ],
+        },
+      });
+      deletedInventoryLeads = delLeadCount;
+    } catch (e) {
+      console.error('Error fetching deleted leads count in getLeadSummary:', e);
+    }
+  }
 
   const lastVehicle = formattedVehicles.length > 0 ? formattedVehicles[formattedVehicles.length - 1] : null;
   const nextCursor = lastVehicle
@@ -613,12 +660,18 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
 
   const result = {
     summary: {
-      total_leads: totalLeads,
+      total_leads: isIncludeDeleted ? (activeInventoryLeads + deletedInventoryLeads) : (isOnlyDeleted ? deletedInventoryLeads : activeInventoryLeads),
+      active_inventory: activeInventoryLeads,
+      deleted_inventory: deletedInventoryLeads,
       by_source: {
         call: totalCalls,
         whatsapp: totalWhatsapp,
         message: totalMessages,
         other: totalOther,
+      },
+      by_target: {
+        car: totalCarLeads,
+        commercial: totalCommLeads,
       },
       calls: totalCalls,
       whatsapp: totalWhatsapp,
@@ -828,7 +881,11 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
   const limitNum = parseInt(limit) || 20;
   const pageNum = parseInt(page) || 1;
 
-  const cacheKey = `seller:leads:${sellerId}:${status || 'all'}:${targetType || 'all'}:${cursor || pageNum}:${limitNum}`;
+  const rawIncludeDeleted = filters.include_deleted !== undefined ? filters.include_deleted : filters.includeDeleted;
+  const isOnlyDeleted = String(rawIncludeDeleted || '').toLowerCase() === 'only';
+  const isExcludeDeleted = String(rawIncludeDeleted || '').toLowerCase() === 'false';
+
+  const cacheKey = `seller:leads:${sellerId}:${status || 'all'}:${targetType || 'all'}:${rawIncludeDeleted || 'all'}:${cursor || pageNum}:${limitNum}`;
 
   try {
     if (redisClient.isOpen) {
@@ -856,8 +913,22 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
     where.status = status;
   }
 
+  if (isOnlyDeleted) {
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push(
+      sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+    );
+  } else if (isExcludeDeleted) {
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push(
+      sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+    );
+  }
+
   const queryOptions = {
     where,
+    distinct: true,
+    col: 'id',
     include: [
       leadCarInclude,
       leadCommercialInclude,
@@ -876,26 +947,62 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
     queryOptions.offset = (pageNum - 1) * limitNum;
   }
 
-  const [sourceStats, { count, rows }] = await Promise.all([
+  const [sourceStats, targetStats, activeCount, deletedCount, { count, rows }] = await Promise.all([
     Lead.findAll({
       where: {
         seller_id: sellerId,
         ...(where.target_type ? { target_type: where.target_type } : {}),
         ...(where[Op.or] ? { [Op.or]: where[Op.or] } : {}),
+        ...(where[Op.and] ? { [Op.and]: where[Op.and] } : {}),
+        ...(where.status ? { status: where.status } : {}),
       },
       attributes: ['source', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
       group: ['source'],
       raw: true,
+    }),
+    Lead.findAll({
+      where: {
+        seller_id: sellerId,
+        ...(where.target_type ? { target_type: where.target_type } : {}),
+        ...(where[Op.or] ? { [Op.or]: where[Op.or] } : {}),
+        ...(where[Op.and] ? { [Op.and]: where[Op.and] } : {}),
+        ...(where.status ? { status: where.status } : {}),
+      },
+      attributes: ['target_type', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['target_type'],
+      raw: true,
+    }),
+    Lead.count({
+      where: {
+        seller_id: sellerId,
+        [Op.and]: [
+          sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+        ],
+      },
+    }),
+    Lead.count({
+      where: {
+        seller_id: sellerId,
+        [Op.and]: [
+          sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+        ],
+      },
     }),
     Lead.findAndCountAll(queryOptions),
   ]);
 
   const summary = {
     total: count,
+    active_inventory: activeCount,
+    deleted_inventory: deletedCount,
     by_source: {
       call: 0,
       whatsapp: 0,
       message: 0,
+    },
+    by_target: {
+      car: 0,
+      commercial: 0,
     },
   };
   sourceStats.forEach((r) => {
@@ -905,6 +1012,16 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
       summary.by_source[src] += c;
     } else {
       summary.by_source[src] = c;
+    }
+  });
+
+  targetStats.forEach((r) => {
+    const tgt = (r.target_type || 'car').toLowerCase();
+    const c = parseInt(r.count, 10) || 0;
+    if (summary.by_target[tgt] !== undefined) {
+      summary.by_target[tgt] += c;
+    } else {
+      summary.by_target[tgt] = c;
     }
   });
 
@@ -947,7 +1064,11 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
   const limitNum = parseInt(limit) || 20;
   const pageNum = parseInt(page) || 1;
 
-  const cacheKey = `buyer:leads:${buyerId}:${status || 'all'}:${targetType || 'all'}:${cursor || pageNum}:${limitNum}`;
+  const rawIncludeDeleted = filters.include_deleted !== undefined ? filters.include_deleted : filters.includeDeleted;
+  const isOnlyDeleted = String(rawIncludeDeleted || '').toLowerCase() === 'only';
+  const isExcludeDeleted = String(rawIncludeDeleted || '').toLowerCase() === 'false';
+
+  const cacheKey = `buyer:leads:${buyerId}:${status || 'all'}:${targetType || 'all'}:${rawIncludeDeleted || 'all'}:${cursor || pageNum}:${limitNum}`;
 
   try {
     if (redisClient.isOpen) {
@@ -975,8 +1096,22 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
     where.status = status;
   }
 
+  if (isOnlyDeleted) {
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push(
+      sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+    );
+  } else if (isExcludeDeleted) {
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push(
+      sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+    );
+  }
+
   const queryOptions = {
     where,
+    distinct: true,
+    col: 'id',
     include: [
       leadCarInclude,
       leadCommercialInclude,
@@ -994,26 +1129,62 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
     queryOptions.offset = (pageNum - 1) * limitNum;
   }
 
-  const [sourceStats, { count, rows }] = await Promise.all([
+  const [sourceStats, targetStats, activeCount, deletedCount, { count, rows }] = await Promise.all([
     Lead.findAll({
       where: {
         buyer_id: buyerId,
         ...(where.target_type ? { target_type: where.target_type } : {}),
         ...(where[Op.or] ? { [Op.or]: where[Op.or] } : {}),
+        ...(where[Op.and] ? { [Op.and]: where[Op.and] } : {}),
+        ...(where.status ? { status: where.status } : {}),
       },
       attributes: ['source', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
       group: ['source'],
       raw: true,
+    }),
+    Lead.findAll({
+      where: {
+        buyer_id: buyerId,
+        ...(where.target_type ? { target_type: where.target_type } : {}),
+        ...(where[Op.or] ? { [Op.or]: where[Op.or] } : {}),
+        ...(where[Op.and] ? { [Op.and]: where[Op.and] } : {}),
+        ...(where.status ? { status: where.status } : {}),
+      },
+      attributes: ['target_type', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['target_type'],
+      raw: true,
+    }),
+    Lead.count({
+      where: {
+        buyer_id: buyerId,
+        [Op.and]: [
+          sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+        ],
+      },
+    }),
+    Lead.count({
+      where: {
+        buyer_id: buyerId,
+        [Op.and]: [
+          sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+        ],
+      },
     }),
     Lead.findAndCountAll(queryOptions),
   ]);
 
   const summary = {
     total: count,
+    active_inventory: activeCount,
+    deleted_inventory: deletedCount,
     by_source: {
       call: 0,
       whatsapp: 0,
       message: 0,
+    },
+    by_target: {
+      car: 0,
+      commercial: 0,
     },
   };
   sourceStats.forEach((r) => {
@@ -1023,6 +1194,16 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
       summary.by_source[src] += c;
     } else {
       summary.by_source[src] = c;
+    }
+  });
+
+  targetStats.forEach((r) => {
+    const tgt = (r.target_type || 'car').toLowerCase();
+    const c = parseInt(r.count, 10) || 0;
+    if (summary.by_target[tgt] !== undefined) {
+      summary.by_target[tgt] += c;
+    } else {
+      summary.by_target[tgt] = c;
     }
   });
 

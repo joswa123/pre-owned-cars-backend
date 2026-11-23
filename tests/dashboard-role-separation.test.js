@@ -19,6 +19,8 @@ function buildDashboardSummary({
 
   const sellerLeadsReceived = {
     total: 0,
+    active_inventory: 0,
+    deleted_inventory: 0,
     by_source: { whatsapp: 0, call: 0, message: 0 },
     by_target: { car: 0, commercial: 0 },
   };
@@ -34,6 +36,8 @@ function buildDashboardSummary({
 
   const buyerEnquiriesSent = {
     total: 0,
+    active_inventory: 0,
+    deleted_inventory: 0,
     by_source: { whatsapp: 0, call: 0, message: 0 },
     by_target: { car: 0, commercial: 0 },
   };
@@ -43,12 +47,14 @@ function buildDashboardSummary({
       inventory: sellerInventory.cars,
       leads_received: {
         total: 0,
+        active_inventory: 0,
+        deleted_inventory: 0,
         by_source: { whatsapp: 0, call: 0, message: 0 },
       },
     },
     buyer: {
       requirements: { total: 0, active: 0, expired: 0, bought: 0, deleted: 0 },
-      enquiries_sent: { total: 0, by_source: { whatsapp: 0, call: 0, message: 0 } },
+      enquiries_sent: { total: 0, active_inventory: 0, deleted_inventory: 0, by_source: { whatsapp: 0, call: 0, message: 0 } },
     },
   };
 
@@ -57,12 +63,14 @@ function buildDashboardSummary({
       inventory: sellerInventory.commercial,
       leads_received: {
         total: 0,
+        active_inventory: 0,
+        deleted_inventory: 0,
         by_source: { whatsapp: 0, call: 0, message: 0 },
       },
     },
     buyer: {
       requirements: { total: 0, active: 0, expired: 0, bought: 0, deleted: 0 },
-      enquiries_sent: { total: 0, by_source: { whatsapp: 0, call: 0, message: 0 } },
+      enquiries_sent: { total: 0, active_inventory: 0, deleted_inventory: 0, by_source: { whatsapp: 0, call: 0, message: 0 } },
     },
   };
 

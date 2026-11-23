@@ -55,6 +55,8 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     sellerLeadCounts,
     buyerEnquiryCounts,
     requirementCounts,
+    sellerLeadsWithVehicleStatus,
+    buyerEnquiriesWithVehicleStatus,
   ] = await Promise.all([
     // Cars by status (unscoped to correctly capture active, sold, and deleted statuses)
     Car.unscoped().findAll({
@@ -91,6 +93,46 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       group: ['status', 'target_type'],
       raw: true,
     }),
+    // Seller Leads with vehicle status to compute active_inventory vs deleted_inventory
+    Lead.findAll({
+      where: leadWhere,
+      attributes: ['id', 'source', 'target_type', 'target_id', 'car_id'],
+      include: [
+        {
+          model: Car.unscoped(),
+          as: 'car',
+          attributes: ['id', 'status', 'deleted_at'],
+          required: false,
+        },
+        {
+          model: CommercialVehicle.unscoped ? CommercialVehicle.unscoped() : CommercialVehicle,
+          as: 'commercialVehicle',
+          attributes: ['id', 'status', 'deleted_at'],
+          required: false,
+        },
+      ],
+      raw: false,
+    }),
+    // Buyer Enquiries with vehicle status to compute active_inventory vs deleted_inventory
+    Lead.findAll({
+      where: { buyer_id: userId },
+      attributes: ['id', 'source', 'target_type', 'target_id', 'car_id'],
+      include: [
+        {
+          model: Car.unscoped(),
+          as: 'car',
+          attributes: ['id', 'status', 'deleted_at'],
+          required: false,
+        },
+        {
+          model: CommercialVehicle.unscoped ? CommercialVehicle.unscoped() : CommercialVehicle,
+          as: 'commercialVehicle',
+          attributes: ['id', 'status', 'deleted_at'],
+          required: false,
+        },
+      ],
+      raw: false,
+    }),
   ]);
 
   // 5. Build clean, role-separated entities
@@ -120,6 +162,8 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
 
   const sellerLeadsReceived = {
     total: 0,
+    active_inventory: 0,
+    deleted_inventory: 0,
     by_source: {
       whatsapp: 0,
       call: 0,
@@ -145,6 +189,8 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
 
   const buyerEnquiriesSent = {
     total: 0,
+    active_inventory: 0,
+    deleted_inventory: 0,
     by_source: {
       whatsapp: 0,
       call: 0,
@@ -162,6 +208,8 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       inventory: sellerInventory.cars,
       leads_received: {
         total: 0,
+        active_inventory: 0,
+        deleted_inventory: 0,
         by_source: {
           whatsapp: 0,
           call: 0,
@@ -179,6 +227,8 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       },
       enquiries_sent: {
         total: 0,
+        active_inventory: 0,
+        deleted_inventory: 0,
         by_source: {
           whatsapp: 0,
           call: 0,
@@ -193,6 +243,8 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       inventory: sellerInventory.commercial,
       leads_received: {
         total: 0,
+        active_inventory: 0,
+        deleted_inventory: 0,
         by_source: {
           whatsapp: 0,
           call: 0,
@@ -210,6 +262,8 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       },
       enquiries_sent: {
         total: 0,
+        active_inventory: 0,
+        deleted_inventory: 0,
         by_source: {
           whatsapp: 0,
           call: 0,
@@ -299,6 +353,30 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     }
   });
 
+  // 9b. Populate Active vs Deleted Inventory Breakdown for Seller Leads
+  if (Array.isArray(sellerLeadsWithVehicleStatus)) {
+    sellerLeadsWithVehicleStatus.forEach((l) => {
+      const isCommercial = (l.target_type || '').toLowerCase() === 'commercial';
+      const veh = isCommercial ? l.commercialVehicle : (l.car || l.commercialVehicle);
+      const isDeleted = !veh || veh.status === 'deleted' || veh.deleted_at !== null;
+      if (isDeleted) {
+        sellerLeadsReceived.deleted_inventory++;
+        if (isCommercial) {
+          commercialCategory.seller.leads_received.deleted_inventory++;
+        } else {
+          carCategory.seller.leads_received.deleted_inventory++;
+        }
+      } else {
+        sellerLeadsReceived.active_inventory++;
+        if (isCommercial) {
+          commercialCategory.seller.leads_received.active_inventory++;
+        } else {
+          carCategory.seller.leads_received.active_inventory++;
+        }
+      }
+    });
+  }
+
   // 10. Populate Buyer Enquiry Counts (enquiries sent by user to other sellers)
   buyerEnquiryCounts.forEach((row) => {
     const source = (row.source || 'message').trim().toLowerCase();
@@ -331,6 +409,30 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       }
     }
   });
+
+  // 10b. Populate Active vs Deleted Inventory Breakdown for Buyer Enquiries
+  if (Array.isArray(buyerEnquiriesWithVehicleStatus)) {
+    buyerEnquiriesWithVehicleStatus.forEach((l) => {
+      const isCommercial = (l.target_type || '').toLowerCase() === 'commercial';
+      const veh = isCommercial ? l.commercialVehicle : (l.car || l.commercialVehicle);
+      const isDeleted = !veh || veh.status === 'deleted' || veh.deleted_at !== null;
+      if (isDeleted) {
+        buyerEnquiriesSent.deleted_inventory++;
+        if (isCommercial) {
+          commercialCategory.buyer.enquiries_sent.deleted_inventory++;
+        } else {
+          carCategory.buyer.enquiries_sent.deleted_inventory++;
+        }
+      } else {
+        buyerEnquiriesSent.active_inventory++;
+        if (isCommercial) {
+          commercialCategory.buyer.enquiries_sent.active_inventory++;
+        } else {
+          carCategory.buyer.enquiries_sent.active_inventory++;
+        }
+      }
+    });
+  }
 
   // 11. Populate Requirement Counts (buying requirements posted by user)
   requirementCounts.forEach((row) => {

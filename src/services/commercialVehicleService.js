@@ -869,21 +869,42 @@ exports.getCommercialVehicles = async (
   const vehicles = rows.map((v) => {
     const transformed = transformCommercialVehicleImages(v, null, { id: viewerUserId, role: viewerUserRole });
     const isW = wishlistSet.has(v.id);
+    const listingLocation = {
+      city: v.city?.name || null,
+      city_id: v.city_id || null,
+      district: v.district?.name || null,
+      district_id: v.district_id || null,
+      state: v.state?.name || null,
+      state_id: v.state_id || null,
+      location_text: [v.city?.name, v.district?.name, v.state?.name].filter(Boolean).join(', '),
+    };
     return {
       ...transformed,
       isWishlist: isW,
       is_wishlist: isW,
       wishlist_count: wishlistCountMap[v.id] || 0,
+      listing_location: listingLocation,
     };
   });
+
+  const totalPages = Math.ceil(count / parsedLimit) || 1;
 
   return {
     total: count,
     vehicles,
+    commercial: vehicles, // alias
     cars: vehicles, // alias for frontend component compatibility
     page: parsedPage,
     limit: parsedLimit,
-    totalPages: Math.ceil(count / parsedLimit) || 1,
+    totalPages,
+    pagination: {
+      page: parsedPage,
+      limit: parsedLimit,
+      total: count,
+      totalPages,
+      hasNextPage: parsedPage < totalPages,
+      hasPrevPage: parsedPage > 1,
+    },
   };
 };
 

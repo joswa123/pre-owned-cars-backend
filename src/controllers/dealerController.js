@@ -130,7 +130,13 @@ exports.getDealerCars = catchAsync(async (req, res) => {
     req.user?.id
   );
 
-  res.json({ status: 'success', data: result });
+  res.json({
+    status: 'success',
+    data: {
+      ...result,
+      commercial: [],
+    },
+  });
 });
 
 /**
@@ -177,7 +183,19 @@ exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
       { model: DealerProfile, as: 'dealerProfile' },
       { model: State, as: 'stateDetail', attributes: ['id', 'name'] },
       { model: District, as: 'districtDetail', attributes: ['id', 'name'] },
-      { model: City, as: 'cityDetail', attributes: ['id', 'name'] },
+      {
+        model: City,
+        as: 'cityDetail',
+        attributes: ['id', 'name'],
+        include: [
+          {
+            model: District,
+            as: 'district',
+            attributes: ['id', 'name'],
+            include: [{ model: State, as: 'state', attributes: ['id', 'name', 'code'] }],
+          },
+        ],
+      },
     ],
   });
 
@@ -185,33 +203,59 @@ exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
     throw new AppError('Dealer not found', 404);
   }
 
-  const cityDetail = dealer.cityDetail
-    ? (dealer.cityDetail.toJSON ? dealer.cityDetail.toJSON() : dealer.cityDetail)
-    : { id: dealer.city_id || null, name: dealer.city || '' };
+  const fallbackDistrict = dealer.districtDetail || dealer.cityDetail?.district || null;
+  const fallbackState = dealer.stateDetail || dealer.cityDetail?.district?.state || null;
 
-  const districtDetail = dealer.districtDetail
-    ? (dealer.districtDetail.toJSON ? dealer.districtDetail.toJSON() : dealer.districtDetail)
-    : { id: dealer.district_id || null, name: dealer.district || '' };
+  const cityDetail = dealer.cityDetail ? {
+    id: dealer.cityDetail.id,
+    name: dealer.cityDetail.name,
+  } : {
+    id: dealer.city_id || null,
+    name: dealer.city || '',
+  };
+  const districtDetail = fallbackDistrict ? {
+    id: fallbackDistrict.id,
+    name: fallbackDistrict.name,
+  } : {
+    id: dealer.district_id || null,
+    name: dealer.district || '',
+  };
+  const stateDetail = fallbackState ? {
+    id: fallbackState.id,
+    name: fallbackState.name,
+  } : {
+    id: dealer.state_id || null,
+    name: dealer.state || '',
+  };
 
-  const stateDetail = dealer.stateDetail
-    ? (dealer.stateDetail.toJSON ? dealer.stateDetail.toJSON() : dealer.stateDetail)
-    : { id: dealer.state_id || null, name: dealer.state || '' };
-
-  const dealerProfile = dealer.dealerProfile
-    ? (dealer.dealerProfile.toJSON ? dealer.dealerProfile.toJSON() : dealer.dealerProfile)
-    : {
-        id: null,
-        user_id: dealer.id,
-        company_name: dealer.full_name || 'Seller',
-        door_no: '',
-        building_name: '',
-        street_name: '',
-        pincode: '',
-        alt_phone: null,
-        verified: false,
-      };
+  const dealerProfile = dealer.dealerProfile || {
+    id: null,
+    user_id: dealer.id,
+    company_name: dealer.full_name || 'Seller',
+    door_no: '',
+    building_name: '',
+    street_name: '',
+    pincode: '',
+    alt_phone: null,
+    verified: false,
+  };
 
   const locationText = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
+
+  const showroomLocation = {
+    showroom_name: dealerProfile.company_name || dealer.full_name || 'Dealer',
+    door_no: dealerProfile.door_no || '',
+    building_name: dealerProfile.building_name || '',
+    street_name: dealerProfile.street_name || '',
+    pincode: dealerProfile.pincode || '',
+    city: cityDetail.name || '',
+    city_id: cityDetail.id || null,
+    district: districtDetail.name || '',
+    district_id: districtDetail.id || null,
+    state: stateDetail.name || '',
+    state_id: stateDetail.id || null,
+    address_text: [dealerProfile.door_no, dealerProfile.building_name, dealerProfile.street_name, cityDetail.name, districtDetail.name, stateDetail.name, dealerProfile.pincode].filter(Boolean).join(', '),
+  };
 
   const filters = { ...req.query, dealer_id: dealerId };
   if (!isOwner) {
@@ -228,15 +272,37 @@ exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
     req.user?.role || null
   );
 
+  const total = result.pagination?.total !== undefined ? result.pagination.total : (result.total || result.vehicles?.length || 0);
+  const page = result.pagination?.page || parseInt(req.query.page, 10) || 1;
+  const limit = result.pagination?.limit || parseInt(req.query.limit, 10) || 20;
+  const totalPages = result.pagination?.totalPages || Math.ceil(total / limit) || 1;
+  const pagination = result.pagination || {
+    page,
+    limit,
+    total,
+    totalPages,
+    hasNextPage: page < totalPages,
+    hasPrevPage: page > 1,
+  };
+
   res.status(200).json({
     status: 'success',
     data: {
       ...result,
+      vehicles: result.vehicles || [],
+      commercial: result.vehicles || [],
+      cars: result.cars || result.vehicles || [],
+      total,
+      page,
+      limit,
+      totalPages,
+      pagination,
       dealerProfile,
       cityDetail,
       districtDetail,
       stateDetail,
       location_text: locationText,
+      showroom_location: showroomLocation,
       dealer: {
         id: dealer.id,
         full_name: dealer.full_name,
@@ -251,6 +317,7 @@ exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
         districtDetail,
         stateDetail,
         location_text: locationText,
+        showroom_location: showroomLocation,
       },
       id: dealer.id,
       full_name: dealer.full_name,
