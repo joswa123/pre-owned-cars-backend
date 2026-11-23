@@ -173,15 +173,24 @@ exports.getLeadById = catchAsync(async (req, res) => {
 });
 
 /**
- * Legacy: Enquire on car or commercial vehicle by ID in param
+ * Direct Enquiry on car or commercial vehicle by ID in param
+ * POST /api/v1/leads/:id/enquire
  */
 exports.enquire = catchAsync(async (req, res) => {
   const { id: vehicleId } = req.params;
   const userId = req.user?.id;
-  const lead = await leadService.createLead(userId, { ...req.body, target_id: vehicleId, car_id: vehicleId });
+  const source = req.body.source || (['call', 'whatsapp', 'message'].includes(req.body.type) ? req.body.type : 'message');
+
+  const lead = await leadService.createLead(userId, {
+    ...req.body,
+    target_id: vehicleId,
+    car_id: vehicleId,
+    source,
+  });
 
   res.status(201).json({
     status: 'success',
+    message: `${source} enquiry recorded successfully.`,
     data: lead,
   });
 });

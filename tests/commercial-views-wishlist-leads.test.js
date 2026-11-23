@@ -40,13 +40,15 @@ async function runTests() {
   assert.strictEqual(commViewsResult.vehicle_info.type, 'commercial');
   console.log('✅ Views Parity passed.');
 
-  // 2. Commercial Interaction Recording Test
-  console.log('\n[Test 2] Testing Commercial Interaction Recording...');
-  await commercialVehicleService.recordInteraction(commercialId, buyerId, 'view');
-  await commercialVehicleService.recordInteraction(commercialId, buyerId, 'whatsapp', '127.0.0.1', {
-    message: 'Testing WhatsApp interaction',
+  // 2. Direct Enquiry Test (Registered user clicks Call/WhatsApp without form)
+  console.log('\n[Test 2] Testing Direct Enquiry (Call/WhatsApp without form)...');
+  const directCallLead = await leadService.createLead(buyerId, {
+    target_id: commercialId,
+    source: 'call',
   });
-  console.log('✅ Commercial interaction recording passed.');
+  assert.strictEqual(directCallLead.source, 'call');
+  assert.strictEqual(directCallLead.buyer?.phone, buyer.phone);
+  console.log('✅ Direct Enquiry passed.');
 
   // 3. Wishlist Parity & Polymorphic Fallback Test
   console.log('\n[Test 3] Testing Wishlist Parity & Polymorphic Fallback...');
@@ -120,13 +122,7 @@ async function runTests() {
   // Clean up created test leads so DB remains in clean state
   await Lead.destroy({
     where: {
-      id: [newLead.id],
-    },
-  });
-  await Lead.destroy({
-    where: {
-      message: 'Testing WhatsApp interaction',
-      target_id: commercialId,
+      id: [newLead.id, directCallLead.id],
     },
   });
   const dashboardService = require('../src/services/dashboardService');

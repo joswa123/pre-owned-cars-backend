@@ -338,26 +338,34 @@ exports.recordView = catchAsync(async (req, res) => {
 });
 
 /**
- * Record Customer Interaction (View, Call, WhatsApp, Message, Enquiry, Wishlist)
+ * Direct Enquiry on Car (Call, WhatsApp, Message button click by registered user)
+ * POST /api/v1/cars/:id/enquire
  */
-exports.recordInteraction = catchAsync(async (req, res) => {
-  const { id } = req.params;
-  const { type = 'view' } = req.body;
-  const userId = req.user ? req.user.id : null;
-  const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+exports.enquire = catchAsync(async (req, res) => {
+  const { id: carId } = req.params;
+  const userId = req.user.id;
+  const leadService = require('../services/leadService');
+  const source = req.body.source || (['call', 'whatsapp', 'message'].includes(req.body.type) ? req.body.type : 'message');
 
-  if (type === 'view') {
-    await carService.recordView(id, userId, ipAddress);
-  } else {
-    const analyticsService = require('../services/analyticsService');
-    await analyticsService.recordInteraction({ carId: id, userId, type, ipAddress });
-  }
+  const lead = await leadService.createLead(userId, {
+    ...req.body,
+    car_id: carId,
+    target_id: carId,
+    target_type: 'car',
+    source,
+  });
 
-  res.status(200).json({
+  res.status(201).json({
     status: 'success',
-    message: `${type} interaction recorded successfully.`,
+    message: `${source} enquiry recorded successfully.`,
+    data: lead,
   });
 });
+
+/**
+ * Record Customer Interaction (Deprecated alias for enquire)
+ */
+exports.recordInteraction = exports.enquire;
 
 /**
  * Get Similar and Recommended Cars

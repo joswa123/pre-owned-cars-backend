@@ -133,9 +133,10 @@ router.get('/similar-recommended', optionalAuth, carController.getSimilarRecomme
 
 router.get('/:id', optionalAuth, cacheMiddleware(300), carController.getCarById);
 
-// Record view & interactions
+// Record view & direct enquiries
 router.get('/:id/view', optionalAuth, carController.recordView);
 router.post('/:id/view', optionalAuth, carController.recordView);
-router.post('/:id/interact', optionalAuth, carController.recordInteraction);
+router.post('/:id/enquire', protect, carController.enquire);
+router.post('/:id/interact', protect, carController.enquire);
 
 module.exports = router;
