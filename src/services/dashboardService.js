@@ -12,8 +12,10 @@ const CACHE_KEY_PREFIX = 'dashboard:user:';
  * @param {string} role ('customer' | 'dealer' | 'admin')
  * @returns {Promise<Object>}
  */
-exports.getDashboardSummary = async (userId, role) => {
-  const cacheKey = `${CACHE_KEY_PREFIX}${userId}`;
+exports.getDashboardSummary = async (userId, role, options = {}) => {
+  const requestedCategory = (options.category || options.target_type || options.type || '').trim().toLowerCase();
+  const requestedRole = (options.role || '').trim().toLowerCase();
+  const cacheKey = `${CACHE_KEY_PREFIX}${userId}:${requestedCategory || 'all'}:${requestedRole || 'all'}`;
 
   // 1. Read from Redis Cache if available
   if (redisClient.isOpen) {
@@ -153,6 +155,69 @@ exports.getDashboardSummary = async (userId, role) => {
     },
   };
 
+  // 5b. Build Category-Specific Breakdowns (for Cars vs Commercial tabs)
+  const carCategory = {
+    seller: {
+      inventory: sellerInventory.cars,
+      leads_received: {
+        total: 0,
+        by_source: {
+          whatsapp: 0,
+          call: 0,
+          message: 0,
+        },
+      },
+    },
+    buyer: {
+      requirements: {
+        total: 0,
+        active: 0,
+        expired: 0,
+        bought: 0,
+        deleted: 0,
+      },
+      enquiries_sent: {
+        total: 0,
+        by_source: {
+          whatsapp: 0,
+          call: 0,
+          message: 0,
+        },
+      },
+    },
+  };
+
+  const commercialCategory = {
+    seller: {
+      inventory: sellerInventory.commercial,
+      leads_received: {
+        total: 0,
+        by_source: {
+          whatsapp: 0,
+          call: 0,
+          message: 0,
+        },
+      },
+    },
+    buyer: {
+      requirements: {
+        total: 0,
+        active: 0,
+        expired: 0,
+        bought: 0,
+        deleted: 0,
+      },
+      enquiries_sent: {
+        total: 0,
+        by_source: {
+          whatsapp: 0,
+          call: 0,
+          message: 0,
+        },
+      },
+    },
+  };
+
   // 6. Populate Car Counts (Total excludes soft-deleted records)
   carCounts.forEach((row) => {
     const status = row.status;
@@ -213,8 +278,20 @@ exports.getDashboardSummary = async (userId, role) => {
 
     if (targetType === 'commercial') {
       sellerLeadsReceived.by_target.commercial += count;
+      commercialCategory.seller.leads_received.total += count;
+      if (commercialCategory.seller.leads_received.by_source[source] !== undefined) {
+        commercialCategory.seller.leads_received.by_source[source] += count;
+      } else {
+        commercialCategory.seller.leads_received.by_source[source] = count;
+      }
     } else {
       sellerLeadsReceived.by_target.car += count;
+      carCategory.seller.leads_received.total += count;
+      if (carCategory.seller.leads_received.by_source[source] !== undefined) {
+        carCategory.seller.leads_received.by_source[source] += count;
+      } else {
+        carCategory.seller.leads_received.by_source[source] = count;
+      }
     }
   });
 
@@ -234,46 +311,73 @@ exports.getDashboardSummary = async (userId, role) => {
 
     if (targetType === 'commercial') {
       buyerEnquiriesSent.by_target.commercial += count;
+      commercialCategory.buyer.enquiries_sent.total += count;
+      if (commercialCategory.buyer.enquiries_sent.by_source[source] !== undefined) {
+        commercialCategory.buyer.enquiries_sent.by_source[source] += count;
+      } else {
+        commercialCategory.buyer.enquiries_sent.by_source[source] = count;
+      }
     } else {
       buyerEnquiriesSent.by_target.car += count;
+      carCategory.buyer.enquiries_sent.total += count;
+      if (carCategory.buyer.enquiries_sent.by_source[source] !== undefined) {
+        carCategory.buyer.enquiries_sent.by_source[source] += count;
+      } else {
+        carCategory.buyer.enquiries_sent.by_source[source] = count;
+      }
     }
   });
 
   // 11. Populate Requirement Counts (buying requirements posted by user)
   requirementCounts.forEach((row) => {
-    const status = row.status;
+    const status = (row.status || 'active').trim().toLowerCase();
     const targetType = (row.target_type || 'car').trim().toLowerCase();
     const count = parseInt(row.count, 10) || 0;
+
+    const isCommercial = targetType === 'commercial';
+    const catReq = isCommercial ? commercialCategory.buyer.requirements : carCategory.buyer.requirements;
 
     if (status === 'active') {
       buyerRequirements.active += count;
       buyerRequirements.total += count;
+      catReq.active += count;
+      catReq.total += count;
     } else if (status === 'expired') {
       buyerRequirements.expired += count;
       buyerRequirements.total += count;
+      catReq.expired += count;
+      catReq.total += count;
     } else if (status === 'bought') {
       buyerRequirements.bought += count;
       buyerRequirements.total += count;
+      catReq.bought += count;
+      catReq.total += count;
     } else if (status === 'deleted') {
       buyerRequirements.deleted += count;
+      catReq.deleted += count;
     }
 
-    if (targetType === 'commercial') {
+    if (isCommercial) {
       buyerRequirements.by_target.commercial += count;
     } else {
       buyerRequirements.by_target.car += count;
     }
   });
 
-  // 12. Final Result with clean Role-Separated Sections + 100% Backward Compatibility
-  const result = {
-    // ──────── SELLER / DEALER PERSPECTIVE ────────
+  // 12. Final Master Result
+  const masterResult = {
+    // ──────── CATEGORY-FIRST BREAKDOWN (For Tabs / Category Switchers) ────────
+    categories: {
+      car: carCategory,
+      commercial: commercialCategory,
+    },
+
+    // ──────── ROLE-FIRST BREAKDOWN ────────
     seller: {
       inventory: sellerInventory,
       leads_received: sellerLeadsReceived,
     },
 
-    // ──────── BUYER / CUSTOMER PERSPECTIVE ────────
     buyer: {
       requirements: buyerRequirements,
       enquiries_sent: buyerEnquiriesSent,
@@ -287,16 +391,91 @@ exports.getDashboardSummary = async (userId, role) => {
     requirements: buyerRequirements,
   };
 
-  // 11. Cache in Redis
+  // 13. Determine Response Shape Based on Query Options
+  let responsePayload = masterResult;
+
+  if (requestedCategory === 'car') {
+    if (requestedRole === 'seller') {
+      responsePayload = {
+        category: 'car',
+        role: 'seller',
+        inventory: carCategory.seller.inventory,
+        leads_received: carCategory.seller.leads_received,
+      };
+    } else if (requestedRole === 'buyer') {
+      responsePayload = {
+        category: 'car',
+        role: 'buyer',
+        requirements: carCategory.buyer.requirements,
+        enquiries_sent: carCategory.buyer.enquiries_sent,
+      };
+    } else {
+      responsePayload = {
+        category: 'car',
+        seller: carCategory.seller,
+        buyer: carCategory.buyer,
+        inventory: carCategory.seller.inventory,
+        leads_received: carCategory.seller.leads_received,
+        requirements: carCategory.buyer.requirements,
+        enquiries_sent: carCategory.buyer.enquiries_sent,
+      };
+    }
+  } else if (requestedCategory === 'commercial') {
+    if (requestedRole === 'seller') {
+      responsePayload = {
+        category: 'commercial',
+        role: 'seller',
+        inventory: commercialCategory.seller.inventory,
+        leads_received: commercialCategory.seller.leads_received,
+      };
+    } else if (requestedRole === 'buyer') {
+      responsePayload = {
+        category: 'commercial',
+        role: 'buyer',
+        requirements: commercialCategory.buyer.requirements,
+        enquiries_sent: commercialCategory.buyer.enquiries_sent,
+      };
+    } else {
+      responsePayload = {
+        category: 'commercial',
+        seller: commercialCategory.seller,
+        buyer: commercialCategory.buyer,
+        inventory: commercialCategory.seller.inventory,
+        leads_received: commercialCategory.seller.leads_received,
+        requirements: commercialCategory.buyer.requirements,
+        enquiries_sent: commercialCategory.buyer.enquiries_sent,
+      };
+    }
+  } else if (requestedRole === 'seller') {
+    responsePayload = {
+      role: 'seller',
+      ...masterResult.seller,
+      by_category: {
+        car: carCategory.seller,
+        commercial: commercialCategory.seller,
+      },
+    };
+  } else if (requestedRole === 'buyer') {
+    responsePayload = {
+      role: 'buyer',
+      ...masterResult.buyer,
+      by_category: {
+        car: carCategory.buyer,
+        commercial: commercialCategory.buyer,
+      },
+    };
+  }
+
+  // 14. Cache in Redis
   if (redisClient.isOpen) {
     try {
-      await redisClient.setEx(cacheKey, CACHE_TTL, JSON.stringify(result));
+      await redisClient.setEx(cacheKey, CACHE_TTL, JSON.stringify(responsePayload));
     } catch (err) {
       console.error('Redis cache set error in getDashboardSummary:', err);
     }
   }
 
-  return result;
+  return responsePayload;
 };
 
 /**
@@ -305,10 +484,13 @@ exports.getDashboardSummary = async (userId, role) => {
  */
 exports.invalidateDashboardCache = async (userId) => {
   if (!userId) return;
-  const cacheKey = `${CACHE_KEY_PREFIX}${userId}`;
   try {
     if (redisClient.isOpen) {
-      await redisClient.del(cacheKey);
+      // Clear all cached variants (all, car, commercial, seller, buyer)
+      const keys = await redisClient.keys(`${CACHE_KEY_PREFIX}${userId}*`);
+      if (keys && keys.length > 0) {
+        await redisClient.del(keys);
+      }
     }
   } catch (err) {
     console.error('Redis invalidate error in invalidateDashboardCache:', err);

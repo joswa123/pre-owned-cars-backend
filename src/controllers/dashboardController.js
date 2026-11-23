@@ -8,8 +8,9 @@ const { catchAsync } = require('../utils/errorHandler');
 exports.getDashboardSummary = catchAsync(async (req, res) => {
   const userId = req.user.id;
   const role = req.user.role;
+  const options = req.query || {};
 
-  const data = await dashboardService.getDashboardSummary(userId, role);
+  const data = await dashboardService.getDashboardSummary(userId, role, options);
 
   res.status(200).json({
     status: 'success',
