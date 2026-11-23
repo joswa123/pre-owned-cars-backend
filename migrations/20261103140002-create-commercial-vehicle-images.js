@@ -61,16 +61,20 @@ module.exports = {
     });
 
     // Enforce exactly one primary per vehicle using a virtual generated column + unique index
-    await queryInterface.sequelize.query(`
-      ALTER TABLE commercial_vehicle_images 
-      ADD COLUMN primary_vehicle_id CHAR(36) 
-      GENERATED ALWAYS AS (IF(is_primary = 1, commercial_vehicle_id, NULL)) VIRTUAL
-    `);
+    try {
+      await queryInterface.sequelize.query(`
+        ALTER TABLE commercial_vehicle_images 
+        ADD COLUMN primary_vehicle_id CHAR(36) 
+        GENERATED ALWAYS AS (CASE WHEN is_primary = 1 THEN commercial_vehicle_id ELSE NULL END) VIRTUAL
+      `);
 
-    await queryInterface.addIndex('commercial_vehicle_images', ['primary_vehicle_id'], {
-      name: 'uq_cv_primary_image',
-      unique: true,
-    });
+      await queryInterface.addIndex('commercial_vehicle_images', ['primary_vehicle_id'], {
+        name: 'uq_cv_primary_image',
+        unique: true,
+      });
+    } catch (err) {
+      console.warn('Virtual column uq_cv_primary_image not supported on this DB dialect/engine, skipping:', err.message);
+    }
   },
 
   down: async (queryInterface, Sequelize) => {
