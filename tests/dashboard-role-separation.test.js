@@ -12,7 +12,7 @@ function buildDashboardSummary({
   options = {},
 }) {
   const sellerInventory = {
-    cars: { total: 0, active: 0, sold: 0, deleted: 0 },
+    cars: { total: 0, active: 0, sold: 0, deleted: 0, expired: 0 },
     commercial: { total: 0, active: 0, sold: 0, deleted: 0, expired: 0 },
     vehicles: { total: 0, active: 0, sold: 0, deleted: 0, expired: 0 },
   };
@@ -72,6 +72,7 @@ function buildDashboardSummary({
     if (row.status === 'active') { sellerInventory.cars.active = count; sellerInventory.cars.total += count; }
     else if (row.status === 'sold') { sellerInventory.cars.sold = count; sellerInventory.cars.total += count; }
     else if (row.status === 'deleted') { sellerInventory.cars.deleted = count; }
+    else if (row.status === 'expired') { sellerInventory.cars.expired = count; sellerInventory.cars.total += count; }
     else { sellerInventory.cars.total += count; }
   });
 
@@ -290,5 +291,25 @@ assert.strictEqual(full.commercial.total, 2);
 assert.strictEqual(full.vehicles.total, 8);
 assert.strictEqual(full.leads.total, 18);
 assert.strictEqual(full.requirements.total, 5);
+
+// 6. Check Inventory, Lead Sources, and Requirement Status Breakdown
+assert.strictEqual(full.seller.inventory.cars.active, 5);
+assert.strictEqual(full.seller.inventory.cars.sold, 1);
+assert.strictEqual(full.seller.inventory.cars.deleted, 2);
+assert.strictEqual(full.seller.inventory.cars.expired, 0);
+
+assert.strictEqual(full.seller.inventory.commercial.active, 2);
+assert.strictEqual(full.seller.inventory.commercial.sold, 0);
+assert.strictEqual(full.seller.inventory.commercial.deleted, 0);
+assert.strictEqual(full.seller.inventory.commercial.expired, 0);
+
+assert.strictEqual(full.seller.leads_received.by_source.call, 9);
+assert.strictEqual(full.seller.leads_received.by_source.whatsapp, 4);
+assert.strictEqual(full.seller.leads_received.by_source.message, 5);
+
+assert.strictEqual(full.buyer.requirements.active, 2);
+assert.strictEqual(full.buyer.requirements.expired, 3);
+assert.strictEqual(full.buyer.requirements.bought, 0);
+assert.strictEqual(full.buyer.requirements.deleted, 0);
 
 console.log('  ✓ All Dashboard Role & Category Separation Tests Passed Successfully!');

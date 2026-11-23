@@ -165,6 +165,7 @@ const formatLead = (lead) => {
     target_id: json.target_id || (isCommercial ? commercialFormatted?.id : carFormatted?.id) || json.car_id,
     interaction_id: json.id,
     type: json.source || 'message',
+    source: json.source || 'message',
     status: json.status || 'new',
     is_viewed: json.is_viewed || false,
     interacted_at: json.created_at || json.createdAt,
@@ -586,12 +587,45 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     };
   });
 
+  let totalCalls = 0;
+  let totalWhatsapp = 0;
+  let totalMessages = 0;
+  let totalOther = 0;
+  let totalLeads = 0;
+  let totalViews = 0;
+  let totalWishlist = 0;
+
+  formattedVehicles.forEach((v) => {
+    const b = v.breakdown || {};
+    totalCalls += b.calls || 0;
+    totalWhatsapp += b.whatsapp || 0;
+    totalMessages += b.messages || 0;
+    totalOther += b.enquiries || 0;
+    totalLeads += v.total_lead_count || 0;
+    totalViews += b.views || 0;
+    totalWishlist += b.wishlist || 0;
+  });
+
   const lastVehicle = formattedVehicles.length > 0 ? formattedVehicles[formattedVehicles.length - 1] : null;
   const nextCursor = lastVehicle
     ? encodeCursor({ created_at: lastVehicle.created_at, id: lastVehicle.id })
     : null;
 
   const result = {
+    summary: {
+      total_leads: totalLeads,
+      by_source: {
+        call: totalCalls,
+        whatsapp: totalWhatsapp,
+        message: totalMessages,
+        other: totalOther,
+      },
+      calls: totalCalls,
+      whatsapp: totalWhatsapp,
+      messages: totalMessages,
+      views: totalViews,
+      wishlist: totalWishlist,
+    },
     cars: formattedVehicles, // legacy array key for existing clients
     vehicles: formattedVehicles, // unified array key
     pagination: {
@@ -842,13 +876,44 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
     queryOptions.offset = (pageNum - 1) * limitNum;
   }
 
-  const { count, rows } = await Lead.findAndCountAll(queryOptions);
+  const [sourceStats, { count, rows }] = await Promise.all([
+    Lead.findAll({
+      where: {
+        seller_id: sellerId,
+        ...(where.target_type ? { target_type: where.target_type } : {}),
+        ...(where[Op.or] ? { [Op.or]: where[Op.or] } : {}),
+      },
+      attributes: ['source', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['source'],
+      raw: true,
+    }),
+    Lead.findAndCountAll(queryOptions),
+  ]);
+
+  const summary = {
+    total: count,
+    by_source: {
+      call: 0,
+      whatsapp: 0,
+      message: 0,
+    },
+  };
+  sourceStats.forEach((r) => {
+    const src = (r.source || 'message').toLowerCase();
+    const c = parseInt(r.count, 10) || 0;
+    if (summary.by_source[src] !== undefined) {
+      summary.by_source[src] += c;
+    } else {
+      summary.by_source[src] = c;
+    }
+  });
 
   const formattedLeads = rows.map(formatLead);
   const lastLead = formattedLeads.length > 0 ? formattedLeads[formattedLeads.length - 1] : null;
   const next_cursor = lastLead ? (lastLead.interacted_at ? new Date(lastLead.interacted_at).toISOString() : null) : null;
 
   const response = {
+    summary,
     leads: formattedLeads,
     pagination: {
       limit: limitNum,
@@ -929,13 +994,44 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
     queryOptions.offset = (pageNum - 1) * limitNum;
   }
 
-  const { count, rows } = await Lead.findAndCountAll(queryOptions);
+  const [sourceStats, { count, rows }] = await Promise.all([
+    Lead.findAll({
+      where: {
+        buyer_id: buyerId,
+        ...(where.target_type ? { target_type: where.target_type } : {}),
+        ...(where[Op.or] ? { [Op.or]: where[Op.or] } : {}),
+      },
+      attributes: ['source', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['source'],
+      raw: true,
+    }),
+    Lead.findAndCountAll(queryOptions),
+  ]);
+
+  const summary = {
+    total: count,
+    by_source: {
+      call: 0,
+      whatsapp: 0,
+      message: 0,
+    },
+  };
+  sourceStats.forEach((r) => {
+    const src = (r.source || 'message').toLowerCase();
+    const c = parseInt(r.count, 10) || 0;
+    if (summary.by_source[src] !== undefined) {
+      summary.by_source[src] += c;
+    } else {
+      summary.by_source[src] = c;
+    }
+  });
 
   const formattedLeads = rows.map(formatLead);
   const lastLead = formattedLeads.length > 0 ? formattedLeads[formattedLeads.length - 1] : null;
   const next_cursor = lastLead ? (lastLead.interacted_at ? new Date(lastLead.interacted_at).toISOString() : null) : null;
 
   const response = {
+    summary,
     leads: formattedLeads,
     pagination: {
       limit: limitNum,

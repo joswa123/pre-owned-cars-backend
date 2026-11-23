@@ -305,15 +305,44 @@ exports.getMyRequirements = async (userId, filters = {}) => {
     }
   }
 
-  const { count, rows } = await Requirement.findAndCountAll({
-    where,
-    include: requirementIncludes,
-    limit,
-    offset,
-    order: [['created_at', 'DESC']],
+  const [statusCounts, { count, rows }] = await Promise.all([
+    Requirement.findAll({
+      where: {
+        user_id: userId,
+        ...(where.target_type ? { target_type: where.target_type } : {}),
+        ...(where[Op.or] ? { [Op.or]: where[Op.or] } : {}),
+      },
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['status'],
+      raw: true,
+    }),
+    Requirement.findAndCountAll({
+      where,
+      include: requirementIncludes,
+      limit,
+      offset,
+      order: [['created_at', 'DESC']],
+    }),
+  ]);
+
+  const summary = {
+    total: 0,
+    active: 0,
+    expired: 0,
+    bought: 0,
+    deleted: 0,
+  };
+  statusCounts.forEach((r) => {
+    const s = (r.status || '').toLowerCase();
+    const c = parseInt(r.count, 10) || 0;
+    summary.total += c;
+    if (summary[s] !== undefined) {
+      summary[s] = c;
+    }
   });
 
   return {
+    summary,
     total: count,
     requirements: rows.map(formatRequirement),
     page,

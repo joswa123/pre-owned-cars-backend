@@ -100,6 +100,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       active: 0,
       sold: 0,
       deleted: 0,
+      expired: 0,
     },
     commercial: {
       total: 0,
@@ -227,6 +228,9 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       sellerInventory.cars.total += count;
     } else if (status === 'sold') {
       sellerInventory.cars.sold = count;
+      sellerInventory.cars.total += count;
+    } else if (status === 'expired') {
+      sellerInventory.cars.expired = count;
       sellerInventory.cars.total += count;
     } else if (status === 'deleted') {
       sellerInventory.cars.deleted = count;
