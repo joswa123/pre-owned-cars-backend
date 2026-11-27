@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const {
   User,
   CustomerProfile,
@@ -511,4 +512,155 @@ exports.changePassword = async (userId, currentPassword, newPassword) => {
   await user.update({ password_hash: hashed });
 
   return { message: 'Password updated successfully' };
+};
+
+/**
+ * Verify MSG91 OTP Widget Access Token, find or create user, and issue session JWT tokens.
+ */
+exports.verifyOtpToken = async ({ accessToken, access_token, name, full_name, device_token, device_type }) => {
+  const token = accessToken || access_token;
+  if (!token) {
+    throw new AppError('Access token is required.', 400);
+  }
+
+  const authKey = process.env.MSG91_AUTH_KEY || process.env.MSG_TOKEN || process.env.Auth_key || process.env.AUTH_KEY;
+  if (!authKey) {
+    throw new AppError('MSG91 Auth Key is not configured on the server.', 500);
+  }
+
+  let responseData;
+  try {
+    const response = await fetch('https://control.msg91.com/api/v5/widget/verifyAccessToken', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'authkey': authKey.trim(),
+      },
+      body: JSON.stringify({
+        'access-token': token,
+      }),
+    });
+
+    responseData = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const errMsg = responseData?.message || responseData?.error || 'Failed to verify token with MSG91.';
+      throw new AppError(errMsg, 401);
+    }
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(`MSG91 verification request failed: ${error.message}`, 401);
+  }
+
+  // MSG91 may return HTTP 200 with an error payload e.g. { type: 'error', code: '201', message: '...' }
+  if (!responseData || responseData.type === 'error' || responseData.type !== 'success') {
+    const errorMsg = responseData?.message || responseData?.error || 'Invalid or expired OTP access token.';
+    throw new AppError(errorMsg, 401);
+  }
+
+  // MSG91 returns mobile number in message field (e.g. "919999999999")
+  const rawMobile = responseData.message || responseData.mobile || responseData.phone;
+  if (!rawMobile) {
+    throw new AppError('No mobile number returned from MSG91 verification.', 401);
+  }
+
+  // Sanitize to 10-digit phone number as enforced by User model validation (len: [10, 10])
+  const digitsOnly = String(rawMobile).replace(/\D/g, '');
+  let sanitizedPhone;
+  if (digitsOnly.length === 10) {
+    sanitizedPhone = digitsOnly;
+  } else if (digitsOnly.length === 12 && digitsOnly.startsWith('91')) {
+    sanitizedPhone = digitsOnly.slice(2);
+  } else if (digitsOnly.length > 10) {
+    sanitizedPhone = digitsOnly.slice(-10);
+  } else {
+    throw new AppError(`Invalid phone number length (${digitsOnly}) received from verification.`, 400);
+  }
+
+  // Find or create user
+  let user = await User.findOne({
+    where: { phone: sanitizedPhone },
+    include: [
+      { model: CustomerProfile, as: 'customerProfile' },
+      { model: DealerProfile, as: 'dealerProfile' },
+      { model: City, as: 'cityDetail' },
+      { model: District, as: 'districtDetail' },
+      { model: State, as: 'stateDetail' },
+    ],
+  });
+
+  let isNewUser = false;
+
+  if (!user) {
+    const transaction = await sequelize.transaction();
+    try {
+      const randomSecret = crypto.randomBytes(16).toString('hex');
+      const passwordHash = await bcrypt.hash(randomSecret, 10);
+      const displayName = (name || full_name || `User ${sanitizedPhone.slice(-4)}`).trim();
+
+      user = await User.create(
+        {
+          full_name: displayName,
+          phone: sanitizedPhone,
+          password_hash: passwordHash,
+          role: 'customer',
+          is_verified: true,
+          status: 'approved',
+          device_token: device_token || null,
+          device_type: device_type || null,
+          last_login: new Date(),
+        },
+        { transaction }
+      );
+
+      const customerProfile = await CustomerProfile.create(
+        {
+          user_id: user.id,
+          preferences: null,
+        },
+        { transaction }
+      );
+
+      await transaction.commit();
+      isNewUser = true;
+      user.customerProfile = customerProfile;
+    } catch (createErr) {
+      await transaction.rollback();
+      throw createErr;
+    }
+  } else {
+    // Existing user: mark verified and update login / device tokens
+    const updateData = {
+      is_verified: true,
+      last_login: new Date(),
+    };
+    if (device_token !== undefined) {
+      updateData.device_token = device_token || null;
+      updateData.device_type = device_type || null;
+    }
+    await user.update(updateData);
+  }
+
+  // Clean up expired refresh tokens for this user
+  await RefreshToken.destroy({
+    where: {
+      user_id: user.id,
+      expires_at: { [Op.lt]: new Date() },
+    },
+  }).catch(() => {});
+
+  // Generate new JWT access and refresh token pair
+  const tokens = await generateTokens(user);
+
+  // Format user response data (strip password_hash and otpRecord)
+  const userData = user.toJSON();
+  delete userData.password_hash;
+  delete userData.otpRecord;
+
+  return {
+    user: userData,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    isNewUser,
+  };
 };

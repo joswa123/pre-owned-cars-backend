@@ -101,10 +101,23 @@ const changePasswordSchema = Joi.object({
   newPassword: Joi.string().min(8).required(),
 });
 
+/**
+ * Validation schema for MSG91 OTP Widget access token verification
+ */
+const verifyOtpTokenSchema = Joi.object({
+  accessToken: Joi.string().trim().optional(),
+  access_token: Joi.string().trim().optional(),
+  name: Joi.string().trim().max(100).optional().allow('', null),
+  full_name: Joi.string().trim().max(100).optional().allow('', null),
+  device_token: Joi.string().max(500).optional().allow('', null),
+  device_type: Joi.string().valid('android', 'ios', 'web').optional().allow('', null),
+}).or('accessToken', 'access_token');
+
 module.exports = {
   registerSchema,
   verifySchema,
   verifyOtpSchema,
+  verifyOtpTokenSchema,
   resendOtpSchema,
   loginSchema,
   forgotPasswordSchema,

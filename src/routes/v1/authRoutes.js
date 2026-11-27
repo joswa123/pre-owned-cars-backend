@@ -7,6 +7,7 @@ const {
   registerSchema,
   verifySchema,
   verifyOtpSchema,
+  verifyOtpTokenSchema,
   resendOtpSchema,
   loginSchema,
   forgotPasswordSchema,
@@ -18,6 +19,7 @@ const {
 router.post('/register', validate(registerSchema), authController.register);
 router.post('/verify', validate(verifySchema), authController.verify);
 router.post('/verify-otp', validate(verifyOtpSchema), authController.verifyOtp);
+router.post('/verify-otp-token', validate(verifyOtpTokenSchema), authController.verifyOtpToken);
 router.post('/resend-otp', validate(resendOtpSchema), authController.resendOtp);
 router.post('/login', validate(loginSchema), authController.login);
 router.post('/forgot-password', validate(forgotPasswordSchema), authController.forgotPassword);

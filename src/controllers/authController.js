@@ -62,6 +62,27 @@ exports.verifyOtp = catchAsync(async (req, res) => {
 });
 
 /**
+ * Verify MSG91 OTP Widget Access Token (POST /api/auth/verify-otp-token or POST /api/v1/auth/verify-otp-token)
+ * Validates the MSG91 accessToken against the MSG91 API, finds or creates the user, and logs them in.
+ */
+exports.verifyOtpToken = catchAsync(async (req, res) => {
+  const result = await authService.verifyOtpToken(req.body);
+
+  res.status(200).json({
+    status: 'success',
+    message: result.isNewUser
+      ? 'Account created and verified successfully. You are now logged in.'
+      : 'OTP verified successfully. You are now logged in.',
+    data: {
+      user: result.user,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      isNewUser: result.isNewUser,
+    },
+  });
+});
+
+/**
  * Resend OTP Endpoint
  */
 exports.resendOtp = catchAsync(async (req, res) => {

@@ -171,6 +171,7 @@ app.get('/server-id', (req, res) => {
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', require('./routes/v1/authRoutes'));
+app.use('/api/auth', require('./routes/v1/authRoutes'));
 app.use('/api/v1/users', require('./routes/v1/userRoutes'));
 app.use('/api/v1/dealers', require('./routes/v1/dealerRoutes'));
 // Apply 60s cache for public car listings (GET only)
