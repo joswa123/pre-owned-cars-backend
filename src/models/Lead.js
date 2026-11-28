@@ -14,7 +14,7 @@ const Lead = sequelize.define('Lead', {
     references: { model: 'cars', key: 'id' },
   },
   target_type: {
-    type: DataTypes.ENUM('car', 'commercial'),
+    type: DataTypes.ENUM('car', 'commercial', 'bike'),
     allowNull: false,
     defaultValue: 'car',
   },

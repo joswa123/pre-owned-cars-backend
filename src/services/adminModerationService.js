@@ -3,6 +3,8 @@ const {
   CommercialVehicleImage,
   Car,
   CarImage,
+  Bike,
+  BikeImage,
   User,
   Brand,
   CarType,
@@ -14,6 +16,7 @@ const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const { transformCommercialVehicleImages } = require('./commercialVehicleService');
 const { transformCarImages } = require('./carService');
+const { transformBike } = require('./bikeService');
 
 /**
  * List pending moderation listings across vehicle types
@@ -71,30 +74,77 @@ exports.listPending = async ({ targetType = 'all', page = 1, limit = 20 } = {}) 
       target_type: 'car',
       target_id: c.id,
     }));
-  } else {
-    // Union / All: Query pending commercial vehicles
-    const commercialResult = await CommercialVehicle.findAndCountAll({
+  } else if (targetType === 'bike') {
+    const { count, rows } = await Bike.findAndCountAll({
       where: {
         approved_at: null,
         status: { [Op.ne]: 'deleted' },
       },
       include: [
-        { model: CommercialVehicleImage, as: 'images' },
+        { model: BikeImage, as: 'images' },
         { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role'] },
         { model: Brand, as: 'brand', attributes: ['id', 'name'] },
-        { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+        { model: Model, as: 'bikeModel', attributes: ['id', 'name'] },
       ],
       limit: parsedLimit,
       offset,
       order: [['created_at', 'DESC']],
     });
 
-    total = commercialResult.count;
-    listings = commercialResult.rows.map((v) => ({
-      ...transformCommercialVehicleImages(v, null, { role: 'admin' }),
-      target_type: 'commercial',
-      target_id: v.id,
+    total = count;
+    listings = rows.map((b) => ({
+      ...transformBike(b, { role: 'admin' }),
+      target_type: 'bike',
+      target_id: b.id,
     }));
+  } else {
+    // Union / All: Query pending commercial vehicles and bikes
+    const [commercialResult, bikeResult] = await Promise.all([
+      CommercialVehicle.findAndCountAll({
+        where: {
+          approved_at: null,
+          status: { [Op.ne]: 'deleted' },
+        },
+        include: [
+          { model: CommercialVehicleImage, as: 'images' },
+          { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role'] },
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: CarType, as: 'vehicleType', attributes: ['id', 'name'] },
+        ],
+        limit: parsedLimit,
+        offset,
+        order: [['created_at', 'DESC']],
+      }),
+      Bike.findAndCountAll({
+        where: {
+          approved_at: null,
+          status: { [Op.ne]: 'deleted' },
+        },
+        include: [
+          { model: BikeImage, as: 'images' },
+          { model: User, as: 'seller', attributes: ['id', 'full_name', 'phone', 'email', 'role'] },
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: Model, as: 'bikeModel', attributes: ['id', 'name'] },
+        ],
+        limit: parsedLimit,
+        offset,
+        order: [['created_at', 'DESC']],
+      }),
+    ]);
+
+    total = commercialResult.count + bikeResult.count;
+    listings = [
+      ...commercialResult.rows.map((v) => ({
+        ...transformCommercialVehicleImages(v, null, { role: 'admin' }),
+        target_type: 'commercial',
+        target_id: v.id,
+      })),
+      ...bikeResult.rows.map((b) => ({
+        ...transformBike(b, { role: 'admin' }),
+        target_type: 'bike',
+        target_id: b.id,
+      })),
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, parsedLimit);
   }
 
   return {
@@ -120,6 +170,11 @@ exports.approveListing = async ({ targetType = null, targetId, adminId }) => {
     if (vehicle) detectedType = 'commercial';
   }
 
+  if (!vehicle && (!detectedType || detectedType === 'bike')) {
+    vehicle = await Bike.findByPk(targetId);
+    if (vehicle) detectedType = 'bike';
+  }
+
   if (!vehicle && (!detectedType || detectedType === 'car')) {
     vehicle = await Car.findByPk(targetId);
     if (vehicle) detectedType = 'car';
@@ -129,7 +184,7 @@ exports.approveListing = async ({ targetType = null, targetId, adminId }) => {
     throw new AppError('Listing not found', 404);
   }
 
-  if (detectedType === 'commercial') {
+  if (detectedType === 'commercial' || detectedType === 'bike') {
     await vehicle.update({
       approved_at: new Date(),
       approved_by: adminId || null,
@@ -137,13 +192,13 @@ exports.approveListing = async ({ targetType = null, targetId, adminId }) => {
       status: 'active',
     });
 
-    // Send notification to seller
+    const label = detectedType === 'bike' ? 'bike' : 'commercial vehicle';
     try {
       await Notification.create({
         user_id: vehicle.user_id,
         type: 'listing_approved',
-        message: 'Your commercial vehicle listing has been approved by admin.',
-        target_type: 'commercial',
+        message: `Your ${label} listing has been approved by admin.`,
+        target_type: detectedType,
         target_id: vehicle.id,
         car_id: null,
       });
@@ -153,7 +208,7 @@ exports.approveListing = async ({ targetType = null, targetId, adminId }) => {
 
     return {
       success: true,
-      message: 'Commercial listing approved successfully.',
+      message: `${detectedType === 'bike' ? 'Bike' : 'Commercial'} listing approved successfully.`,
       listing: vehicle,
     };
   } else {
@@ -197,6 +252,11 @@ exports.rejectListing = async ({ targetType = null, targetId, adminId, reason })
     if (vehicle) detectedType = 'commercial';
   }
 
+  if (!vehicle && (!detectedType || detectedType === 'bike')) {
+    vehicle = await Bike.findByPk(targetId);
+    if (vehicle) detectedType = 'bike';
+  }
+
   if (!vehicle && (!detectedType || detectedType === 'car')) {
     vehicle = await Car.findByPk(targetId);
     if (vehicle) detectedType = 'car';
@@ -206,7 +266,7 @@ exports.rejectListing = async ({ targetType = null, targetId, adminId, reason })
     throw new AppError('Listing not found', 404);
   }
 
-  if (detectedType === 'commercial') {
+  if (detectedType === 'commercial' || detectedType === 'bike') {
     await vehicle.update({
       status: 'deleted',
       deleted_at: new Date(),
@@ -215,12 +275,13 @@ exports.rejectListing = async ({ targetType = null, targetId, adminId, reason })
       approved_by: adminId || null,
     });
 
+    const label = detectedType === 'bike' ? 'bike' : 'commercial vehicle';
     try {
       await Notification.create({
         user_id: vehicle.user_id,
         type: 'listing_rejected',
-        message: `Your commercial vehicle listing was rejected: ${String(reason).trim()}`,
-        target_type: 'commercial',
+        message: `Your ${label} listing was rejected: ${String(reason).trim()}`,
+        target_type: detectedType,
         target_id: vehicle.id,
         car_id: null,
       });
@@ -230,7 +291,7 @@ exports.rejectListing = async ({ targetType = null, targetId, adminId, reason })
 
     return {
       success: true,
-      message: 'Commercial listing rejected.',
+      message: `${detectedType === 'bike' ? 'Bike' : 'Commercial'} listing rejected.`,
       listing: vehicle,
     };
   } else {

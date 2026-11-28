@@ -25,6 +25,15 @@ const Model = sequelize.define('Model', {
     },
     onDelete: 'CASCADE',
   },
+  category_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'categories',
+      key: 'id',
+    },
+    onDelete: 'SET NULL',
+  },
   body_type: {
     type: DataTypes.STRING(50),
     allowNull: true,

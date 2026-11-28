@@ -1,4 +1,4 @@
-const { View, Car, User, Brand, Model, CarStat, CommercialVehicle, CarType } = require('../models');
+const { View, Car, User, Brand, Model, CarStat, CommercialVehicle, CarType, Bike } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const redisClient = require('../config/redis');
@@ -54,7 +54,14 @@ exports.getCarViews = async (sellerId, carId, { limit = 20, cursor = null } = {}
     if (commercial) {
       return exports.getCommercialViews(sellerId, carId, { limit, cursor });
     }
-    throw new AppError('Car not found or you are not authorized to view these metrics', 404);
+    const bike = await Bike.findOne({
+      where: { id: carId, user_id: sellerId },
+      paranoid: false,
+    });
+    if (bike) {
+      return exports.getBikeViews(sellerId, carId, { limit, cursor });
+    }
+    throw new AppError('Vehicle not found or you are not authorized to view these metrics', 404);
   }
 
   const limitNum = Math.min(parseInt(limit, 10) || 20, 100);
@@ -319,4 +326,84 @@ exports.getCommercialViews = async (sellerId, commercialId, { limit = 20, cursor
   }
 
   return result;
+};
+
+/**
+ * Get distinct registered users who viewed a specific bike (seller authorization check)
+ */
+exports.getBikeViews = async (sellerId, bikeId, { limit = 20, cursor = null } = {}) => {
+  const bike = await Bike.findOne({
+    where: { id: bikeId, user_id: sellerId },
+    paranoid: false,
+    include: [
+      { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+      { model: Model, as: 'bikeModel', attributes: ['id', 'name'] },
+    ],
+  });
+  if (!bike) {
+    throw new AppError('Bike not found or you are not authorized to view these metrics', 404);
+  }
+
+  const limitNum = Math.min(parseInt(limit, 10) || 20, 100);
+  const baseRegisteredWhere = {
+    target_type: 'bike',
+    target_id: bikeId,
+    user_id: { [Op.ne]: null },
+  };
+  const queryWhere = { ...baseRegisteredWhere };
+  const decodedCursor = decodeCursor(cursor);
+  if (decodedCursor) {
+    queryWhere.timestamp = { [Op.lt]: new Date(decodedCursor.timestamp) };
+  }
+
+  const [registeredResult, totalRegisteredCount, totalDbViews] = await Promise.all([
+    View.findAndCountAll({
+      where: queryWhere,
+      include: [{ model: User, as: 'user', attributes: ['id', 'full_name', 'phone'], required: false }],
+      order: [['timestamp', 'DESC'], ['id', 'DESC']],
+      limit: limitNum,
+    }),
+    View.count({ where: baseRegisteredWhere }),
+    View.count({ where: { target_type: 'bike', target_id: bikeId } }),
+  ]);
+
+  const views = registeredResult.rows;
+  const totalViews = Math.max(bike.views_count || 0, totalDbViews);
+  const formattedViews = views.map((v) => {
+    const json = typeof v.toJSON === 'function' ? v.toJSON() : v;
+    return {
+      user_name: json.user?.full_name || 'Anonymous Visitor',
+      user_phone: json.user?.phone || 'N/A',
+      masked_phone: json.user?.phone ? maskPhone(json.user.phone) : 'N/A',
+      viewed_at: json.timestamp,
+    };
+  });
+
+  const lastView = views.length > 0 ? views[views.length - 1] : null;
+  const vehicleInfo = {
+    id: bike.id,
+    name: bike.title || [bike.brand?.name, bike.bikeModel?.name].filter(Boolean).join(' ') || 'Bike',
+    year: bike.year,
+    price: bike.price,
+    status: bike.status,
+    number_plate: null,
+    type: 'bike',
+  };
+
+  return {
+    car_info: vehicleInfo,
+    vehicle_info: vehicleInfo,
+    meta: {
+      total_views: totalViews,
+      registered_views: totalRegisteredCount,
+      anonymous_views: Math.max(totalViews - totalRegisteredCount, 0),
+    },
+    views: formattedViews,
+    pagination: {
+      total: totalRegisteredCount,
+      limit: limitNum,
+      next_cursor: lastView ? encodeCursor({ timestamp: lastView.timestamp, id: lastView.id }) : null,
+      has_more: formattedViews.length === limitNum,
+    },
+  };
 };

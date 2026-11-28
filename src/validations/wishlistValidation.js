@@ -20,25 +20,27 @@ const wishlistWriteSchema = Joi.object({
   vehicleId: uuidString.optional(),
   commercial_id: uuidString.optional(),
   commercialId: uuidString.optional(),
+  bike_id: uuidString.optional(),
+  bikeId: uuidString.optional(),
   id: uuidString.optional(),
   target_type: Joi.string()
     .trim()
     .lowercase()
-    .valid('car', 'commercial')
+    .valid('car', 'commercial', 'bike')
     .optional()
     .messages({
-      'any.only': 'target_type must be one of: car, commercial',
+      'any.only': 'target_type must be one of: car, commercial, bike',
     }),
   targetType: Joi.string()
     .trim()
     .lowercase()
-    .valid('car', 'commercial')
+    .valid('car', 'commercial', 'bike')
     .optional()
     .messages({
-      'any.only': 'target_type must be one of: car, commercial',
+      'any.only': 'target_type must be one of: car, commercial, bike',
     }),
 })
-  .or('target_id', 'targetId', 'car_id', 'carId', 'vehicle_id', 'vehicleId', 'commercial_id', 'commercialId', 'id')
+  .or('target_id', 'targetId', 'car_id', 'carId', 'vehicle_id', 'vehicleId', 'commercial_id', 'commercialId', 'bike_id', 'bikeId', 'id')
   .unknown(true)
   .messages({
     'object.missing': 'Either target_id or car_id is required',
@@ -52,11 +54,11 @@ const wishlistQuerySchema = Joi.object({
   target_type: Joi.string()
     .trim()
     .lowercase()
-    .valid('car', 'commercial', 'all')
+    .valid('car', 'commercial', 'bike', 'all')
     .optional()
     .default('car')
     .messages({
-      'any.only': 'target_type must be one of: car, commercial, all',
+      'any.only': 'target_type must be one of: car, commercial, bike, all',
     }),
 }).unknown(true);
 
@@ -74,24 +76,26 @@ const wishlistDeleteSchema = Joi.object({
   vehicleId: uuidString.optional(),
   commercial_id: uuidString.optional(),
   commercialId: uuidString.optional(),
+  bike_id: uuidString.optional(),
+  bikeId: uuidString.optional(),
   target_type: Joi.string()
     .trim()
     .lowercase()
-    .valid('car', 'commercial')
+    .valid('car', 'commercial', 'bike')
     .optional()
     .messages({
-      'any.only': 'target_type must be one of: car, commercial',
+      'any.only': 'target_type must be one of: car, commercial, bike',
     }),
   targetType: Joi.string()
     .trim()
     .lowercase()
-    .valid('car', 'commercial')
+    .valid('car', 'commercial', 'bike')
     .optional()
     .messages({
-      'any.only': 'target_type must be one of: car, commercial',
+      'any.only': 'target_type must be one of: car, commercial, bike',
     }),
 })
-  .or('id', 'carId', 'car_id', 'target_id', 'targetId', 'vehicle_id', 'vehicleId', 'commercial_id', 'commercialId')
+  .or('id', 'carId', 'car_id', 'target_id', 'targetId', 'vehicle_id', 'vehicleId', 'commercial_id', 'commercialId', 'bike_id', 'bikeId')
   .unknown(true)
   .messages({
     'object.missing': 'Either target_id or car_id is required',

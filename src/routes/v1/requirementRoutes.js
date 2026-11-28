@@ -17,6 +17,7 @@ router.get('/me', requirementController.getMyRequirements);
 router.get('/:id', requirementController.getRequirement);
 router.get('/:id/match-cars', requirementController.matchCars);
 router.get('/:id/match-vehicles', requirementController.matchCars);
+router.get('/:id/match-bikes', requirementController.matchCars);
 router.put('/:id', validate(updateRequirementSchema), requirementController.updateRequirement);
 router.patch('/:id/status', validate(updateRequirementStatusSchema), requirementController.updateRequirementStatus);
 router.delete('/:id', requirementController.deleteRequirement);

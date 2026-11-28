@@ -95,7 +95,9 @@ function formatRequirement(reqInstance) {
     vehicle_type_name: json.vehicleType?.name || null,
     vehicle_name: targetType === 'commercial'
       ? [json.brand?.name, json.vehicleType?.name, json.year].filter(Boolean).join(' ') || 'Commercial Requirement'
-      : [json.brand?.name, json.carModel?.name, json.year].filter(Boolean).join(' ') || 'Car Requirement',
+      : (targetType === 'bike'
+          ? [json.brand?.name, json.carModel?.name, json.year].filter(Boolean).join(' ') || 'Bike Requirement'
+          : [json.brand?.name, json.carModel?.name, json.year].filter(Boolean).join(' ') || 'Car Requirement'),
   };
 }
 
@@ -181,6 +183,60 @@ exports.createRequirement = async (userId, data) => {
       body_type: data.body_type || null,
       transmission: null,
       board_type: data.board_type || null,
+      color: data.color || null,
+      purchase_plan_days: purchaseDays,
+      expiry_date: expiryDate,
+      status: 'active',
+      description: data.description || null,
+    });
+
+    const dashboardService = require('./dashboardService');
+    await dashboardService.invalidateDashboardCache(userId);
+
+    const saved = await Requirement.findByPk(requirement.id, {
+      include: requirementIncludes,
+    });
+    return formatRequirement(saved);
+  }
+
+  // ── 1b. Bike Requirement ───────────────────────────────────────────
+  if (targetType === 'bike') {
+    const brandId = await resolveBrandId(data.brand_id || data.brandName || data.brand);
+    if (!brandId) throw new AppError('Brand not found', 404);
+
+    let modelId = null;
+    const rawModelInput = data.model_id || data.modelName || data.model;
+    if (rawModelInput) {
+      modelId = await resolveModelId(rawModelInput, brandId, data.body_type || 'Motorcycle');
+      if (!modelId) throw new AppError('Model not found', 404);
+    }
+
+    let vehicleTypeId = null;
+    const rawVtInput = data.vehicle_type_id || data.vehicle_type;
+    if (rawVtInput) {
+      if (isUuid(rawVtInput)) {
+        const vt = await CarType.findByPk(rawVtInput);
+        vehicleTypeId = vt ? vt.id : null;
+      } else {
+        const vt = await CarType.findOne({
+          where: { [Op.or]: [{ slug: String(rawVtInput).toLowerCase().trim() }, { name: String(rawVtInput).trim() }] },
+        });
+        vehicleTypeId = vt ? vt.id : null;
+      }
+    }
+
+    const requirement = await Requirement.create({
+      target_type: 'bike',
+      user_id: userId,
+      brand_id: brandId,
+      model_id: modelId,
+      vehicle_type_id: vehicleTypeId,
+      year: data.year || null,
+      min_price: minPrice,
+      max_price: maxPrice,
+      min_km: minKm,
+      max_km: maxKm,
+      body_type: data.body_type || null,
       color: data.color || null,
       purchase_plan_days: purchaseDays,
       expiry_date: expiryDate,
@@ -439,6 +495,14 @@ exports.updateRequirement = async (requirementId, userId, data) => {
         updateData.vehicle_type_id = vehicleTypeId;
       }
       updateData.target_type = 'commercial';
+    } else if (targetType === 'bike') {
+      const modelInput = data.model_id || data.modelName || data.model;
+      if (modelInput) {
+        const resolvedModelId = await resolveModelId(modelInput, resolvedBrandId, data.body_type || 'Motorcycle', transaction);
+        if (!resolvedModelId) throw new AppError('Model not found', 404);
+        updateData.model_id = resolvedModelId;
+      }
+      updateData.target_type = 'bike';
     } else {
       // Car target
       let resolvedModelId = requirement.model_id;
@@ -804,6 +868,35 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
     };
   }
 
+  // ── Bike Match ─────────────────────────────────────────────────────────
+  if (targetType === 'bike') {
+    const bikeService = require('./bikeService');
+    const bikeFilters = {};
+    if (requirement.brand_id) bikeFilters.brand_id = requirement.brand_id;
+    if (requirement.model_id) bikeFilters.model_id = requirement.model_id;
+    if (requirement.vehicle_type_id) bikeFilters.vehicle_type_id = requirement.vehicle_type_id;
+    if (requirement.year) bikeFilters.year = requirement.year;
+    if (requirement.min_price) bikeFilters.min_price = requirement.min_price;
+    if (requirement.max_price) bikeFilters.max_price = requirement.max_price;
+    if (requirement.min_km) bikeFilters.min_km = requirement.min_km;
+    if (requirement.max_km) bikeFilters.max_km = requirement.max_km;
+
+    const result = await bikeService.getBikes(bikeFilters, page, limit, sortBy, sortOrder, userId, null);
+    return {
+      total: result.pagination.total,
+      page: result.pagination.page,
+      limit: result.pagination.limit,
+      totalPages: result.pagination.totalPages,
+      target_type: 'bike',
+      requirement: formatRequirement(requirement),
+      vehicles: result.bikes,
+      bikes: result.bikes,
+      cars: result.bikes,
+      listings: result.bikes,
+      data: result.bikes,
+    };
+  }
+
   // ── Car Match ──────────────────────────────────────────────────────────
   const carFilters = {};
 
@@ -845,4 +938,42 @@ exports.matchCarsToRequirement = async (requirementId, userId, queryParams = {})
     listings: matchedCars,
     data: matchedCars,
   };
+};
+
+/**
+ * Checks if a newly posted Bike matches any active Buyer Requirements and creates notifications.
+ */
+exports.checkBikeRequirementMatches = async (bike) => {
+  if (!bike) return [];
+  const activeReqs = await Requirement.findAll({
+    where: {
+      target_type: 'bike',
+      status: 'active',
+      brand_id: bike.brand_id,
+      user_id: { [Op.ne]: bike.user_id },
+      expiry_date: { [Op.gte]: new Date() },
+    },
+  });
+
+  const matchedUsers = [];
+  const { Notification } = require('../models');
+  for (const req of activeReqs) {
+    if (req.model_id && req.model_id !== bike.model_id) continue;
+    if (req.min_price && Number(bike.price) < Number(req.min_price)) continue;
+    if (req.max_price && Number(bike.price) > Number(req.max_price)) continue;
+    if (req.year && bike.year < req.year) continue;
+    if (req.max_km && bike.km_driven > req.max_km) continue;
+
+    await Notification.create({
+      user_id: req.user_id,
+      requirement_id: req.id,
+      target_type: 'bike',
+      target_id: bike.id,
+      car_id: null,
+      type: 'requirement_match',
+      message: `A new bike matching your requirement (${bike.title || 'Bike'}) was listed at ₹${bike.price}.`,
+    });
+    matchedUsers.push(req.user_id);
+  }
+  return matchedUsers;
 };

@@ -20,12 +20,16 @@ const resolveWriteTarget = (req) => {
     merged.vehicleId ||
     merged.commercial_id ||
     merged.commercialId ||
+    merged.bike_id ||
+    merged.bikeId ||
     merged.id;
 
   let targetType = merged.target_type || merged.targetType;
   if (!targetType) {
     if (merged.commercialId || merged.commercial_id || req.params?.commercialId) {
       targetType = 'commercial';
+    } else if (merged.bikeId || merged.bike_id || req.params?.bikeId) {
+      targetType = 'bike';
     } else if (merged.car_id || merged.carId || req.params?.carId) {
       targetType = 'car';
     }
@@ -64,11 +68,13 @@ const handleGetTargetWishlists = (targetType, paramKey) =>
     const query = validateRequestPart(targetWishlistsQuerySchema, req.query || {}, res);
     if (!query) return;
 
-    const targetId = req.params[paramKey] || req.params.id || req.params.carId || req.params.commercialId;
+    const targetId = req.params[paramKey] || req.params.id || req.params.carId || req.params.commercialId || req.params.bikeId;
     const serviceMethod =
       targetType === 'commercial'
         ? wishlistService.getCommercialWishlists
-        : wishlistService.getCarWishlists;
+        : (targetType === 'bike'
+            ? wishlistService.getBikeWishlists
+            : wishlistService.getCarWishlists);
 
     const result = await serviceMethod(req.user.id, targetId, {
       limit: query.limit,
@@ -123,11 +129,15 @@ exports.removeFromWishlist = catchAsync(async (req, res) => {
     value.vehicleId ||
     value.commercial_id ||
     value.commercialId ||
+    value.bike_id ||
+    value.bikeId ||
     value.id;
   let finalTargetType = value.target_type || value.targetType;
   if (!finalTargetType) {
     if (value.commercialId || value.commercial_id || req.params?.commercialId) {
       finalTargetType = 'commercial';
+    } else if (value.bikeId || value.bike_id || req.params?.bikeId) {
+      finalTargetType = 'bike';
     } else if (value.carId || value.car_id || req.params?.carId) {
       finalTargetType = 'car';
     }
@@ -168,3 +178,9 @@ exports.getCarWishlists = handleGetTargetWishlists('car', 'carId');
  * GET /api/v1/wishlist/commercial/:commercialId
  */
 exports.getCommercialWishlists = handleGetTargetWishlists('commercial', 'commercialId');
+
+/**
+ * Get users who wishlisted a specific bike (seller authorization check)
+ * GET /api/v1/wishlist/bike/:bikeId
+ */
+exports.getBikeWishlists = handleGetTargetWishlists('bike', 'bikeId');

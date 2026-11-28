@@ -7,7 +7,7 @@ const idSchema = Joi.alternatives().try(
 );
 
 const createRequirementSchema = Joi.object({
-  target_type: Joi.string().valid('car', 'commercial').optional().default('car'),
+  target_type: Joi.string().valid('car', 'commercial', 'bike').optional().default('car'),
   brand_id: idSchema.optional(),
   brandName: Joi.string().trim().max(100).optional(),
   brand: Joi.string().trim().max(100).optional(),
@@ -83,6 +83,11 @@ const createRequirementSchema = Joi.object({
       if (!hasVehicleType) {
         return helpers.message('vehicle_type_id or vehicleTypeName is required for commercial requirements');
       }
+    } else if (targetType === 'bike') {
+      const hasBrand = value.brand_id || value.brandName || value.brand;
+      if (!hasBrand) {
+        return helpers.message('brand_id or brandName is required for bike requirements');
+      }
     } else {
       // Car target
       const hasBrand = value.brand_id || value.brandName || value.brand;
@@ -138,7 +143,7 @@ const updateRequirementStatusSchema = Joi.object({
 }).unknown(true);
 
 const updateRequirementSchema = Joi.object({
-  target_type: Joi.string().valid('car', 'commercial').optional(),
+  target_type: Joi.string().valid('car', 'commercial', 'bike').optional(),
   brand_id: idSchema.optional(),
   brandName: Joi.string().trim().max(100).optional(),
   brand: Joi.string().trim().max(100).optional(),
@@ -215,7 +220,7 @@ const updateRequirementSchema = Joi.object({
 
 const queryRequirementSchema = Joi.object({
   status: Joi.string().valid('active', 'expired', 'inactive', 'bought', 'sold', 'deleted', 'all').optional(),
-  target_type: Joi.string().valid('car', 'commercial', 'all').optional(),
+  target_type: Joi.string().valid('car', 'commercial', 'bike', 'all').optional(),
   brand_id: idSchema.optional(),
   vehicle_type_id: idSchema.optional(),
   model_id: idSchema.optional(),

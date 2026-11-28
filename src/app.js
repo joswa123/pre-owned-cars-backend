@@ -178,6 +178,8 @@ app.use('/api/v1/dealers', require('./routes/v1/dealerRoutes'));
 app.use('/api/v1/cars', require('./routes/v1/carRoutes'));
 app.use('/api/v1/commercial', require('./routes/v1/commercialRoutes'));
 app.use('/api/commercial', require('./routes/v1/commercialRoutes'));
+app.use('/api/v1/bikes', require('./routes/v1/bikeRoutes'));
+app.use('/api/bikes', require('./routes/v1/bikeRoutes'));
 app.use('/api/v1/search', require('./routes/v1/searchRoutes'));
 app.use('/api/search', require('./routes/v1/searchRoutes'));
 // Apply 5m cache for location metadata

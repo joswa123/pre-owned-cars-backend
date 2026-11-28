@@ -33,6 +33,8 @@ const CarReport = require('./CarReport');
 const ReportReason = require('./ReportReason');
 const CommercialVehicle = require('./CommercialVehicle');
 const CommercialVehicleImage = require('./CommercialVehicleImage');
+const Bike = require('./Bike');
+const BikeImage = require('./BikeImage');
 
 // ==========================================
 // USER & PROFILE RELATIONSHIPS (1-to-1)
@@ -335,6 +337,93 @@ View.belongsTo(CommercialVehicle, {
   as: 'commercialVehicle',
 });
 
+// ==========================================
+// BIKE & TWO-WHEELER ASSOCIATIONS
+// ==========================================
+User.hasMany(Bike, { foreignKey: 'user_id', as: 'bikes' });
+User.hasMany(Bike, { foreignKey: 'user_id', as: 'postedBikes' });
+Bike.belongsTo(User, { foreignKey: 'user_id', as: 'seller' });
+
+Bike.belongsTo(CarType, { foreignKey: 'vehicle_type_id', as: 'vehicleType' });
+CarType.hasMany(Bike, { foreignKey: 'vehicle_type_id', as: 'bikes' });
+
+Bike.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });
+Brand.hasMany(Bike, { foreignKey: 'brand_id', as: 'bikes' });
+
+Bike.belongsTo(Model, { foreignKey: 'model_id', as: 'bikeModel' });
+Model.hasMany(Bike, { foreignKey: 'model_id', as: 'bikes' });
+
+Bike.belongsTo(State, { foreignKey: 'state_id', as: 'state' });
+Bike.belongsTo(District, { foreignKey: 'district_id', as: 'district' });
+Bike.belongsTo(City, { foreignKey: 'city_id', as: 'city' });
+
+Bike.belongsTo(User, { foreignKey: 'approved_by', as: 'approver' });
+
+Bike.hasMany(BikeImage, {
+  foreignKey: 'bike_id',
+  as: 'images',
+  onDelete: 'CASCADE',
+});
+BikeImage.belongsTo(Bike, {
+  foreignKey: 'bike_id',
+  as: 'bike',
+});
+
+Bike.hasMany(Wishlist, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'bike' },
+  as: 'wishlists',
+});
+
+Bike.hasMany(Lead, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'bike' },
+  as: 'leads',
+});
+Lead.belongsTo(Bike, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'bike',
+});
+
+Bike.hasMany(CarReport, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'bike' },
+  as: 'reports',
+});
+CarReport.belongsTo(Bike, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'bike',
+});
+
+Bike.hasMany(View, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'bike' },
+  as: 'views',
+});
+View.belongsTo(Bike, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'bike',
+});
+
+Bike.hasMany(Notification, {
+  foreignKey: 'target_id',
+  constraints: false,
+  scope: { target_type: 'bike' },
+  as: 'notifications',
+});
+Notification.belongsTo(Bike, {
+  foreignKey: 'target_id',
+  constraints: false,
+  as: 'bike',
+});
+
 const models = {
   User,
   CustomerProfile,
@@ -371,6 +460,8 @@ const models = {
   ReportReason,
   CommercialVehicle,
   CommercialVehicleImage,
+  Bike,
+  BikeImage,
 };
 
 // Polyfill for Sequelize v3 compatibility where modern code expects findByPk

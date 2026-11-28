@@ -1,4 +1,4 @@
-const { Brand, Model, Variant } = require('../models');
+const { Brand, Model, Variant, Category } = require('../models');
 const { Op, fn, col } = require('sequelize');
 const { AppError } = require('../utils/errorHandler');
 const sequelize = require('../config/database');
@@ -156,11 +156,17 @@ exports.getModelsByBrand = async (brandId) => {
     ],
   ];
 
+  const bikeCat = await Category.findOne({ where: { slug: 'bike' }, attributes: ['id'] });
+  const modelWhere = {
+    brandId: brand.id,
+    is_active: { [Op.ne]: false },
+  };
+  if (bikeCat) {
+    modelWhere[Op.or] = [{ category_id: null }, { category_id: { [Op.ne]: bikeCat.id } }];
+  }
+
   let models = await Model.findAll({
-    where: {
-      brandId: brand.id,
-      is_active: { [Op.ne]: false },
-    },
+    where: modelWhere,
     attributes: modelAttributes,
     order: [['name', 'ASC']],
   });

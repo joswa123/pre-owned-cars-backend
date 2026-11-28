@@ -1,4 +1,4 @@
-const { Car, Lead, Requirement, CommercialVehicle } = require('../models');
+const { Car, Lead, Requirement, CommercialVehicle, Bike } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const redisClient = require('../config/redis');
@@ -52,6 +52,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
   const [
     carCounts,
     commercialCounts,
+    bikeCounts,
     sellerLeadCounts,
     buyerEnquiryCounts,
     requirementCounts,
@@ -67,6 +68,13 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     }),
     // Commercial vehicles by status
     CommercialVehicle.findAll({
+      where: { user_id: userId },
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('status')), 'count']],
+      group: ['status'],
+      raw: true,
+    }),
+    // Bikes by status (unscoped to capture active, sold, expired, and deleted)
+    Bike.unscoped().findAll({
       where: { user_id: userId },
       attributes: ['status', [sequelize.fn('COUNT', sequelize.col('status')), 'count']],
       group: ['status'],
@@ -110,6 +118,12 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
           attributes: ['id', 'status', 'deleted_at'],
           required: false,
         },
+        {
+          model: Bike.unscoped ? Bike.unscoped() : Bike,
+          as: 'bike',
+          attributes: ['id', 'status', 'deleted_at'],
+          required: false,
+        },
       ],
       raw: false,
     }),
@@ -130,6 +144,12 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
           attributes: ['id', 'status', 'deleted_at'],
           required: false,
         },
+        {
+          model: Bike.unscoped ? Bike.unscoped() : Bike,
+          as: 'bike',
+          attributes: ['id', 'status', 'deleted_at'],
+          required: false,
+        },
       ],
       raw: false,
     }),
@@ -145,6 +165,13 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       expired: 0,
     },
     commercial: {
+      total: 0,
+      active: 0,
+      sold: 0,
+      deleted: 0,
+      expired: 0,
+    },
+    bikes: {
       total: 0,
       active: 0,
       sold: 0,
@@ -172,6 +199,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     by_target: {
       car: 0,
       commercial: 0,
+      bike: 0,
     },
   };
 
@@ -184,6 +212,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     by_target: {
       car: 0,
       commercial: 0,
+      bike: 0,
     },
   };
 
@@ -199,6 +228,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     by_target: {
       car: 0,
       commercial: 0,
+      bike: 0,
     },
   };
 
@@ -273,6 +303,41 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     },
   };
 
+  const bikeCategory = {
+    seller: {
+      inventory: sellerInventory.bikes,
+      leads_received: {
+        total: 0,
+        active_inventory: 0,
+        deleted_inventory: 0,
+        by_source: {
+          whatsapp: 0,
+          call: 0,
+          message: 0,
+        },
+      },
+    },
+    buyer: {
+      requirements: {
+        total: 0,
+        active: 0,
+        expired: 0,
+        bought: 0,
+        deleted: 0,
+      },
+      enquiries_sent: {
+        total: 0,
+        active_inventory: 0,
+        deleted_inventory: 0,
+        by_source: {
+          whatsapp: 0,
+          call: 0,
+          message: 0,
+        },
+      },
+    },
+  };
+
   // 6. Populate Car Counts (Total excludes soft-deleted records)
   carCounts.forEach((row) => {
     const status = row.status;
@@ -313,12 +378,32 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     }
   });
 
-  // 8. Populate Unified Vehicles Object (sums up statuses across both sources)
-  sellerInventory.vehicles.active = sellerInventory.cars.active + sellerInventory.commercial.active;
-  sellerInventory.vehicles.sold = sellerInventory.cars.sold + sellerInventory.commercial.sold;
-  sellerInventory.vehicles.deleted = sellerInventory.cars.deleted + sellerInventory.commercial.deleted;
-  sellerInventory.vehicles.expired = (sellerInventory.cars.expired || 0) + sellerInventory.commercial.expired;
-  sellerInventory.vehicles.total = sellerInventory.cars.total + sellerInventory.commercial.total;
+  // 7b. Populate Bike Counts (Total excludes soft-deleted records)
+  bikeCounts.forEach((row) => {
+    const status = row.status;
+    const count = parseInt(row.count, 10) || 0;
+    if (status === 'active') {
+      sellerInventory.bikes.active = count;
+      sellerInventory.bikes.total += count;
+    } else if (status === 'sold') {
+      sellerInventory.bikes.sold = count;
+      sellerInventory.bikes.total += count;
+    } else if (status === 'expired') {
+      sellerInventory.bikes.expired = count;
+      sellerInventory.bikes.total += count;
+    } else if (status === 'deleted') {
+      sellerInventory.bikes.deleted = count;
+    } else {
+      sellerInventory.bikes.total += count;
+    }
+  });
+
+  // 8. Populate Unified Vehicles Object (sums up statuses across all sources)
+  sellerInventory.vehicles.active = sellerInventory.cars.active + sellerInventory.commercial.active + sellerInventory.bikes.active;
+  sellerInventory.vehicles.sold = sellerInventory.cars.sold + sellerInventory.commercial.sold + sellerInventory.bikes.sold;
+  sellerInventory.vehicles.deleted = sellerInventory.cars.deleted + sellerInventory.commercial.deleted + sellerInventory.bikes.deleted;
+  sellerInventory.vehicles.expired = (sellerInventory.cars.expired || 0) + sellerInventory.commercial.expired + sellerInventory.bikes.expired;
+  sellerInventory.vehicles.total = sellerInventory.cars.total + sellerInventory.commercial.total + sellerInventory.bikes.total;
 
   // 9. Populate Seller Lead Counts (leads received by seller on their listings)
   sellerLeadCounts.forEach((row) => {
@@ -342,6 +427,14 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       } else {
         commercialCategory.seller.leads_received.by_source[source] = count;
       }
+    } else if (targetType === 'bike') {
+      sellerLeadsReceived.by_target.bike += count;
+      bikeCategory.seller.leads_received.total += count;
+      if (bikeCategory.seller.leads_received.by_source[source] !== undefined) {
+        bikeCategory.seller.leads_received.by_source[source] += count;
+      } else {
+        bikeCategory.seller.leads_received.by_source[source] = count;
+      }
     } else {
       sellerLeadsReceived.by_target.car += count;
       carCategory.seller.leads_received.total += count;
@@ -356,23 +449,16 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
   // 9b. Populate Active vs Deleted Inventory Breakdown for Seller Leads
   if (Array.isArray(sellerLeadsWithVehicleStatus)) {
     sellerLeadsWithVehicleStatus.forEach((l) => {
-      const isCommercial = (l.target_type || '').toLowerCase() === 'commercial';
-      const veh = isCommercial ? l.commercialVehicle : (l.car || l.commercialVehicle);
+      const tType = (l.target_type || 'car').toLowerCase();
+      const veh = tType === 'commercial' ? l.commercialVehicle : (tType === 'bike' ? l.bike : (l.car || l.commercialVehicle || l.bike));
+      const targetCat = tType === 'commercial' ? commercialCategory : (tType === 'bike' ? bikeCategory : carCategory);
       const isDeleted = !veh || veh.status === 'deleted' || veh.deleted_at !== null;
       if (isDeleted) {
         sellerLeadsReceived.deleted_inventory++;
-        if (isCommercial) {
-          commercialCategory.seller.leads_received.deleted_inventory++;
-        } else {
-          carCategory.seller.leads_received.deleted_inventory++;
-        }
+        targetCat.seller.leads_received.deleted_inventory++;
       } else {
         sellerLeadsReceived.active_inventory++;
-        if (isCommercial) {
-          commercialCategory.seller.leads_received.active_inventory++;
-        } else {
-          carCategory.seller.leads_received.active_inventory++;
-        }
+        targetCat.seller.leads_received.active_inventory++;
       }
     });
   }
@@ -399,6 +485,14 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       } else {
         commercialCategory.buyer.enquiries_sent.by_source[source] = count;
       }
+    } else if (targetType === 'bike') {
+      buyerEnquiriesSent.by_target.bike += count;
+      bikeCategory.buyer.enquiries_sent.total += count;
+      if (bikeCategory.buyer.enquiries_sent.by_source[source] !== undefined) {
+        bikeCategory.buyer.enquiries_sent.by_source[source] += count;
+      } else {
+        bikeCategory.buyer.enquiries_sent.by_source[source] = count;
+      }
     } else {
       buyerEnquiriesSent.by_target.car += count;
       carCategory.buyer.enquiries_sent.total += count;
@@ -413,23 +507,16 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
   // 10b. Populate Active vs Deleted Inventory Breakdown for Buyer Enquiries
   if (Array.isArray(buyerEnquiriesWithVehicleStatus)) {
     buyerEnquiriesWithVehicleStatus.forEach((l) => {
-      const isCommercial = (l.target_type || '').toLowerCase() === 'commercial';
-      const veh = isCommercial ? l.commercialVehicle : (l.car || l.commercialVehicle);
+      const tType = (l.target_type || 'car').toLowerCase();
+      const veh = tType === 'commercial' ? l.commercialVehicle : (tType === 'bike' ? l.bike : (l.car || l.commercialVehicle || l.bike));
+      const targetCat = tType === 'commercial' ? commercialCategory : (tType === 'bike' ? bikeCategory : carCategory);
       const isDeleted = !veh || veh.status === 'deleted' || veh.deleted_at !== null;
       if (isDeleted) {
         buyerEnquiriesSent.deleted_inventory++;
-        if (isCommercial) {
-          commercialCategory.buyer.enquiries_sent.deleted_inventory++;
-        } else {
-          carCategory.buyer.enquiries_sent.deleted_inventory++;
-        }
+        targetCat.buyer.enquiries_sent.deleted_inventory++;
       } else {
         buyerEnquiriesSent.active_inventory++;
-        if (isCommercial) {
-          commercialCategory.buyer.enquiries_sent.active_inventory++;
-        } else {
-          carCategory.buyer.enquiries_sent.active_inventory++;
-        }
+        targetCat.buyer.enquiries_sent.active_inventory++;
       }
     });
   }
@@ -440,8 +527,9 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     const targetType = (row.target_type || 'car').trim().toLowerCase();
     const count = parseInt(row.count, 10) || 0;
 
-    const isCommercial = targetType === 'commercial';
-    const catReq = isCommercial ? commercialCategory.buyer.requirements : carCategory.buyer.requirements;
+    const catReq = targetType === 'commercial'
+      ? commercialCategory.buyer.requirements
+      : (targetType === 'bike' ? bikeCategory.buyer.requirements : carCategory.buyer.requirements);
 
     if (status === 'active') {
       buyerRequirements.active += count;
@@ -463,8 +551,10 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       catReq.deleted += count;
     }
 
-    if (isCommercial) {
+    if (targetType === 'commercial') {
       buyerRequirements.by_target.commercial += count;
+    } else if (targetType === 'bike') {
+      buyerRequirements.by_target.bike += count;
     } else {
       buyerRequirements.by_target.car += count;
     }
@@ -476,6 +566,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     categories: {
       car: carCategory,
       commercial: commercialCategory,
+      bike: bikeCategory,
     },
 
     // ──────── ROLE-FIRST BREAKDOWN ────────
@@ -492,6 +583,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
     // ──────── BACKWARD COMPATIBILITY (Existing Screens) ────────
     cars: sellerInventory.cars,
     commercial: sellerInventory.commercial,
+    bikes: sellerInventory.bikes,
     vehicles: sellerInventory.vehicles,
     leads: sellerLeadsReceived,
     requirements: buyerRequirements,
@@ -552,6 +644,32 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
         enquiries_sent: commercialCategory.buyer.enquiries_sent,
       };
     }
+  } else if (requestedCategory === 'bike') {
+    if (requestedRole === 'seller') {
+      responsePayload = {
+        category: 'bike',
+        role: 'seller',
+        inventory: bikeCategory.seller.inventory,
+        leads_received: bikeCategory.seller.leads_received,
+      };
+    } else if (requestedRole === 'buyer') {
+      responsePayload = {
+        category: 'bike',
+        role: 'buyer',
+        requirements: bikeCategory.buyer.requirements,
+        enquiries_sent: bikeCategory.buyer.enquiries_sent,
+      };
+    } else {
+      responsePayload = {
+        category: 'bike',
+        seller: bikeCategory.seller,
+        buyer: bikeCategory.buyer,
+        inventory: bikeCategory.seller.inventory,
+        leads_received: bikeCategory.seller.leads_received,
+        requirements: bikeCategory.buyer.requirements,
+        enquiries_sent: bikeCategory.buyer.enquiries_sent,
+      };
+    }
   } else if (requestedRole === 'seller') {
     responsePayload = {
       role: 'seller',
@@ -559,6 +677,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       by_category: {
         car: carCategory.seller,
         commercial: commercialCategory.seller,
+        bike: bikeCategory.seller,
       },
     };
   } else if (requestedRole === 'buyer') {
@@ -568,6 +687,7 @@ exports.getDashboardSummary = async (userId, role, options = {}) => {
       by_category: {
         car: carCategory.buyer,
         commercial: commercialCategory.buyer,
+        bike: bikeCategory.buyer,
       },
     };
   }

@@ -4,6 +4,8 @@ const {
   Car,
   CommercialVehicle,
   CommercialVehicleImage,
+  Bike,
+  BikeImage,
   CarType,
   User,
   Brand,
@@ -39,6 +41,18 @@ const commercialInclude = {
   ],
 };
 
+const bikeInclude = {
+  model: Bike,
+  as: 'bike',
+  attributes: ['id', 'title', 'year', 'price', 'status', 'brand_id', 'model_id', 'views_count'],
+  required: false,
+  include: [
+    { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+    { model: Model, as: 'bikeModel', attributes: ['id', 'name'] },
+    { model: BikeImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+  ],
+};
+
 /**
  * Submit a report for a car listing (authenticated / registered users only)
  */
@@ -67,6 +81,12 @@ exports.createReport = async (reporterUser, data) => {
       throw new AppError('Commercial vehicle listing not found.', 404);
     }
     dealerId = commercial.user_id;
+  } else if (targetType === 'bike') {
+    const bike = await resolveTarget('bike', targetId);
+    if (!bike) {
+      throw new AppError('Bike listing not found.', 404);
+    }
+    dealerId = bike.user_id;
   } else {
     car = await Car.findByPk(targetId);
     if (!car) {
@@ -105,6 +125,7 @@ exports.createReport = async (reporterUser, data) => {
     include: [
       carInclude,
       commercialInclude,
+      bikeInclude,
       {
         model: User,
         as: 'dealer',
@@ -152,6 +173,7 @@ exports.getReports = async (query = {}) => {
     include: [
       carInclude,
       commercialInclude,
+      bikeInclude,
       {
         model: User,
         as: 'dealer',
@@ -197,6 +219,7 @@ exports.getReportById = async (reportId) => {
     include: [
       carInclude,
       commercialInclude,
+      bikeInclude,
       {
         model: User,
         as: 'dealer',

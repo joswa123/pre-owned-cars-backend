@@ -42,6 +42,18 @@ router.get("/listings/pending", adminController.getPendingListings);
 router.patch("/listings/:id/approve", adminController.approveListing);
 router.patch("/listings/:id/reject", adminController.rejectListing);
 
+// ── Admin Bike Listings CRUD ─────────────────────────────────────────────────
+const bikeController = require("../../controllers/bikeController");
+const { bikeMediaUpload } = require("../../middlewares/upload");
+const validateReq = require("../../middlewares/validate");
+const { createBikeSchema, updateBikeSchema } = require("../../validations/bikeValidation");
+
+router.get("/bikes", bikeController.getBikes);
+router.get("/bikes/:id", bikeController.getBikeById);
+router.post("/bikes", bikeMediaUpload, validateReq(createBikeSchema), bikeController.createBike);
+router.patch("/bikes/:id", bikeMediaUpload, validateReq(updateBikeSchema), bikeController.updateBike);
+router.delete("/bikes/:id", bikeController.deleteBike);
+
 // ── Subscriptions & Payments (future) ────────────────────────────────────────
 router.get("/subscriptions", adminController.getSubscriptions);
 router.get("/payments", adminController.getPayments);

@@ -127,11 +127,11 @@ const carMediaFileFilter = (req, file, cb) => {
     return cb(new AppError('Invalid audio format. Allowed formats: MP3, WAV, AAC, M4A, OGG, FLAC.', 400), false);
   }
 
-  if (file.fieldname === 'primary_image' || file.fieldname === 'images') {
+  if (file.fieldname === 'primary_image' || file.fieldname === 'secondary_images' || file.fieldname === 'images') {
     return imageFileFilter(req, file, cb);
   }
 
-  return cb(new AppError(`Unexpected field "${file.fieldname}". Allowed file fields: primary_image, images, video, audio.`, 400), false);
+  return cb(new AppError(`Unexpected field "${file.fieldname}". Allowed file fields: primary_image, secondary_images, images, video, audio.`, 400), false);
 };
 
 // ─── Cloudinary Storages (Zero Local Disk Writes) ───────────────────
@@ -151,10 +151,11 @@ function createTestMediaStorage(resourceType) {
     _handleFile(req, file, cb) {
       file.stream.resume(); // Drain stream in memory
       const isCommercial = req.baseUrl?.includes('commercial') || req.originalUrl?.includes('commercial') || req.commercialVehicleId;
-      const entityFolder = isCommercial ? 'commercial' : 'cars';
-      const entityId = req.commercialVehicleId || req.carId || req.params?.id || crypto.randomUUID();
+      const isBike = req.baseUrl?.includes('bikes') || req.originalUrl?.includes('bikes') || req.bikeId;
+      const entityFolder = isBike ? 'bikes' : (isCommercial ? 'commercial' : 'cars');
+      const entityId = req.bikeId || req.commercialVehicleId || req.carId || req.params?.id || crypto.randomUUID();
       const uuid = crypto.randomUUID();
-      const prefix = file.fieldname === 'video' ? 'video' : (file.fieldname === 'audio' ? 'audio' : (isCommercial ? 'commercial' : 'media'));
+      const prefix = file.fieldname === 'video' ? 'video' : (file.fieldname === 'audio' ? 'audio' : (isBike ? 'bike' : (isCommercial ? 'commercial' : 'media')));
       const ext = file.fieldname === 'video' ? 'mp4' : (file.fieldname === 'audio' ? 'mp3' : 'png');
       const publicId = `autodeal4u/${entityFolder}/${entityId}/${prefix}-${uuid}`;
       const secureUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME || 'fub1whjx'}/${resourceType}/upload/v${Date.now()}/${publicId}.${ext}`;
@@ -336,10 +337,11 @@ function createUpload(folderName, extraParams = {}, fieldName = 'image', maxFile
 
 const MAX_CAR_IMAGES = parseInt(process.env.MAX_CAR_IMAGES, 10) || 20;
 const MAX_COMMERCIAL_IMAGES = 10;
+const MAX_BIKE_IMAGES = 12;
 
 const FIELD_MAX_COUNTS = {
   primary_image: 1,
-  secondary_images: MAX_COMMERCIAL_IMAGES,
+  secondary_images: MAX_CAR_IMAGES,
   images: MAX_CAR_IMAGES,
   video: 1,
   audio: 1,
@@ -484,13 +486,76 @@ const commercialMediaUploadRaw = multer({
   { name: 'audio', maxCount: 1 },
 ]);
 
+const bikeMediaCloudinaryStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    const bikeId = req.bikeId || req.params?.id || req.body?.bike_id || crypto.randomUUID();
+    req.bikeId = bikeId;
+    const uuid = crypto.randomUUID();
+
+    if (file.fieldname === 'video') {
+      return {
+        folder: `autodeal4u/bikes/${bikeId}/videos`,
+        resource_type: 'video',
+        public_id: `video-${uuid}`,
+      };
+    }
+    if (file.fieldname === 'audio') {
+      return {
+        folder: `autodeal4u/bikes/${bikeId}/audio`,
+        resource_type: 'video',
+        public_id: `audio-${uuid}`,
+      };
+    }
+
+    const prefix = file.fieldname === 'primary_image' ? 'primary' : 'bike';
+    return {
+      folder: `autodeal4u/bikes/${bikeId}`,
+      resource_type: 'image',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp'],
+      transformation: IMAGE_UPLOAD_TRANSFORMATION,
+      public_id: `${prefix}-${uuid}`,
+    };
+  },
+});
+
+const bikeMediaStorage = isTestEnv
+  ? {
+      _handleFile(req, file, cb) {
+        if (file.fieldname === 'video' || file.fieldname === 'audio') {
+          return createTestMediaStorage('video')._handleFile(req, file, cb);
+        }
+        return createTestMediaStorage('image')._handleFile(req, file, cb);
+      },
+      _removeFile(req, file, cb) {
+        cb(null);
+      },
+    }
+  : bikeMediaCloudinaryStorage;
+
+const bikeMediaUploadRaw = multer({
+  storage: bikeMediaStorage,
+  limits: {
+    fileSize: 100 * 1024 * 1024,
+  },
+  fileFilter: carMediaFileFilter,
+}).fields([
+  { name: 'primary_image', maxCount: 1 },
+  { name: 'secondary_images', maxCount: MAX_BIKE_IMAGES },
+  { name: 'images', maxCount: MAX_BIKE_IMAGES },
+  { name: 'video', maxCount: 1 },
+  { name: 'audio', maxCount: 1 },
+]);
+
 // ─── Named Exports ─────────────────────────────────────
 module.exports = {
   uploadVideo: wrapMulter(uploadVideoRaw.single('video')),
   uploadAudio: wrapMulter(uploadAudioRaw.single('audio')),
   carMediaUpload: wrapMulter(carMediaUploadRaw),
   commercialMediaUpload: wrapMulter(commercialMediaUploadRaw),
+  bikeMediaUpload: wrapMulter(bikeMediaUploadRaw),
   MAX_COMMERCIAL_IMAGES,
+  MAX_BIKE_IMAGES,
   wrapMulter,
   MAX_CAR_IMAGES,
   FIELD_MAX_COUNTS,

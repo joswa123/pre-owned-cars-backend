@@ -8,7 +8,7 @@ const Requirement = sequelize.define('Requirement', {
     primaryKey: true,
   },
   target_type: {
-    type: DataTypes.ENUM('car', 'commercial'),
+    type: DataTypes.ENUM('car', 'commercial', 'bike'),
     allowNull: false,
     defaultValue: 'car',
   },

@@ -153,15 +153,10 @@ exports.getDealerCommercialFilters = catchAsync(async (req, res) => {
 });
 
 /**
- * GET /dealers/:id/commercial
- * Returns filtered, paginated commercial inventory for a dealer.
+ * Helper: Loads dealer profile and resolved showroom location metadata.
  */
-exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
-  const dealerId = resolveDealerId(req);
-  const isOwner = Boolean(req.user?.id && req.user.id === dealerId);
-  const commercialVehicleService = require('../services/commercialVehicleService');
+async function loadDealerContext(dealerId) {
   const { User, DealerProfile, State, District, City } = require('../models');
-
   const dealer = await User.findOne({
     where: { id: dealerId },
     attributes: [
@@ -241,7 +236,6 @@ exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
   };
 
   const locationText = [cityDetail.name, districtDetail.name, stateDetail.name].filter(Boolean).join(', ');
-
   const showroomLocation = {
     showroom_name: dealerProfile.company_name || dealer.full_name || 'Dealer',
     door_no: dealerProfile.door_no || '',
@@ -256,6 +250,19 @@ exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
     state_id: stateDetail.id || null,
     address_text: [dealerProfile.door_no, dealerProfile.building_name, dealerProfile.street_name, cityDetail.name, districtDetail.name, stateDetail.name, dealerProfile.pincode].filter(Boolean).join(', '),
   };
+
+  return { dealer, dealerProfile, cityDetail, districtDetail, stateDetail, locationText, showroomLocation };
+}
+
+/**
+ * GET /dealers/:id/commercial
+ * Returns filtered, paginated commercial inventory for a dealer.
+ */
+exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
+  const dealerId = resolveDealerId(req);
+  const isOwner = Boolean(req.user?.id && req.user.id === dealerId);
+  const commercialVehicleService = require('../services/commercialVehicleService');
+  const { dealer, dealerProfile, cityDetail, districtDetail, stateDetail, locationText, showroomLocation } = await loadDealerContext(dealerId);
 
   const filters = { ...req.query, dealer_id: dealerId };
   if (!isOwner) {
@@ -297,6 +304,80 @@ exports.getDealerCommercialVehicles = catchAsync(async (req, res) => {
       limit,
       totalPages,
       pagination,
+      dealerProfile,
+      cityDetail,
+      districtDetail,
+      stateDetail,
+      location_text: locationText,
+      showroom_location: showroomLocation,
+      dealer: {
+        id: dealer.id,
+        full_name: dealer.full_name,
+        phone: dealer.phone,
+        email: dealer.email,
+        profile_picture: dealer.profile_picture,
+        whatsapp_number: dealer.whatsapp_number,
+        use_registered_for_whatsapp: dealer.use_registered_for_whatsapp,
+        role: dealer.role,
+        dealerProfile,
+        cityDetail,
+        districtDetail,
+        stateDetail,
+        location_text: locationText,
+        showroom_location: showroomLocation,
+      },
+      id: dealer.id,
+      full_name: dealer.full_name,
+      phone: dealer.phone,
+      email: dealer.email,
+      profile_picture: dealer.profile_picture,
+      whatsapp_number: dealer.whatsapp_number,
+      use_registered_for_whatsapp: dealer.use_registered_for_whatsapp,
+    },
+  });
+});
+
+/**
+ * GET /dealers/:id/bikes
+ * Returns filtered, paginated bike inventory for a dealer (supports b2b_listing).
+ */
+exports.getDealerBikes = catchAsync(async (req, res) => {
+  const dealerId = resolveDealerId(req);
+  const isOwner = Boolean(req.user?.id && req.user.id === dealerId);
+  const bikeService = require('../services/bikeService');
+  const { dealer, dealerProfile, cityDetail, districtDetail, stateDetail, locationText, showroomLocation } = await loadDealerContext(dealerId);
+
+  const filters = { ...req.query, dealer_id: dealerId };
+  if (!isOwner) {
+    filters.status = 'active';
+  }
+
+  const result = await bikeService.getBikes(
+    filters,
+    req.query.page || 1,
+    req.query.limit || 20,
+    req.query.sort_by || 'created_at',
+    req.query.sort_order || 'DESC',
+    req.user?.id || null,
+    req.user?.role || null
+  );
+
+  const total = result.pagination?.total !== undefined ? result.pagination.total : (result.bikes?.length || 0);
+  const page = result.pagination?.page || parseInt(req.query.page, 10) || 1;
+  const limit = result.pagination?.limit || parseInt(req.query.limit, 10) || 20;
+  const totalPages = result.pagination?.totalPages || Math.ceil(total / limit) || 1;
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      ...result,
+      vehicles: result.bikes || [],
+      bikes: result.bikes || [],
+      total,
+      page,
+      limit,
+      totalPages,
+      pagination: result.pagination,
       dealerProfile,
       cityDetail,
       districtDetail,

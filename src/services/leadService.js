@@ -3,6 +3,8 @@ const {
   Car,
   CommercialVehicle,
   CommercialVehicleImage,
+  Bike,
+  BikeImage,
   CarType,
   User,
   Brand,
@@ -83,6 +85,19 @@ const leadCommercialInclude = {
   ],
 };
 
+const leadBikeInclude = {
+  model: Bike.unscoped ? Bike.unscoped() : Bike,
+  as: 'bike',
+  required: false,
+  paranoid: false,
+  attributes: ['id', 'user_id', 'year', 'price', 'status', 'brand_id', 'model_id', 'views_count', 'title'],
+  include: [
+    { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+    { model: Model, as: 'bikeModel', attributes: ['id', 'name'] },
+    { model: BikeImage, as: 'images', attributes: ['id', 'image_url', 'is_primary'] },
+  ],
+};
+
 const formatLead = (lead) => {
   if (!lead) return null;
   const json = typeof lead.toJSON === 'function' ? lead.toJSON() : { ...lead };
@@ -142,8 +157,34 @@ const formatLead = (lead) => {
     },
   } : null;
 
-  const isCommercial = json.target_type === 'commercial' || (!carFormatted && !!commercialFormatted);
-  const activeVehicle = isCommercial ? commercialFormatted : carFormatted;
+  const isCommercial = json.target_type === 'commercial' || (!carFormatted && !json.bike && !!commercialFormatted);
+  const bike = json.bike;
+  const bikeFormatted = bike ? {
+    id: bike.id,
+    user_id: bike.user_id || json.seller_id || null,
+    seller_id: bike.user_id || json.seller_id || null,
+    target_type: 'bike',
+    name: bike.title || [bike.brand?.name, bike.bikeModel?.name, bike.year].filter(Boolean).join(' ') || 'Bike',
+    brand: bike.brand?.name || null,
+    model: bike.bikeModel?.name || null,
+    variant: null,
+    year: bike.year || null,
+    price: bike.price || null,
+    status: bike.status || null,
+    number_plate: null,
+    primary_image: bike.images?.find((i) => i.is_primary)?.image_url || bike.images?.[0]?.image_url || null,
+    metrics: {
+      views: bike.views_count || 0,
+      total_enquiries: json.target_type === 'bike' ? 1 : 0,
+      total_calls: 0,
+      total_whatsapp: 0,
+      total_messages: 0,
+      wishlist_count: 0,
+    },
+  } : null;
+
+  const isBike = json.target_type === 'bike' || (!carFormatted && !commercialFormatted && !!bikeFormatted);
+  const activeVehicle = isBike ? bikeFormatted : (isCommercial ? commercialFormatted : carFormatted);
 
   const unifiedVehicle = activeVehicle ? {
     id: activeVehicle.id,
@@ -166,8 +207,8 @@ const formatLead = (lead) => {
 
   return {
     id: json.id,
-    target_type: json.target_type || (isCommercial ? 'commercial' : 'car'),
-    target_id: json.target_id || (isCommercial ? commercialFormatted?.id : carFormatted?.id) || json.car_id,
+    target_type: json.target_type || (isBike ? 'bike' : (isCommercial ? 'commercial' : 'car')),
+    target_id: json.target_id || (isBike ? bikeFormatted?.id : (isCommercial ? commercialFormatted?.id : carFormatted?.id)) || json.car_id,
     interaction_id: json.id,
     type: json.source || 'message',
     source: json.source || 'message',
@@ -200,6 +241,7 @@ const formatLead = (lead) => {
     } : null,
     car: carFormatted, // Keep legacy field for backward compatibility
     commercial: commercialFormatted,
+    bike: bikeFormatted,
     vehicle: unifiedVehicle,
     is_vehicle_deleted: !activeVehicle || activeVehicle.status === 'deleted' || activeVehicle.status === null,
   };
@@ -213,6 +255,7 @@ exports.getLeadById = async (leadId) => {
     include: [
       leadCarInclude,
       leadCommercialInclude,
+      leadBikeInclude,
       {
         model: User,
         as: 'seller',
@@ -236,37 +279,51 @@ exports.createLead = async (userId, data) => {
   const targetId = data.target_id || data.car_id || data.carId || data.commercial_id || data.commercialId;
   if (!targetId) throw new AppError('target_id or car_id is required', 400);
 
-  let rawType = (data.target_type || (data.commercial_id || data.commercialId ? 'commercial' : null)) ? String(data.target_type || (data.commercial_id || data.commercialId ? 'commercial' : '')).toLowerCase() : null;
+  let rawType = (data.target_type || (data.commercial_id || data.commercialId ? 'commercial' : (data.bike_id || data.bikeId ? 'bike' : null)))
+    ? String(data.target_type || (data.commercial_id || data.commercialId ? 'commercial' : 'bike')).toLowerCase()
+    : null;
   let car = null;
   let commercialVehicle = null;
+  let bike = null;
   let sellerId = null;
   let targetType = rawType;
 
-  // Auto-detect targetType if not specified or check if target exists in opposite table
-  if (targetType === 'commercial') {
+  if (targetType === 'bike') {
+    bike = await resolveTarget('bike', targetId);
+    if (!bike) {
+      car = await Car.findByPk(targetId);
+      if (car) targetType = 'car';
+      else {
+        commercialVehicle = await resolveTarget('commercial', targetId);
+        if (commercialVehicle) targetType = 'commercial';
+        else throw new AppError('Bike not found', 404);
+      }
+    }
+  } else if (targetType === 'commercial') {
     commercialVehicle = await resolveTarget('commercial', targetId);
     if (!commercialVehicle) {
-      // Check if it's actually a car
       car = await Car.findByPk(targetId);
       if (car) {
         targetType = 'car';
       } else {
-        throw new AppError('Commercial vehicle not found', 404);
+        bike = await resolveTarget('bike', targetId);
+        if (bike) targetType = 'bike';
+        else throw new AppError('Commercial vehicle not found', 404);
       }
     }
   } else if (targetType === 'car') {
     car = await Car.findByPk(targetId);
     if (!car) {
-      // Check if it's actually a commercial vehicle
       commercialVehicle = await resolveTarget('commercial', targetId);
       if (commercialVehicle) {
         targetType = 'commercial';
       } else {
-        throw new AppError('Car not found', 404);
+        bike = await resolveTarget('bike', targetId);
+        if (bike) targetType = 'bike';
+        else throw new AppError('Car not found', 404);
       }
     }
   } else {
-    // No target_type specified - auto-detect by querying tables
     car = await Car.findByPk(targetId);
     if (car) {
       targetType = 'car';
@@ -275,12 +332,25 @@ exports.createLead = async (userId, data) => {
       if (commercialVehicle) {
         targetType = 'commercial';
       } else {
-        throw new AppError('Vehicle not found', 404);
+        bike = await resolveTarget('bike', targetId);
+        if (bike) {
+          targetType = 'bike';
+        } else {
+          throw new AppError('Vehicle not found', 404);
+        }
       }
     }
   }
 
-  if (targetType === 'commercial' && commercialVehicle) {
+  if (targetType === 'bike' && bike) {
+    if (bike.status !== 'active') {
+      throw new AppError('Bike is not available for enquiry', 400);
+    }
+    if (bike.user_id === userId) {
+      throw new AppError('Cannot enquire on your own bike listing', 400);
+    }
+    sellerId = bike.user_id;
+  } else if (targetType === 'commercial' && commercialVehicle) {
     if (commercialVehicle.status !== 'active') {
       throw new AppError('Commercial vehicle is not available for enquiry', 400);
     }
@@ -333,6 +403,8 @@ exports.createLead = async (userId, data) => {
     await clearCachePattern(`car:leads:${car.id}:*`);
   } else if (targetType === 'commercial' && commercialVehicle) {
     await clearCachePattern(`car:leads:${commercialVehicle.id}:*`);
+  } else if (targetType === 'bike' && bike) {
+    await clearCachePattern(`car:leads:${bike.id}:*`);
   }
   if (userId) {
     await clearCachePattern(`buyer:leads:${userId}:*`);
@@ -387,28 +459,34 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
 
   const carWhere = { user_id: sellerId };
   const commWhere = { user_id: sellerId };
+  const bikeWhere = { user_id: sellerId };
   if (isOnlyDeleted) {
     carWhere.status = 'deleted';
     commWhere.status = 'deleted';
+    bikeWhere.status = 'deleted';
   } else if (isIncludeDeleted) {
     if (status && status !== 'all') {
       carWhere.status = status.toLowerCase();
       commWhere.status = status.toLowerCase();
+      bikeWhere.status = status.toLowerCase();
     }
   } else {
     if (status && status !== 'all') {
       carWhere.status = status.toLowerCase();
       commWhere.status = status.toLowerCase();
+      bikeWhere.status = status.toLowerCase();
     } else {
       carWhere.status = { [Op.ne]: 'deleted' };
       commWhere.status = { [Op.ne]: 'deleted' };
+      bikeWhere.status = { [Op.ne]: 'deleted' };
     }
   }
 
   const shouldFetchCars = !resolvedTarget || resolvedTarget === 'car';
   const shouldFetchCommercial = !resolvedTarget || resolvedTarget === 'commercial';
+  const shouldFetchBikes = !resolvedTarget || resolvedTarget === 'bike';
 
-  const [cars, commercialVehicles] = await Promise.all([
+  const [cars, commercialVehicles, bikes] = await Promise.all([
     shouldFetchCars
       ? Car.unscoped().findAll({
           where: carWhere,
@@ -463,6 +541,26 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
           ],
         })
       : Promise.resolve([]),
+    shouldFetchBikes
+      ? Bike.unscoped().findAll({
+          where: bikeWhere,
+          attributes: ['id', 'brand_id', 'model_id', 'title', 'price', 'status', 'views_count', 'year', 'created_at'],
+          include: [
+            { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+            { model: Model, as: 'bikeModel', attributes: ['id', 'name'] },
+            {
+              model: BikeImage,
+              as: 'images',
+              attributes: ['id', 'image_url', 'is_primary'],
+              required: false,
+            },
+          ],
+          order: [
+            ['created_at', 'DESC'],
+            ['id', 'DESC'],
+          ],
+        })
+      : Promise.resolve([]),
   ]);
 
   const unifiedList = [
@@ -488,6 +586,21 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
         id: json.id,
         target_type: 'commercial',
         name: nameParts.length > 0 ? nameParts.join(' ') : 'Commercial Vehicle',
+        price: json.price,
+        number_plate: null,
+        status: json.status,
+        primary_image: json.images?.find((img) => img.is_primary)?.image_url || json.images?.[0]?.image_url || null,
+        stats: { views_count: json.views_count || 0 },
+        created_at: json.created_at,
+      };
+    }),
+    ...bikes.map((b) => {
+      const json = typeof b.toJSON === 'function' ? b.toJSON() : b;
+      const nameParts = [json.brand?.name, json.bikeModel?.name, json.year].filter(Boolean);
+      return {
+        id: json.id,
+        target_type: 'bike',
+        name: json.title || (nameParts.length > 0 ? nameParts.join(' ') : 'Bike'),
         price: json.price,
         number_plate: null,
         status: json.status,
@@ -652,6 +765,7 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
   let deletedInventoryLeads = 0;
   let totalCarLeads = 0;
   let totalCommLeads = 0;
+  let totalBikeLeads = 0;
 
   formattedVehicles.forEach((v) => {
     const b = v.breakdown || {};
@@ -669,6 +783,8 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
     }
     if (v.target_type === 'commercial') {
       totalCommLeads += v.total_lead_count || 0;
+    } else if (v.target_type === 'bike') {
+      totalBikeLeads += v.total_lead_count || 0;
     } else {
       totalCarLeads += v.total_lead_count || 0;
     }
@@ -680,7 +796,7 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
         where: {
           seller_id: sellerId,
           [Op.and]: [
-            sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+            sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
           ],
         },
       });
@@ -709,6 +825,7 @@ exports.getLeadSummary = async (sellerId, { status = null, limit = 20, cursor = 
       by_target: {
         car: totalCarLeads,
         commercial: totalCommLeads,
+        bike: totalBikeLeads,
       },
       calls: totalCalls,
       whatsapp: totalWhatsapp,
@@ -750,6 +867,7 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
   });
 
   let commercial = null;
+  let bike = null;
   let targetType = 'car';
 
   if (!car) {
@@ -763,10 +881,22 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
     });
     if (commercial) {
       targetType = 'commercial';
+    } else {
+      bike = await Bike.findOne({
+        where: { id: carId, user_id: sellerId },
+        paranoid: false,
+        include: [
+          { model: Brand, as: 'brand', attributes: ['id', 'name'] },
+          { model: Model, as: 'bikeModel', attributes: ['id', 'name'] },
+        ],
+      });
+      if (bike) {
+        targetType = 'bike';
+      }
     }
   }
 
-  if (!car && !commercial) {
+  if (!car && !commercial && !bike) {
     throw new AppError('Vehicle not found or you are not authorized to view these leads', 404);
   }
 
@@ -857,10 +987,12 @@ exports.getCarLeads = async (sellerId, carId, { limit = 20, cursor = null, sourc
 
   const vehicleName = car
     ? ([car.brand?.name, car.carModel?.name].filter(Boolean).join(' ') || 'Pre-Owned Car')
-    : ([commercial.brand?.name, commercial.vehicleType?.name, commercial.year].filter(Boolean).join(' ') || 'Commercial Vehicle');
+    : (commercial
+        ? ([commercial.brand?.name, commercial.vehicleType?.name, commercial.year].filter(Boolean).join(' ') || 'Commercial Vehicle')
+        : (bike.title || [bike.brand?.name, bike.bikeModel?.name, bike.year].filter(Boolean).join(' ') || 'Bike'));
 
   const vehicleInfo = {
-    id: car ? car.id : commercial.id,
+    id: car ? car.id : (commercial ? commercial.id : bike.id),
     target_type: targetType,
     name: vehicleName,
     number_plate: car?.number_plate || null,
@@ -962,12 +1094,12 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
   if (isOnlyDeleted) {
     where[Op.and] = where[Op.and] || [];
     where[Op.and].push(
-      sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+      sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
     );
   } else if (isExcludeDeleted) {
     where[Op.and] = where[Op.and] || [];
     where[Op.and].push(
-      sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+      sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND NOT EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
     );
   }
 
@@ -978,6 +1110,7 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
     include: [
       leadCarInclude,
       leadCommercialInclude,
+      leadBikeInclude,
       {
         model: User,
         as: 'buyer',
@@ -1022,7 +1155,7 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
       where: {
         seller_id: sellerId,
         [Op.and]: [
-          sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+          sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND NOT EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
         ],
       },
     }),
@@ -1030,7 +1163,7 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
       where: {
         seller_id: sellerId,
         [Op.and]: [
-          sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+          sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
         ],
       },
     }),
@@ -1049,6 +1182,7 @@ exports.getSellerLeads = async (sellerId, filters = {}, page = 1, limit = 20) =>
     by_target: {
       car: 0,
       commercial: 0,
+      bike: 0,
     },
   };
   sourceStats.forEach((r) => {
@@ -1145,12 +1279,12 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
   if (isOnlyDeleted) {
     where[Op.and] = where[Op.and] || [];
     where[Op.and].push(
-      sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+      sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
     );
   } else if (isExcludeDeleted) {
     where[Op.and] = where[Op.and] || [];
     where[Op.and].push(
-      sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+      sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND NOT EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
     );
   }
 
@@ -1161,6 +1295,7 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
     include: [
       leadCarInclude,
       leadCommercialInclude,
+      leadBikeInclude,
       {
         model: User,
         as: 'seller',
@@ -1204,7 +1339,7 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
       where: {
         buyer_id: buyerId,
         [Op.and]: [
-          sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+          sequelize.literal("((Lead.target_type = 'commercial' AND NOT EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND NOT EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
         ],
       },
     }),
@@ -1212,7 +1347,7 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
       where: {
         buyer_id: buyerId,
         [Op.and]: [
-          sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
+          sequelize.literal("((Lead.target_type = 'commercial' AND EXISTS (SELECT 1 FROM commercial_vehicles cv WHERE cv.id = Lead.target_id AND (cv.status = 'deleted' OR cv.deleted_at IS NOT NULL))) OR (Lead.target_type = 'bike' AND EXISTS (SELECT 1 FROM bikes b WHERE b.id = Lead.target_id AND (b.status = 'deleted' OR b.deleted_at IS NOT NULL))) OR (COALESCE(Lead.target_type, 'car') = 'car' AND EXISTS (SELECT 1 FROM cars c WHERE c.id = COALESCE(Lead.car_id, Lead.target_id) AND (c.status = 'deleted' OR c.deleted_at IS NOT NULL))))")
         ],
       },
     }),
@@ -1231,6 +1366,7 @@ exports.getBuyerLeads = async (buyerId, filters = {}, page = 1, limit = 20) => {
     by_target: {
       car: 0,
       commercial: 0,
+      bike: 0,
     },
   };
   sourceStats.forEach((r) => {
@@ -1393,9 +1529,12 @@ exports.getAllLeadsForAdmin = async (filters = {}) => {
 
   const { count, rows } = await Lead.findAndCountAll({
     where,
+    distinct: true,
+    col: 'id',
     include: [
       leadCarInclude,
       leadCommercialInclude,
+      leadBikeInclude,
       {
         model: User,
         as: 'seller',

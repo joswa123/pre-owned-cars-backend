@@ -10,6 +10,7 @@ router.get('/:id/cars/filters', optionalAuth, dealerFilterLimiter, dealerControl
 router.get('/:id/cars', optionalAuth, dealerController.getDealerCars);
 router.get('/:id/commercial/filters', optionalAuth, dealerFilterLimiter, dealerController.getDealerCommercialFilters);
 router.get('/:id/commercial', optionalAuth, dealerController.getDealerCommercialVehicles);
+router.get('/:id/bikes', optionalAuth, dealerController.getDealerBikes);
 router.get('/:id', optionalAuth, dealerController.getDealer);
 
 module.exports = router;

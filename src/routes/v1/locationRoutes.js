@@ -21,5 +21,6 @@ router.get('/dealers/:dealerId/cars/filters', optionalAuth, dealerFilterLimiter,
 router.get('/dealers/:dealerId/cars', limiter, optionalAuth, locationController.getDealerCars);
 router.get('/dealers/:dealerId/commercial/filters', optionalAuth, dealerFilterLimiter, dealerController.getDealerCommercialFilters);
 router.get('/dealers/:dealerId/commercial', limiter, optionalAuth, locationController.getDealerCommercialVehicles);
+router.get('/dealers/:dealerId/bikes', limiter, optionalAuth, dealerController.getDealerBikes);
 
 module.exports = router;
